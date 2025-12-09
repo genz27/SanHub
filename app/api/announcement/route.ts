@@ -7,8 +7,11 @@ export async function GET() {
     const config = await getSystemConfig();
     const { announcement } = config;
 
+    console.log('[Announcement API] config:', JSON.stringify({ announcement }, null, 2));
+
     // 如果公告未启用或无标题，返回空
     if (!announcement || !announcement.enabled || !announcement.title) {
+      console.log('[Announcement API] 返回 null，原因:', !announcement ? '无公告' : !announcement.enabled ? '未启用' : '无标题');
       return NextResponse.json({ success: true, data: null });
     }
 
