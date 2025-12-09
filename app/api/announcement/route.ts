@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getSystemConfig } from '@/lib/db';
 
+// 禁用缓存
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 // 获取公告（公开接口）
 export async function GET() {
   try {

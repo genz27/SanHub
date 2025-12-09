@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getSystemConfig, updateSystemConfig } from '@/lib/db';
 
+// 禁用缓存
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 // 登录 SORA 后台获取 admin token
 async function loginSoraBackend(baseUrl: string, username: string, password: string): Promise<string> {
   const res = await fetch(`${baseUrl}/api/login`, {
