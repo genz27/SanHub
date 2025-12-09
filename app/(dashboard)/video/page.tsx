@@ -742,7 +742,7 @@ export default function VideoGenerationPage() {
                     onClick={handleGachaMode}
                     disabled={submitting}
                     className={cn(
-                      'flex items-center justify-center gap-1.5 px-4 py-3 rounded-lg font-medium transition-all',
+                      'h-[46px] w-[46px] flex items-center justify-center rounded-lg font-medium transition-all',
                       submitting
                         ? 'bg-white/10 text-white/50 cursor-not-allowed'
                         : 'bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:opacity-90'
