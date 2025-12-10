@@ -47,8 +47,8 @@ export default function AdminPage() {
     <div className="space-y-8">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-white">概览</h1>
-        <p className="text-white/50 mt-1">系统运行状态</p>
+        <h1 className="text-3xl font-extralight text-white">概览</h1>
+        <p className="text-white/50 mt-1 font-light">系统运行状态</p>
       </div>
 
       {/* Stats Cards */}

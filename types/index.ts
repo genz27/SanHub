@@ -6,7 +6,7 @@
 export type UserRole = 'user' | 'admin';
 
 // 生成类型
-export type GenerationType = 'sora-video' | 'sora-image' | 'gemini-image' | 'zimage-image' | 'gitee-image' | 'chat';
+export type GenerationType = 'sora-video' | 'sora-image' | 'gemini-image' | 'zimage-image' | 'gitee-image' | 'chat' | 'character-card';
 
 // 聊天模型配置
 export interface ChatModel {
@@ -208,6 +208,19 @@ declare module 'next-auth/jwt' {
     role: UserRole;
     balance: number;
   }
+}
+
+// 角色卡
+export interface CharacterCard {
+  id: string;
+  userId: string;
+  characterName: string; // 角色名称 (如 @lotuswhisp719)
+  avatarUrl: string; // 角色头像 URL
+  sourceVideoUrl?: string; // 源视频 URL (可选)
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  errorMessage?: string;
+  createdAt: number;
+  updatedAt: number;
 }
 
 

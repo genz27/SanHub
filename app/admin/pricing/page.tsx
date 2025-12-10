@@ -99,8 +99,8 @@ export default function PricingPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">积分定价</h1>
-          <p className="text-white/50 mt-1">配置各服务消耗的积分数量</p>
+          <h1 className="text-3xl font-extralight text-white">积分定价</h1>
+          <p className="text-white/50 mt-1 font-light">配置各服务消耗的积分数量</p>
         </div>
         <button
           onClick={saveConfig}

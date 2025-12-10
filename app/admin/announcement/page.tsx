@@ -74,26 +74,26 @@ export default function AnnouncementPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white">公告管理</h1>
-          <p className="text-white/50 mt-1">发布系统公告，支持 HTML 格式</p>
+          <h1 className="text-2xl sm:text-3xl font-extralight text-white">公告管理</h1>
+          <p className="text-white/50 mt-1 font-light text-sm sm:text-base">发布系统公告，支持 HTML 格式</p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowPreview(!showPreview)}
-            className="flex items-center gap-2 px-4 py-2 bg-white/10 text-white rounded-lg font-medium hover:bg-white/20 transition-colors"
+            className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-white/10 text-white rounded-lg font-medium hover:bg-white/20 transition-colors text-sm sm:text-base"
           >
             {showPreview ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            {showPreview ? '编辑' : '预览'}
+            <span className="hidden sm:inline">{showPreview ? '编辑' : '预览'}</span>
           </button>
           <button
             onClick={saveConfig}
             disabled={saving}
-            className="flex items-center gap-2 px-4 py-2 bg-white text-black rounded-lg font-medium hover:bg-white/90 transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-white text-black rounded-lg font-medium hover:bg-white/90 transition-colors disabled:opacity-50 text-sm sm:text-base"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            保存
+            <span className="hidden sm:inline">保存</span>
           </button>
         </div>
       </div>

@@ -30,7 +30,19 @@ export async function POST(request: NextRequest) {
     }
 
     const updates = await request.json();
-    const config = await updateSystemConfig(updates);
+
+    // 如果后台地址发生变化，则清空旧的 admin token，强制下一次重新登录
+    const current = await getSystemConfig();
+    const nextUpdates: any = { ...updates };
+    if (
+      typeof updates.soraBackendUrl === 'string' &&
+      updates.soraBackendUrl.trim() &&
+      updates.soraBackendUrl.trim() !== (current.soraBackendUrl || '').trim()
+    ) {
+      nextUpdates.soraBackendToken = '';
+    }
+
+    const config = await updateSystemConfig(nextUpdates);
     return NextResponse.json({ success: true, data: config });
   } catch (error) {
     return NextResponse.json(

@@ -30,7 +30,7 @@ services:
       # - ZIMAGE_API_KEY=
       # - GITEE_API_KEY=
     volumes:
-      - ./data:/app/data  # SQLite 数据持久化
+      - ./data:/app/data  # SQLite 数据持久化和媒体文件存储
 
   # 可选: MySQL 数据库
   # mysql:

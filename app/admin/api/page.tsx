@@ -144,8 +144,8 @@ export default function ApiConfigPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">API 配置</h1>
-          <p className="text-white/50 mt-1">管理各服务的 API 密钥和接口地址</p>
+          <h1 className="text-3xl font-extralight text-white">API 配置</h1>
+          <p className="text-white/50 mt-1 font-light">管理各服务的 API 密钥和接口地址</p>
         </div>
         <button
           onClick={saveConfig}
