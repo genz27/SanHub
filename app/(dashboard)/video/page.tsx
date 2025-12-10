@@ -71,6 +71,7 @@ export default function VideoGenerationPage() {
   const [characterPickerPosition, setCharacterPickerPosition] = useState({ top: 0, left: 0 });
   const [atSearchQuery, setAtSearchQuery] = useState('');
   const [atCursorPosition, setAtCursorPosition] = useState<number | null>(null);
+  const [showCharacterLibrary, setShowCharacterLibrary] = useState(false);
   const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
   const remixPromptRef = useRef<HTMLTextAreaElement>(null);
 
@@ -705,12 +706,19 @@ export default function VideoGenerationPage() {
                     </div>
                   )}
                   <div className="space-y-2 relative">
-                    <label className="text-xs text-white/50 uppercase tracking-wider flex items-center gap-2">
-                      创作描述
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs text-white/50 uppercase tracking-wider">创作描述</label>
                       {characterCards.length > 0 && (
-                        <span className="text-[10px] text-pink-400/60">输入 @ 选择角色卡</span>
+                        <button
+                          type="button"
+                          onClick={() => setShowCharacterLibrary(!showCharacterLibrary)}
+                          className="flex items-center gap-1.5 px-2.5 py-1 bg-gradient-to-r from-pink-500/10 to-purple-500/10 border border-pink-500/20 rounded-md hover:from-pink-500/20 hover:to-purple-500/20 transition-all"
+                        >
+                          <User className="w-3 h-3 text-pink-400" />
+                          <span className="text-[11px] text-pink-400">角色卡库</span>
+                        </button>
                       )}
-                    </label>
+                    </div>
                     <textarea
                       ref={promptTextareaRef}
                       value={prompt}
@@ -718,6 +726,61 @@ export default function VideoGenerationPage() {
                       placeholder="描述你想要生成的内容，越详细效果越好..."
                       className="w-full h-20 px-3 py-2.5 bg-white/5 border border-white/10 text-white rounded-lg resize-none focus:outline-none focus:border-white/30 placeholder:text-white/30 text-sm"
                     />
+                    {/* 角色卡库弹窗 */}
+                    {showCharacterLibrary && (
+                      <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-zinc-900 border border-white/10 rounded-lg shadow-xl overflow-hidden">
+                        <div className="p-3 border-b border-white/10 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <User className="w-4 h-4 text-pink-400" />
+                            <span className="text-sm font-medium text-white">角色卡库</span>
+                          </div>
+                          <button
+                            onClick={() => setShowCharacterLibrary(false)}
+                            className="text-white/40 hover:text-white transition-colors"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <div className="max-h-80 overflow-y-auto p-2">
+                          {characterCards.length > 0 ? (
+                            <div className="grid grid-cols-1 gap-2">
+                              {characterCards.map((card) => (
+                                <button
+                                  key={card.id}
+                                  type="button"
+                                  onClick={() => {
+                                    const mention = `@${card.characterName}`;
+                                    setPrompt(prev => prev ? `${prev} ${mention}` : mention);
+                                    setShowCharacterLibrary(false);
+                                  }}
+                                  className="w-full flex items-center gap-3 px-3 py-2.5 bg-white/5 hover:bg-white/10 rounded-lg transition-all text-left border border-white/10 hover:border-pink-500/30"
+                                >
+                                  <div className="w-12 h-12 rounded-lg overflow-hidden bg-gradient-to-br from-pink-500/20 to-purple-500/20 shrink-0">
+                                    {card.avatarUrl ? (
+                                      <img src={card.avatarUrl} alt="" className="w-full h-full object-cover" />
+                                    ) : (
+                                      <div className="w-full h-full flex items-center justify-center">
+                                        <User className="w-6 h-6 text-pink-400/50" />
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium text-white truncate">
+                                      @{card.characterName}
+                                    </p>
+                                    <p className="text-xs text-white/40">点击添加到描述</p>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="px-3 py-8 text-center text-white/40 text-sm">
+                              暂无角色卡
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                     {/* 角色卡选择器 */}
                     {showCharacterPicker && creationMode === 'normal' && (
                       <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-zinc-900 border border-white/10 rounded-lg shadow-xl max-h-60 overflow-hidden">
