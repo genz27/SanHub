@@ -20,7 +20,7 @@ interface SidebarProps {
 const navItems = [
   { href: '/image', icon: Image, label: '图像生成', description: 'Gemini / Z-Image', badge: 'AI', isAI: true },
   { href: '/video', icon: Video, label: '视频生成', description: 'Sora / Remix / 分镜', badge: 'AI', isAI: true },
-  // { href: '/video/character-card', icon: User, label: '角色卡生成', description: '从视频提取角色', badge: 'NEW', isAI: true },
+  { href: '/video/character-card', icon: User, label: '角色卡生成', description: '从视频提取角色', badge: 'NEW', isAI: true },
   // { href: '/chat', icon: MessageSquare, label: 'Chat', description: '智能对话助手', badge: 'AI', isAI: true },
   { href: '/history', icon: History, label: '历史', description: '作品记录', badge: null, isAI: false },
   { href: '/settings', icon: Settings, label: '设置', description: '账号管理', badge: null, isAI: false },

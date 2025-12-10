@@ -93,24 +93,24 @@ export default function VideoGenerationPage() {
     }
   }, [selectedModelId]);
 
-  // 加载用户角色卡（暂时禁用）
-  // useEffect(() => {
-  //   const loadCharacterCards = async () => {
-  //     try {
-  //       const res = await fetch('/api/user/character-cards');
-  //       if (res.ok) {
-  //         const data = await res.json();
-  //         const completedCards = (data.data || []).filter(
-  //           (c: CharacterCard) => c.status === 'completed'
-  //         );
-  //         setCharacterCards(completedCards);
-  //       }
-  //     } catch (err) {
-  //       console.error('Failed to load character cards:', err);
-  //     }
-  //   };
-  //   loadCharacterCards();
-  // }, []);
+  // 加载用户角色卡
+  useEffect(() => {
+    const loadCharacterCards = async () => {
+      try {
+        const res = await fetch('/api/user/character-cards');
+        if (res.ok) {
+          const data = await res.json();
+          const completedCards = (data.data || []).filter(
+            (c: CharacterCard) => c.status === 'completed'
+          );
+          setCharacterCards(completedCards);
+        }
+      } catch (err) {
+        console.error('Failed to load character cards:', err);
+      }
+    };
+    loadCharacterCards();
+  }, []);
 
   // 处理 @ 输入检测
   const handlePromptChange = (
