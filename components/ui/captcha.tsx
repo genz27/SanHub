@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { RefreshCw } from 'lucide-react';
 
 interface CaptchaProps {
@@ -12,32 +12,52 @@ export function Captcha({ onCaptchaChange }: CaptchaProps) {
   const [captchaSvg, setCaptchaSvg] = useState('');
   const [captchaCode, setCaptchaCode] = useState('');
   const [loading, setLoading] = useState(false);
+  
+  // 使用 ref 存储回调和状态，完全避免依赖问题
+  const callbackRef = useRef(onCaptchaChange);
+  const captchaIdRef = useRef('');
+  const fetchingRef = useRef(false);
+  
+  // 更新回调引用
+  useEffect(() => {
+    callbackRef.current = onCaptchaChange;
+  }, [onCaptchaChange]);
 
-  const refreshCaptcha = useCallback(async () => {
+  const refreshCaptcha = async () => {
+    // 防止并发请求
+    if (fetchingRef.current || loading) return;
+    fetchingRef.current = true;
     setLoading(true);
+    
     try {
       const res = await fetch('/api/captcha', { cache: 'no-store' });
       const data = await res.json();
       if (data.success) {
         setCaptchaId(data.data.id);
+        captchaIdRef.current = data.data.id;
         setCaptchaSvg(data.data.svg);
         setCaptchaCode('');
-        onCaptchaChange(data.data.id, '');
+        callbackRef.current(data.data.id, '');
       }
     } catch (error) {
       console.error('Failed to load captcha:', error);
     } finally {
       setLoading(false);
+      fetchingRef.current = false;
     }
-  }, [onCaptchaChange]);
+  };
 
+  // 只在组件首次挂载时加载验证码，使用空依赖数组
   useEffect(() => {
+    // 如果已经有验证码了就不再请求
+    if (captchaSvg) return;
     refreshCaptcha();
-  }, [refreshCaptcha]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleCodeChange = (code: string) => {
     setCaptchaCode(code);
-    onCaptchaChange(captchaId, code);
+    callbackRef.current(captchaIdRef.current, code);
   };
 
   return (

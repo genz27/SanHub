@@ -61,8 +61,8 @@ export default function SettingsPage() {
     <div className="max-w-3xl mx-auto space-y-8">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-light text-white">账号设置</h1>
-        <p className="text-white/50 mt-1">管理您的账号信息和安全设置</p>
+        <h1 className="text-3xl font-extralight text-white">账号设置</h1>
+        <p className="text-white/50 mt-1 font-light">管理您的账号信息和安全设置</p>
       </div>
 
       {/* User Info Card */}

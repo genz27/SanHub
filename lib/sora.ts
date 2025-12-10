@@ -9,13 +9,13 @@ import { fetch as undiciFetch, Agent } from 'undici';
 // 创建自定义 Agent，禁用 body timeout
 const soraAgent = new Agent({
   bodyTimeout: 0, // 禁用 body timeout
-  headersTimeout: 120000, // 120 秒 headers timeout
-  keepAliveTimeout: 30000, // 30 秒 keep-alive
-  keepAliveMaxTimeout: 600000, // 10 分钟
+  headersTimeout: 240000, // 240 秒 headers timeout
+  keepAliveTimeout: 60000, // 60 秒 keep-alive
+  keepAliveMaxTimeout: 1200000, // 20 分钟
   pipelining: 0, // 禁用 HTTP 管道，避免连接复用问题
-  connections: 10, // 最大连接数
+  connections: 30, // 最大连接数
   connect: {
-    timeout: 60000, // 连接超时 60 秒
+    timeout: 120000, // 连接超时 120 秒
   },
 });
 

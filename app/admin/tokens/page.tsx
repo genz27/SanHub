@@ -182,8 +182,8 @@ export default function TokensPage() {
     <div className="space-y-8">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-white">SORA Token 管理</h1>
-        <p className="text-white/50 mt-1">管理 SORA 后台账号和批量导入 Token</p>
+        <h1 className="text-3xl font-extralight text-white">SORA Token 管理</h1>
+        <p className="text-white/50 mt-1 font-light">管理 SORA 后台账号和批量导入 Token</p>
       </div>
 
       {/* 统计数据 */}
@@ -221,7 +221,7 @@ export default function TokensPage() {
                 <Key className="w-4 h-4" />
                 Token 总数
               </div>
-              <div className="text-2xl font-bold text-white">{stats.total_tokens}</div>
+              <div className="text-2xl font-light text-white">{stats.total_tokens}</div>
             </div>
             <div className="bg-white/5 rounded-lg p-4">
               <div className="flex items-center gap-2 text-green-400/70 text-sm mb-1">

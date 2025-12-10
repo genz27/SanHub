@@ -2,12 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { User, Eye, Ban, Check, Search, Edit2, Key, Coins, History } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import type { SafeUser, Generation } from '@/types';
-import { formatBalance, formatDate } from '@/lib/utils';
+import { formatBalance, formatDate, cn } from '@/lib/utils';
 
 export default function UsersPage() {
   const [users, setUsers] = useState<SafeUser[]>([]);
@@ -99,11 +95,8 @@ export default function UsersPage() {
 
   if (loading) {
     return (
-      <div className="max-w-6xl mx-auto p-6">
-        <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-secondary rounded w-1/4"></div>
-          <div className="h-64 bg-secondary rounded"></div>
-        </div>
+      <div className="flex items-center justify-center h-64">
+        <div className="w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin" />
       </div>
     );
   }
@@ -111,50 +104,52 @@ export default function UsersPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">用户管理</h1>
-        <p className="text-muted-foreground">管理用户账号、余额和权限</p>
+        <h1 className="text-3xl font-extralight text-white">用户管理</h1>
+        <p className="text-white/50 mt-1 font-light">管理用户账号、余额和权限</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* 用户列表 */}
         <div className="lg:col-span-1 space-y-4">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
+            <input
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearch(e.target.value)}
               placeholder="搜索用户..."
-              className="pl-9"
+              className="w-full pl-10 pr-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:outline-none focus:border-white/30 text-sm"
             />
           </div>
 
           <div className="space-y-2 max-h-[600px] overflow-y-auto">
             {filteredUsers.map(user => (
-              <Card 
+              <div 
                 key={user.id}
-                className={`cursor-pointer transition-colors ${
-                  selectedUser?.id === user.id ? 'border-foreground' : 'hover:bg-secondary/50'
-                } ${user.disabled ? 'opacity-50' : ''}`}
+                className={cn(
+                  'p-3 rounded-xl border cursor-pointer transition-all',
+                  selectedUser?.id === user.id 
+                    ? 'bg-white/10 border-white/30' 
+                    : 'bg-white/5 border-white/10 hover:bg-white/10',
+                  user.disabled && 'opacity-50'
+                )}
                 onClick={() => selectUser(user)}
               >
-                <CardContent className="p-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center">
-                      <User className="w-5 h-5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">{user.name}</p>
-                      <p className="text-sm text-muted-foreground truncate">{user.email}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-medium">{formatBalance(user.balance)}</p>
-                      {user.disabled && (
-                        <span className="text-xs text-destructive">已禁用</span>
-                      )}
-                    </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
+                    <User className="w-5 h-5 text-white/60" />
                   </div>
-                </CardContent>
-              </Card>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-white truncate">{user.name}</p>
+                    <p className="text-sm text-white/50 truncate">{user.email}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-medium text-white">{formatBalance(user.balance)}</p>
+                    {user.disabled && (
+                      <span className="text-xs text-red-400">已禁用</span>
+                    )}
+                  </div>
+                </div>
+              </div>
             ))}
           </div>
         </div>
@@ -164,145 +159,137 @@ export default function UsersPage() {
           {selectedUser ? (
             <div className="space-y-4">
               {/* 基本信息 */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
-                    <span>用户信息</span>
-                    <Button
-                      variant={selectedUser.disabled ? 'default' : 'destructive'}
-                      size="sm"
-                      onClick={toggleDisabled}
-                    >
-                      {selectedUser.disabled ? (
-                        <><Check className="w-4 h-4 mr-1" /> 启用</>
-                      ) : (
-                        <><Ban className="w-4 h-4 mr-1" /> 禁用</>
-                      )}
-                    </Button>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label className="text-muted-foreground">邮箱</Label>
-                      <p className="font-medium">{selectedUser.email}</p>
-                    </div>
-                    <div>
-                      <Label className="text-muted-foreground">昵称</Label>
-                      <p className="font-medium">{selectedUser.name}</p>
-                    </div>
-                    <div>
-                      <Label className="text-muted-foreground">角色</Label>
-                      <p className="font-medium">{selectedUser.role === 'admin' ? '管理员' : '用户'}</p>
-                    </div>
-                    <div>
-                      <Label className="text-muted-foreground">注册时间</Label>
-                      <p className="font-medium">{formatDate(selectedUser.createdAt)}</p>
-                    </div>
+              <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+                <div className="p-4 border-b border-white/10 flex items-center justify-between">
+                  <span className="font-medium text-white">用户信息</span>
+                  <button
+                    onClick={toggleDisabled}
+                    className={cn(
+                      'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+                      selectedUser.disabled 
+                        ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30' 
+                        : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
+                    )}
+                  >
+                    {selectedUser.disabled ? (
+                      <><Check className="w-4 h-4" /> 启用</>
+                    ) : (
+                      <><Ban className="w-4 h-4" /> 禁用</>
+                    )}
+                  </button>
+                </div>
+                <div className="p-4 grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-white/40 uppercase tracking-wider mb-1">邮箱</p>
+                    <p className="text-white">{selectedUser.email}</p>
                   </div>
-                </CardContent>
-              </Card>
+                  <div>
+                    <p className="text-xs text-white/40 uppercase tracking-wider mb-1">昵称</p>
+                    <p className="text-white">{selectedUser.name}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-white/40 uppercase tracking-wider mb-1">角色</p>
+                    <p className="text-white">{selectedUser.role === 'admin' ? '管理员' : '用户'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-white/40 uppercase tracking-wider mb-1">注册时间</p>
+                    <p className="text-white">{formatDate(selectedUser.createdAt)}</p>
+                  </div>
+                </div>
+              </div>
 
               {/* 修改密码 */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Key className="w-5 h-5" />
-                    修改密码
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
+              <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+                <div className="p-4 border-b border-white/10 flex items-center gap-2">
+                  <Key className="w-4 h-4 text-white/60" />
+                  <span className="font-medium text-white">修改密码</span>
+                </div>
+                <div className="p-4">
                   {editMode === 'password' ? (
                     <div className="flex gap-2">
-                      <Input
+                      <input
                         type="password"
                         value={editValue}
-                        onChange={(e) => setEditValue(e.target.value)}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditValue(e.target.value)}
                         placeholder="输入新密码（至少6位）"
+                        className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:outline-none focus:border-white/30 text-sm"
                       />
-                      <Button onClick={savePassword}>保存</Button>
-                      <Button variant="outline" onClick={() => { setEditMode(null); setEditValue(''); }}>取消</Button>
+                      <button onClick={savePassword} className="px-4 py-2 bg-white text-black rounded-lg text-sm font-medium hover:bg-white/90">保存</button>
+                      <button onClick={() => { setEditMode(null); setEditValue(''); }} className="px-4 py-2 bg-white/10 text-white rounded-lg text-sm font-medium hover:bg-white/20">取消</button>
                     </div>
                   ) : (
-                    <Button variant="outline" onClick={() => { setEditMode('password'); setEditValue(''); }}>
-                      <Edit2 className="w-4 h-4 mr-2" />
+                    <button onClick={() => { setEditMode('password'); setEditValue(''); }} className="flex items-center gap-2 px-4 py-2 bg-white/10 text-white rounded-lg text-sm font-medium hover:bg-white/20">
+                      <Edit2 className="w-4 h-4" />
                       重置密码
-                    </Button>
+                    </button>
                   )}
-                </CardContent>
-              </Card>
+                </div>
+              </div>
 
               {/* 修改余额 */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Coins className="w-5 h-5" />
-                    积分余额: {formatBalance(selectedUser.balance)}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
+              <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+                <div className="p-4 border-b border-white/10 flex items-center gap-2">
+                  <Coins className="w-4 h-4 text-white/60" />
+                  <span className="font-medium text-white">积分余额: {formatBalance(selectedUser.balance)}</span>
+                </div>
+                <div className="p-4">
                   {editMode === 'balance' ? (
                     <div className="flex gap-2">
-                      <Input
+                      <input
                         type="number"
                         value={editValue}
-                        onChange={(e) => setEditValue(e.target.value)}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditValue(e.target.value)}
                         placeholder="输入新余额"
+                        className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:outline-none focus:border-white/30 text-sm"
                       />
-                      <Button onClick={saveBalance}>保存</Button>
-                      <Button variant="outline" onClick={() => { setEditMode(null); setEditValue(''); }}>取消</Button>
+                      <button onClick={saveBalance} className="px-4 py-2 bg-white text-black rounded-lg text-sm font-medium hover:bg-white/90">保存</button>
+                      <button onClick={() => { setEditMode(null); setEditValue(''); }} className="px-4 py-2 bg-white/10 text-white rounded-lg text-sm font-medium hover:bg-white/20">取消</button>
                     </div>
                   ) : (
-                    <Button variant="outline" onClick={() => { setEditMode('balance'); setEditValue(String(selectedUser.balance)); }}>
-                      <Edit2 className="w-4 h-4 mr-2" />
+                    <button onClick={() => { setEditMode('balance'); setEditValue(String(selectedUser.balance)); }} className="flex items-center gap-2 px-4 py-2 bg-white/10 text-white rounded-lg text-sm font-medium hover:bg-white/20">
+                      <Edit2 className="w-4 h-4" />
                       修改余额
-                    </Button>
+                    </button>
                   )}
-                </CardContent>
-              </Card>
+                </div>
+              </div>
 
               {/* 生成记录 */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <History className="w-5 h-5" />
-                    生成记录 ({userGenerations.length})
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
+              <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+                <div className="p-4 border-b border-white/10 flex items-center gap-2">
+                  <History className="w-4 h-4 text-white/60" />
+                  <span className="font-medium text-white">生成记录 ({userGenerations.length})</span>
+                </div>
+                <div className="p-4">
                   {userGenerations.length === 0 ? (
-                    <p className="text-muted-foreground text-center py-4">暂无生成记录</p>
+                    <p className="text-white/40 text-center py-4">暂无生成记录</p>
                   ) : (
                     <div className="space-y-2 max-h-64 overflow-y-auto">
                       {userGenerations.map(gen => (
-                        <div key={gen.id} className="flex items-center justify-between p-2 border rounded">
+                        <div key={gen.id} className="flex items-center justify-between p-3 bg-white/5 border border-white/10 rounded-lg">
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">{gen.prompt || '无提示词'}</p>
-                            <p className="text-xs text-muted-foreground">
+                            <p className="text-sm font-medium text-white truncate">{gen.prompt || '无提示词'}</p>
+                            <p className="text-xs text-white/40">
                               {gen.type} · {formatDate(gen.createdAt)} · -{gen.cost} 积分
                             </p>
                           </div>
                           {gen.resultUrl && (
-                            <a href={gen.resultUrl} target="_blank" rel="noopener noreferrer">
-                              <Button variant="ghost" size="sm">
-                                <Eye className="w-4 h-4" />
-                              </Button>
+                            <a href={gen.resultUrl} target="_blank" rel="noopener noreferrer" className="p-2 text-white/40 hover:text-white hover:bg-white/10 rounded-lg transition-colors">
+                              <Eye className="w-4 h-4" />
                             </a>
                           )}
                         </div>
                       ))}
                     </div>
                   )}
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             </div>
           ) : (
-            <Card>
-              <CardContent className="py-12 text-center text-muted-foreground">
-                <User className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>选择一个用户查看详情</p>
-              </CardContent>
-            </Card>
+            <div className="bg-white/5 border border-white/10 rounded-xl p-12 text-center">
+              <User className="w-12 h-12 mx-auto mb-4 text-white/20" />
+              <p className="text-white/40">选择一个用户查看详情</p>
+            </div>
           )}
         </div>
       </div>

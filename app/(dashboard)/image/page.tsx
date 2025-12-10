@@ -14,10 +14,7 @@ import {
   Dices,
   Info,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { fileToBase64 } from '@/lib/utils';
+import { cn, fileToBase64 } from '@/lib/utils';
 import type { Generation } from '@/types';
 import { toast } from '@/components/ui/toaster';
 import { ResultGallery, type Task } from '@/components/generator/result-gallery';
@@ -391,42 +388,41 @@ export default function ImageGenerationPage() {
   return (
     <div className="max-w-7xl mx-auto space-y-8">
       <div>
-        <h1 className="text-3xl font-bold">图像生成</h1>
-        <p className="text-muted-foreground mt-1">
+        <h1 className="text-3xl font-extralight text-white">图像生成</h1>
+        <p className="text-white/50 mt-1 font-light">
           选择模型，生成高质量图像
         </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-1">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5" />
-                图像生成
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
+          <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden backdrop-blur-sm">
+            <div className="px-5 py-4 border-b border-white/10 bg-gradient-to-r from-blue-500/5 to-purple-500/5">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-lg flex items-center justify-center">
+                  <Sparkles className="w-4 h-4 text-blue-400" />
+                </div>
+                <div>
+                  <h2 className="text-base font-medium text-white">创作面板</h2>
+                  <p className="text-xs text-white/40">配置参数开始生成</p>
+                </div>
+              </div>
+            </div>
+            <div className="p-5 space-y-5">
               {/* Model Selection Dropdown */}
               <div className="space-y-2">
-                <Label>模型</Label>
+                <label className="text-xs text-white/50 uppercase tracking-wider">模型</label>
                 <div className="relative">
                   <button
                     type="button"
                     onClick={() => setShowModelDropdown(!showModelDropdown)}
-                    className="w-full flex items-center justify-between px-3 py-2 border border-border bg-input text-foreground rounded-lg focus:outline-none focus:ring-1 focus:ring-ring"
+                    className="w-full flex items-center justify-between px-3 py-2.5 bg-white/5 border border-white/10 text-white rounded-lg focus:outline-none focus:border-white/30"
                   >
                     <div className="flex flex-col items-start">
-                      <span className="font-medium">{currentModel.name}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {currentModel.description}
-                      </span>
+                      <span className="text-sm font-medium">{currentModel.name}</span>
+                      <span className="text-xs text-white/50">{currentModel.description}</span>
                     </div>
-                    <ChevronDown
-                      className={`w-4 h-4 transition-transform ${
-                        showModelDropdown ? 'rotate-180' : ''
-                      }`}
-                    />
+                    <ChevronDown className={`w-4 h-4 transition-transform ${showModelDropdown ? 'rotate-180' : ''}`} />
                   </button>
                   {showModelDropdown && (
                     <div className="absolute z-50 w-full mt-1 bg-zinc-900 border border-white/10 rounded-lg shadow-xl overflow-hidden">
@@ -438,11 +434,11 @@ export default function ImageGenerationPage() {
                             setSelectedModelId(model.id);
                             setShowModelDropdown(false);
                           }}
-                          className={`w-full flex flex-col items-start px-3 py-2 hover:bg-white/10 transition-colors ${
+                          className={`w-full flex flex-col items-start px-3 py-2.5 hover:bg-white/10 transition-colors ${
                             selectedModelId === model.id ? 'bg-white/10' : ''
                           }`}
                         >
-                          <span className="font-medium text-white">{model.name}</span>
+                          <span className="text-sm font-medium text-white">{model.name}</span>
                           <span className="text-xs text-white/50">
                             {model.description}
                             {!model.features.supportReferenceImage && ' · 不支持参考图'}
@@ -457,17 +453,21 @@ export default function ImageGenerationPage() {
               {/* Image Size (if supported) */}
               {currentModel.features.supportImageSize && currentModel.imageSizes && (
                 <div className="space-y-2">
-                  <Label>分辨率</Label>
+                  <label className="text-xs text-white/50 uppercase tracking-wider">分辨率</label>
                   <div className="grid grid-cols-3 gap-2">
                     {currentModel.imageSizes.map((size) => (
-                      <Button
+                      <button
                         key={size}
-                        variant={imageSize === size ? 'default' : 'outline'}
-                        size="sm"
                         onClick={() => setImageSize(size)}
+                        className={cn(
+                          'px-3 py-2 rounded-lg border text-sm font-medium transition-all',
+                          imageSize === size
+                            ? 'bg-white text-black border-white'
+                            : 'bg-white/5 text-white/70 border-white/10 hover:bg-white/10 hover:text-white'
+                        )}
                       >
                         {size}
-                      </Button>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -476,22 +476,23 @@ export default function ImageGenerationPage() {
               {/* Aspect Ratio */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label>画面比例</Label>
-                  <span className="text-xs text-muted-foreground">
-                    {getCurrentResolutionDisplay()}
-                  </span>
+                  <label className="text-xs text-white/50 uppercase tracking-wider">画面比例</label>
+                  <span className="text-xs text-white/40">{getCurrentResolutionDisplay()}</span>
                 </div>
-                <div className="grid grid-cols-5 gap-1">
+                <div className="grid grid-cols-5 gap-1.5">
                   {currentModel.aspectRatios.map((r) => (
-                    <Button
+                    <button
                       key={r}
-                      variant={aspectRatio === r ? 'default' : 'outline'}
-                      size="sm"
                       onClick={() => setAspectRatio(r)}
-                      className="text-xs px-1"
+                      className={cn(
+                        'px-2 py-2 rounded-lg border text-xs font-medium transition-all',
+                        aspectRatio === r
+                          ? 'bg-white text-black border-white'
+                          : 'bg-white/5 text-white/70 border-white/10 hover:bg-white/10 hover:text-white'
+                      )}
                     >
                       {r}
-                    </Button>
+                    </button>
                   ))}
                 </div>
               </div>
@@ -500,16 +501,14 @@ export default function ImageGenerationPage() {
               {currentModel.features.supportReferenceImage && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label>参考图</Label>
+                    <label className="text-xs text-white/50 uppercase tracking-wider">参考图</label>
                     {images.length > 0 && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
+                      <button
                         onClick={clearImages}
-                        className="text-destructive"
+                        className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1"
                       >
-                        <Trash2 className="w-3 h-3 mr-1" /> 清除
-                      </Button>
+                        <Trash2 className="w-3 h-3" /> 清除
+                      </button>
                     )}
                   </div>
                   <input
@@ -523,17 +522,17 @@ export default function ImageGenerationPage() {
                   {images.length === 0 ? (
                     <div
                       onClick={() => fileInputRef.current?.click()}
-                      className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:bg-secondary/50 transition-colors"
+                      className="border border-dashed border-white/20 rounded-lg p-5 text-center cursor-pointer hover:bg-white/5 hover:border-white/30 transition-all"
                     >
-                      <Upload className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
-                      <p className="text-sm text-muted-foreground">点击上传参考图</p>
+                      <Upload className="w-6 h-6 mx-auto text-white/30 mb-2" />
+                      <p className="text-sm text-white/50">点击上传参考图</p>
                     </div>
                   ) : (
                     <div className="grid grid-cols-4 gap-2">
                       {images.map((img, i) => (
                         <div
                           key={i}
-                          className="aspect-square rounded-lg overflow-hidden bg-secondary"
+                          className="aspect-square rounded-lg overflow-hidden border border-white/10"
                         >
                           <img
                             src={img.preview}
@@ -549,52 +548,61 @@ export default function ImageGenerationPage() {
 
               {/* Prompt */}
               <div className="space-y-2">
-                <Label>提示词</Label>
+                <label className="text-xs text-white/50 uppercase tracking-wider">提示词</label>
                 <textarea
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
                   placeholder="描述你想要生成的图像..."
-                  className="w-full h-24 px-3 py-2 border border-border bg-input text-foreground rounded-lg resize-none focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground"
+                  className="w-full h-20 px-3 py-2.5 bg-white/5 border border-white/10 text-white rounded-lg resize-none focus:outline-none focus:border-white/30 placeholder:text-white/30 text-sm"
                 />
               </div>
 
               {/* Error */}
               {error && (
-                <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 text-destructive mt-0.5" />
-                  <p className="text-sm text-destructive">{error}</p>
+                <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                  <p className="text-sm text-red-400">{error}</p>
                 </div>
               )}
 
               {/* Generate Buttons */}
               <div className="flex gap-2">
-                <Button
+                <button
                   onClick={handleGenerate}
                   disabled={submitting}
-                  className="flex-1 gap-2"
+                  className={cn(
+                    'flex-1 flex items-center justify-center gap-2 px-5 py-3 rounded-lg font-medium transition-all',
+                    submitting
+                      ? 'bg-white/10 text-white/50 cursor-not-allowed'
+                      : 'bg-white text-black hover:bg-white/90'
+                  )}
                 >
                   {submitting ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      提交中...
+                      <span>提交中...</span>
                     </>
                   ) : (
                     <>
                       <Wand2 className="w-4 h-4" />
-                      开始生成
+                      <span>开始生成</span>
                     </>
                   )}
-                </Button>
+                </button>
                 <div className="relative group">
-                  <Button
+                  <button
                     onClick={handleGachaMode}
                     disabled={submitting}
-                    variant="outline"
-                    className="px-3 bg-gradient-to-r from-amber-500 to-orange-500 border-0 text-white hover:opacity-90 hover:text-white"
+                    className={cn(
+                      'h-[46px] w-[46px] flex items-center justify-center rounded-lg font-medium transition-all',
+                      submitting
+                        ? 'bg-white/10 text-white/50 cursor-not-allowed'
+                        : 'bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:opacity-90'
+                    )}
                     title="抽卡模式"
                   >
                     <Dices className="w-4 h-4" />
-                  </Button>
+                  </button>
                   <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block z-20">
                     <div className="bg-zinc-800 border border-white/10 rounded-lg px-3 py-2 text-xs text-white/80 whitespace-nowrap shadow-lg">
                       <div className="flex items-center gap-1.5 mb-1">
@@ -610,8 +618,8 @@ export default function ImageGenerationPage() {
                   </div>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
         <div className="lg:col-span-2">
           <ResultGallery

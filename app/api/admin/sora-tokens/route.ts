@@ -86,6 +86,14 @@ async function getSoraStats(baseUrl: string, adminToken: string): Promise<SoraSt
   });
 
   const data = await res.json();
+  
+  // 检查是否返回了无效 token 的错误
+  if (data?.data?.detail === 'Invalid or expired token' || 
+      data?.detail === 'Invalid or expired token' ||
+      !res.ok) {
+    throw new Error('Invalid or expired token');
+  }
+  
   return data as SoraStats;
 }
 
@@ -99,7 +107,7 @@ async function ensureAdminToken(config: {
   // 如果没有配置用户名密码，直接使用现有 token
   if (!config.soraBackendUsername || !config.soraBackendPassword) {
     if (!config.soraBackendToken) {
-      throw new Error('请先配置 SORA 后台账号密码');
+      throw new Error('请先在管理后台配置 SORA 后台账号和密码');
     }
     return config.soraBackendToken;
   }
@@ -111,21 +119,29 @@ async function ensureAdminToken(config: {
       await getSoraStats(config.soraBackendUrl, config.soraBackendToken);
       return config.soraBackendToken;
     } catch {
-      // token 无效，重新登录
+      // token 无效，继续尝试重新登录
+      console.log('[SORA] Token 已过期，尝试重新登录...');
     }
   }
 
   // 重新登录获取新 token
-  const newToken = await loginSoraBackend(
-    config.soraBackendUrl,
-    config.soraBackendUsername,
-    config.soraBackendPassword
-  );
+  console.log('[SORA] 正在登录后台获取新 Token...');
+  try {
+    const newToken = await loginSoraBackend(
+      config.soraBackendUrl,
+      config.soraBackendUsername,
+      config.soraBackendPassword
+    );
 
-  // 保存新 token
-  await updateSystemConfig({ soraBackendToken: newToken });
+    // 保存新 token
+    await updateSystemConfig({ soraBackendToken: newToken });
+    console.log('[SORA] 新 Token 获取成功并已保存');
 
-  return newToken;
+    return newToken;
+  } catch (error) {
+    console.error('[SORA] 登录失败:', error);
+    throw new Error(`SORA 后台登录失败: ${error instanceof Error ? error.message : '未知错误'}`);
+  }
 }
 
 // GET: 获取 SORA 统计数据

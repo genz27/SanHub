@@ -15,11 +15,12 @@ import {
   Link as LinkIcon,
   Dices,
   Info,
+  User,
 } from 'lucide-react';
 import { cn, fileToBase64 } from '@/lib/utils';
 import { toast } from '@/components/ui/toaster';
 import { ResultGallery, type Task } from '@/components/generator/result-gallery';
-import type { Generation } from '@/types';
+import type { Generation, CharacterCard } from '@/types';
 import {
   VIDEO_MODELS,
   getVideoModelById,
@@ -64,6 +65,15 @@ export default function VideoGenerationPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
+  // 角色卡选择
+  const [characterCards, setCharacterCards] = useState<CharacterCard[]>([]);
+  const [showCharacterPicker, setShowCharacterPicker] = useState(false);
+  const [characterPickerPosition, setCharacterPickerPosition] = useState({ top: 0, left: 0 });
+  const [atSearchQuery, setAtSearchQuery] = useState('');
+  const [atCursorPosition, setAtCursorPosition] = useState<number | null>(null);
+  const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const remixPromptRef = useRef<HTMLTextAreaElement>(null);
+
   // 获取当前选中的模型配置
   const currentModel = getVideoModelById(selectedModelId) || VIDEO_MODELS[0];
 
@@ -82,6 +92,89 @@ export default function VideoGenerationPage() {
       }
     }
   }, [selectedModelId]);
+
+  // 加载用户角色卡
+  useEffect(() => {
+    const loadCharacterCards = async () => {
+      try {
+        const res = await fetch('/api/user/character-cards');
+        if (res.ok) {
+          const data = await res.json();
+          const completedCards = (data.data || []).filter(
+            (c: CharacterCard) => c.status === 'completed'
+          );
+          setCharacterCards(completedCards);
+        }
+      } catch (err) {
+        console.error('Failed to load character cards:', err);
+      }
+    };
+    loadCharacterCards();
+  }, []);
+
+  // 处理 @ 输入检测
+  const handlePromptChange = (
+    e: React.ChangeEvent<HTMLTextAreaElement>,
+    setter: (value: string) => void
+  ) => {
+    const value = e.target.value;
+    const cursorPos = e.target.selectionStart;
+    setter(value);
+
+    // 检测是否刚输入了 @
+    const textBeforeCursor = value.slice(0, cursorPos);
+    const lastAtIndex = textBeforeCursor.lastIndexOf('@');
+    
+    if (lastAtIndex !== -1) {
+      const textAfterAt = textBeforeCursor.slice(lastAtIndex + 1);
+      // 检查 @ 后面是否有空格或其他特殊字符（如果有就不显示选择器）
+      if (!/\s/.test(textAfterAt) && characterCards.length > 0) {
+        // 获取 @ 后的搜索词
+        setAtSearchQuery(textAfterAt.toLowerCase());
+        setAtCursorPosition(lastAtIndex);
+        setShowCharacterPicker(true);
+        return;
+      }
+    }
+    
+    setShowCharacterPicker(false);
+    setAtSearchQuery('');
+    setAtCursorPosition(null);
+  };
+
+  // 选择角色卡
+  const selectCharacterCard = (card: CharacterCard, textareaRef: React.RefObject<HTMLTextAreaElement>, currentValue: string, setter: (value: string) => void) => {
+    if (atCursorPosition === null) return;
+    
+    // 在 @ 位置插入角色名
+    const beforeAt = currentValue.slice(0, atCursorPosition);
+    const afterCursor = currentValue.slice(textareaRef.current?.selectionStart || atCursorPosition);
+    // 移除 @ 后已输入的搜索词
+    const cleanAfter = afterCursor.replace(/^[^\s]*/, '');
+    
+    const newValue = `${beforeAt}${card.characterName} ${cleanAfter}`;
+    setter(newValue);
+    
+    setShowCharacterPicker(false);
+    setAtSearchQuery('');
+    setAtCursorPosition(null);
+    
+    // 聚焦回输入框
+    setTimeout(() => {
+      if (textareaRef.current) {
+        const newCursorPos = beforeAt.length + card.characterName.length + 1;
+        textareaRef.current.focus();
+        textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+      }
+    }, 0);
+  };
+
+  // 过滤角色卡
+  const filteredCharacterCards = characterCards.filter(
+    (card) =>
+      card.characterName.toLowerCase().includes(atSearchQuery) ||
+      atSearchQuery === ''
+  );
 
   // 轮询任务状态
   const pollTaskStatus = useCallback(
@@ -233,7 +326,8 @@ export default function VideoGenerationPage() {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(e.target.files || []);
     for (const file of selectedFiles) {
-      if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) continue;
+      // 只允许图片，禁止视频
+      if (!file.type.startsWith('image/')) continue;
       const data = await fileToBase64(file);
       setFiles((prev) => [
         ...prev,
@@ -424,19 +518,19 @@ export default function VideoGenerationPage() {
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">视频生成</h1>
-        <p className="text-muted-foreground mt-1">
+        <h1 className="text-3xl font-extralight text-white">视频生成</h1>
+        <p className="text-white/50 mt-1 font-light">
           支持普通生成、Remix、分镜等多种创作模式
         </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1">
-          <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
+          <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden backdrop-blur-sm">
             {/* Header */}
-            <div className="px-5 py-4 border-b border-white/10">
+            <div className="px-5 py-4 border-b border-white/10 bg-gradient-to-r from-purple-500/5 to-blue-500/5">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 bg-gradient-to-br from-purple-500/20 to-blue-500/20 rounded-lg flex items-center justify-center">
+                <div className="w-9 h-9 bg-gradient-to-br from-purple-500/30 to-blue-500/30 rounded-lg flex items-center justify-center">
                   <Sparkles className="w-4 h-4 text-purple-400" />
                 </div>
                 <div>
@@ -571,7 +665,7 @@ export default function VideoGenerationPage() {
                         ref={fileInputRef}
                         className="hidden"
                         multiple
-                        accept="image/*,video/*"
+                        accept="image/*"
                         onChange={handleFileUpload}
                       />
                       {files.length === 0 ? (
@@ -580,8 +674,8 @@ export default function VideoGenerationPage() {
                           className="border border-dashed border-white/20 rounded-lg p-5 text-center cursor-pointer hover:bg-white/5 hover:border-white/30 transition-all"
                         >
                           <Upload className="w-6 h-6 mx-auto text-white/30 mb-2" />
-                          <p className="text-sm text-white/50">点击上传图片或视频</p>
-                          <p className="text-xs text-white/30 mt-0.5">支持 JPG, PNG, MP4</p>
+                          <p className="text-sm text-white/50">点击上传图片</p>
+                          <p className="text-xs text-white/30 mt-0.5">支持 JPG, PNG</p>
                         </div>
                       ) : (
                         <div className="grid grid-cols-4 gap-2">
@@ -598,14 +692,53 @@ export default function VideoGenerationPage() {
                       )}
                     </div>
                   )}
-                  <div className="space-y-2">
-                    <label className="text-xs text-white/50 uppercase tracking-wider">创作描述</label>
+                  <div className="space-y-2 relative">
+                    <label className="text-xs text-white/50 uppercase tracking-wider flex items-center gap-2">
+                      创作描述
+                      {characterCards.length > 0 && (
+                        <span className="text-[10px] text-pink-400/60">输入 @ 选择角色卡</span>
+                      )}
+                    </label>
                     <textarea
+                      ref={promptTextareaRef}
                       value={prompt}
-                      onChange={(e) => setPrompt(e.target.value)}
+                      onChange={(e) => handlePromptChange(e, setPrompt)}
+                      onBlur={() => setTimeout(() => setShowCharacterPicker(false), 150)}
                       placeholder="描述你想要生成的内容，越详细效果越好..."
                       className="w-full h-20 px-3 py-2.5 bg-white/5 border border-white/10 text-white rounded-lg resize-none focus:outline-none focus:border-white/30 placeholder:text-white/30 text-sm"
                     />
+                    {/* 角色卡选择器 */}
+                    {showCharacterPicker && creationMode === 'normal' && filteredCharacterCards.length > 0 && (
+                      <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-zinc-900 border border-white/10 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                        <div className="p-2 border-b border-white/10">
+                          <p className="text-[10px] text-white/40 uppercase tracking-wider">选择角色卡</p>
+                        </div>
+                        {filteredCharacterCards.map((card) => (
+                          <button
+                            key={card.id}
+                            type="button"
+                            onClick={() => selectCharacterCard(card, promptTextareaRef, prompt, setPrompt)}
+                            className="w-full flex items-center gap-3 px-3 py-2 hover:bg-white/10 transition-colors text-left"
+                          >
+                            <div className="w-8 h-8 rounded-lg overflow-hidden bg-gradient-to-br from-pink-500/20 to-purple-500/20 shrink-0">
+                              {card.avatarUrl ? (
+                                <img src={card.avatarUrl} alt="" className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center">
+                                  <User className="w-4 h-4 text-pink-400/50" />
+                                </div>
+                              )}
+                            </div>
+                            <span className="text-sm text-white truncate">{card.characterName}</span>
+                          </button>
+                        ))}
+                        {filteredCharacterCards.length === 0 && (
+                          <div className="px-3 py-4 text-center text-white/40 text-sm">
+                            没有匹配的角色卡
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </>
               )}
@@ -628,14 +761,48 @@ export default function VideoGenerationPage() {
                       输入 Sora 视频分享链接或ID，基于该视频继续创作
                     </p>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-xs text-white/50 uppercase tracking-wider">修改描述</label>
+                  <div className="space-y-2 relative">
+                    <label className="text-xs text-white/50 uppercase tracking-wider flex items-center gap-2">
+                      修改描述
+                      {characterCards.length > 0 && (
+                        <span className="text-[10px] text-pink-400/60">输入 @ 选择角色卡</span>
+                      )}
+                    </label>
                     <textarea
+                      ref={remixPromptRef}
                       value={prompt}
-                      onChange={(e) => setPrompt(e.target.value)}
+                      onChange={(e) => handlePromptChange(e, setPrompt)}
+                      onBlur={() => setTimeout(() => setShowCharacterPicker(false), 150)}
                       placeholder="描述你想要的修改，如：改成水墨画风格"
                       className="w-full h-20 px-3 py-2.5 bg-white/5 border border-white/10 text-white rounded-lg resize-none focus:outline-none focus:border-white/30 placeholder:text-white/30 text-sm"
                     />
+                    {/* 角色卡选择器 */}
+                    {showCharacterPicker && creationMode === 'remix' && filteredCharacterCards.length > 0 && (
+                      <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-zinc-900 border border-white/10 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                        <div className="p-2 border-b border-white/10">
+                          <p className="text-[10px] text-white/40 uppercase tracking-wider">选择角色卡</p>
+                        </div>
+                        {filteredCharacterCards.map((card) => (
+                          <button
+                            key={card.id}
+                            type="button"
+                            onClick={() => selectCharacterCard(card, remixPromptRef, prompt, setPrompt)}
+                            className="w-full flex items-center gap-3 px-3 py-2 hover:bg-white/10 transition-colors text-left"
+                          >
+                            <div className="w-8 h-8 rounded-lg overflow-hidden bg-gradient-to-br from-pink-500/20 to-purple-500/20 shrink-0">
+                              {card.avatarUrl ? (
+                                <img src={card.avatarUrl} alt="" className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center">
+                                  <User className="w-4 h-4 text-pink-400/50" />
+                                </div>
+                              )}
+                            </div>
+                            <span className="text-sm text-white truncate">{card.characterName}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </>
               )}
