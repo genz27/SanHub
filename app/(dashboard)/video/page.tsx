@@ -16,6 +16,7 @@ import {
   Dices,
   Info,
   User,
+  X,
 } from 'lucide-react';
 import { cn, fileToBase64 } from '@/lib/utils';
 import { toast } from '@/components/ui/toaster';
