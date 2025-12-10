@@ -26,6 +26,32 @@ interface CharacterCardRequest {
   firstFrameBase64: string; // 视频第一帧的 base64 图片
 }
 
+// 从返回的文本中尽可能提取角色名（不带 @）
+function extractCharacterNameFromText(text: string): string | null {
+  if (!text) return null;
+
+  // 1) 优先匹配中文提示：角色名@lotuswhisp719
+  let m = text.match(/角色名\s*@([\w]+)/);
+  if (m && m[1]) return m[1];
+
+  // 2) 匹配括号内的 @id：Lotus Whisper (@lotuswhisp719)
+  m = text.match(/\(@([\w]+)\)/);
+  if (m && m[1]) return m[1];
+
+  // 3) 通用：任意出现的 @id（取最后一次出现）
+  const re = /@([\w]+)/g;
+  let lastId: string | null = null;
+  // 使用 exec 循环以兼容较低的 TS 目标配置
+  while (true) {
+    const match = re.exec(text);
+    if (!match) break;
+    if (match[1]) lastId = match[1];
+  }
+  if (lastId) return lastId;
+
+  return null;
+}
+
 // 流式处理角色卡生成
 async function processCharacterCardStream(
   videoBase64: string,
@@ -61,7 +87,7 @@ async function processCharacterCardStream(
               {
                 type: 'video_url',
                 video_url: {
-                  url: `data:video/mp4;base64,${videoBase64}`,
+                  url: `data:video/mp4;base64,{${videoBase64}}`,
                 },
               },
             ],
@@ -102,31 +128,48 @@ async function processCharacterCardStream(
           }
 
           try {
+            console.log('[SSE] RAW data:', data);
             const parsed = JSON.parse(data);
+            console.log('[SSE] parsed:', JSON.stringify(parsed, null, 2));
+            
+            // 检测 error 块
+            if (parsed.error) {
+              const errorMsg = parsed.error.message || 'API 返回错误';
+              console.log('[SSE] ERROR detected:', errorMsg);
+              onError(errorMsg);
+              return;
+            }
+            
             const choice = parsed.choices?.[0];
             if (choice) {
+              console.log('[SSE] choice:', JSON.stringify(choice, null, 2));
               const reasoningContent = choice.delta?.reasoning_content;
               const content = choice.delta?.content;
 
               if (reasoningContent) {
                 onProgress(reasoningContent);
                 // 尝试从 reasoning_content 中提取角色名
-                const nameMatch = reasoningContent.match(/@[\w]+/);
-                if (nameMatch) {
-                  characterName = nameMatch[0];
+                const extracted = extractCharacterNameFromText(reasoningContent);
+                console.log('[SSE] reasoning_content:', reasoningContent.substring(0, 100));
+                console.log('[SSE] extracted from reasoning:', extracted);
+                if (extracted) {
+                  characterName = extracted;
                 }
               }
 
               if (content) {
                 finalContent += content;
                 // 从最终内容中提取角色名
-                const nameMatch = content.match(/@[\w]+/);
-                if (nameMatch) {
-                  characterName = nameMatch[0];
+                const extracted = extractCharacterNameFromText(content);
+                console.log('[SSE] content:', content);
+                console.log('[SSE] extracted from content:', extracted);
+                if (extracted) {
+                  characterName = extracted;
                 }
               }
 
               if (choice.finish_reason === 'STOP' || choice.finish_reason === 'stop') {
+                console.log('[SSE] FINAL characterName:', characterName);
                 onComplete(characterName || '未命名角色');
                 return;
               }
@@ -139,8 +182,17 @@ async function processCharacterCardStream(
       }
     }
 
-    // 如果循环结束还没有完成
-    onComplete(characterName || '未命名角色');
+    // 如果循环结束还没有完成（没有收到 STOP）
+    console.log('[SSE] Stream ended without STOP, finalContent:', finalContent);
+    console.log('[SSE] Stream ended, characterName:', characterName);
+    
+    // 如果没有获取到角色名，视为失败
+    if (!characterName) {
+      onError('角色卡生成失败：未能获取角色名，请重试');
+      return;
+    }
+    
+    onComplete(characterName);
   } catch (error) {
     console.error('角色卡生成失败:', error);
     onError(error instanceof Error ? error.message : '生成失败');

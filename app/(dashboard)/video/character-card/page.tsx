@@ -44,13 +44,12 @@ export default function CharacterCardPage() {
   // 进行中的任务（在内存中，刷新后消失）
   const [pendingTasks, setPendingTasks] = useState<PendingTask[]>([]);
 
-  // 加载进行中的角色卡任务（只加载 pending/processing 状态）
+  // 加载角色卡列表（包括已完成和进行中的）
   const loadCharacterCards = useCallback(async () => {
     try {
-      const res = await fetch('/api/user/character-cards?pending=true');
+      const res = await fetch('/api/user/character-cards');
       if (res.ok) {
         const data = await res.json();
-        // 只保留进行中的任务，已完成的只在历史记录中显示
         setCharacterCards(data.data || []);
       }
     } catch (err) {
@@ -392,7 +391,7 @@ export default function CharacterCardPage() {
                 </div>
                 <div>
                   <h2 className="text-base font-medium text-white">我的角色卡</h2>
-                  <p className="text-xs text-white/40">{characterCards.length + pendingTasks.length} 个任务执行中</p>
+                  <p className="text-xs text-white/40">{characterCards.filter((c) => !pendingTasks.some((t) => t.id === c.id)).length + pendingTasks.length} 个角色卡</p>
                 </div>
               </div>
             </div>
@@ -410,14 +409,16 @@ export default function CharacterCardPage() {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {/* 内存中的任务 */}
+                  {/* 内存中的任务（优先显示，有实时状态） */}
                   {pendingTasks.map((task) => (
                     <PendingTaskItem key={task.id} task={task} />
                   ))}
-                  {/* 数据库中的进行中任务 */}
-                  {characterCards.map((card) => (
-                    <CharacterCardItem key={card.id} card={card} />
-                  ))}
+                  {/* 数据库中的角色卡（去重：排除已在 pendingTasks 中的） */}
+                  {characterCards
+                    .filter((card) => !pendingTasks.some((t) => t.id === card.id))
+                    .map((card) => (
+                      <CharacterCardItem key={card.id} card={card} />
+                    ))}
                 </div>
               )}
             </div>
