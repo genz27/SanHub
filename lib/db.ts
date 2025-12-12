@@ -303,6 +303,18 @@ export async function initializeDatabase(): Promise<void> {
     // 字段已存在，忽略错误
   }
 
+  // 添加 PicUI 图床配置字段（如果不存在）
+  try {
+    await db.execute("ALTER TABLE system_config ADD COLUMN picui_api_key VARCHAR(500) DEFAULT ''");
+  } catch {
+    // 字段已存在，忽略错误
+  }
+  try {
+    await db.execute("ALTER TABLE system_config ADD COLUMN picui_base_url VARCHAR(500) DEFAULT 'https://picui.cn/api/v1'");
+  } catch {
+    // 字段已存在，忽略错误
+  }
+
   // 更新 generations 表的 type 字段以支持 gitee-image（MySQL 需要修改 ENUM）
   if (dbType === 'mysql') {
     try {
