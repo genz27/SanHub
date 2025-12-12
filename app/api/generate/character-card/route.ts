@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { saveCharacterCard, updateCharacterCard, deleteCharacterCard, getUserById } from '@/lib/db';
 import { createCharacterCard } from '@/lib/sora-api';
+import { uploadToPicUI } from '@/lib/picui';
 
 // 配置路由段选项
 export const maxDuration = 300; // 5分钟超时
@@ -93,11 +94,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '用户不存在' }, { status: 401 });
     }
 
+    // 尝试上传头像到 PicUI 图床
+    let avatarUrl = body.firstFrameBase64;
+    try {
+      const picuiUrl = await uploadToPicUI(body.firstFrameBase64, `avatar_${Date.now()}.jpg`);
+      if (picuiUrl) {
+        avatarUrl = picuiUrl;
+        console.log('[API] 角色卡头像已上传到 PicUI:', picuiUrl);
+      }
+    } catch (err) {
+      console.warn('[API] PicUI 上传失败，使用 base64:', err);
+    }
+
     // 创建角色卡记录（状态为 processing）
     const card = await saveCharacterCard({
       userId: user.id,
       characterName: '',
-      avatarUrl: body.firstFrameBase64,
+      avatarUrl,
       sourceVideoUrl: undefined,
       status: 'processing',
     });

@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { generateWithZImage } from '@/lib/zimage';
 import { saveGeneration, updateUserBalance, getUserById, getSystemConfig, updateGeneration } from '@/lib/db';
-import { saveMediaToFile } from '@/lib/media-storage';
+import { saveMediaAsync } from '@/lib/media-storage';
 import type { ZImageGenerateRequest, GenerationType } from '@/types';
 
 export const maxDuration = 60;
@@ -23,8 +23,8 @@ async function processGenerationTask(
 
     const result = await generateWithZImage(request);
 
-    // 将 base64 保存为文件（如果启用文件存储）
-    const savedUrl = saveMediaToFile(generationId, result.url);
+    // 优先上传到 PicUI 图床，否则保存为本地文件
+    const savedUrl = await saveMediaAsync(generationId, result.url);
     
     console.log(`[Task ${generationId}] 生成成功:`, savedUrl);
 

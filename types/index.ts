@@ -137,6 +137,9 @@ export interface SystemConfig {
   zimageBaseUrl: string;
   giteeApiKey: string; // 支持多key，用逗号分隔
   giteeBaseUrl: string;
+  // PicUI 图床配置
+  picuiApiKey: string;
+  picuiBaseUrl: string;
   pricing: PricingConfig;
   registerEnabled: boolean;
   defaultBalance: number;

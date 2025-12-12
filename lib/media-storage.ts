@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { uploadToPicUI } from './picui';
 
 // ========================================
 // 媒体文件存储
@@ -41,7 +42,7 @@ function getExtension(mimeType: string): string {
 }
 
 /**
- * 保存 base64 数据为文件
+ * 保存 base64 数据为文件（同步版本，不支持 PicUI）
  * @param id 唯一标识符（通常是 generation ID）
  * @param dataUrl base64 data URL
  * @returns 文件的相对路径（用于存储到数据库）或原始 data URL（如果禁用文件存储）
@@ -84,6 +85,33 @@ export function saveMediaToFile(id: string, dataUrl: string): string {
     // 失败时返回原始 data URL
     return dataUrl;
   }
+}
+
+/**
+ * 保存媒体文件（异步版本，优先上传到 PicUI 图床）
+ * @param id 唯一标识符（通常是 generation ID）
+ * @param dataUrl base64 data URL
+ * @returns 图床 URL、本地文件路径或原始 data URL
+ */
+export async function saveMediaAsync(id: string, dataUrl: string): Promise<string> {
+  // 如果不是 data URL，直接返回（可能是外部 URL）
+  if (!dataUrl.startsWith('data:')) {
+    return dataUrl;
+  }
+
+  // 优先尝试上传到 PicUI 图床
+  try {
+    const picuiUrl = await uploadToPicUI(dataUrl, `${id}.jpg`);
+    if (picuiUrl) {
+      console.log(`[MediaStorage] Uploaded to PicUI: ${picuiUrl}`);
+      return picuiUrl;
+    }
+  } catch (error) {
+    console.warn('[MediaStorage] PicUI upload failed, falling back to local storage:', error);
+  }
+
+  // 回退到本地文件存储
+  return saveMediaToFile(id, dataUrl);
 }
 
 /**

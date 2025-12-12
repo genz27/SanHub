@@ -34,12 +34,18 @@
 - 一键复制提示词
 - 作品公开分享
 
+### 🎤 角色卡
+- 视频驱动角色创建
+- 自动提取角色头像
+- 角色库管理
+
 ### 🛠️ 系统管理
 - 用户管理与权限控制
 - API 密钥配置
 - 积分定价自定义
 - 系统公告发布
 - 注册开关控制
+- PicUI 图床集成
 
 ### 🔐 安全特性
 - NextAuth.js 认证
@@ -58,13 +64,14 @@
 | **数据库** | SQLite / MySQL（可切换） |
 | **图标** | Lucide React |
 | **部署** | Docker / Vercel / EdgeOne |
+| **图床** | PicUI (可选) |
 
 ## 🚀 快速开始
 
 ### 1. 克隆项目
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/sanhub.git
+git clone https://github.com/genz27/sanhub.git
 cd sanhub
 ```
 
@@ -91,9 +98,10 @@ NEXTAUTH_URL=http://localhost:3000
 ADMIN_EMAIL=admin@example.com
 ADMIN_PASSWORD=your-password
 
-# API 配置（按需填写）
+# API 配置（按需填写，也可在管理后台配置）
 SORA_API_KEY=
 GEMINI_API_KEY=
+PICUI_API_KEY=
 ```
 
 ### 4. 启动开发服务器
@@ -174,7 +182,8 @@ sanhub/
 │   ├── auth.ts              # 认证配置
 │   ├── sora.ts              # Sora API 封装
 │   ├── gemini.ts            # Gemini API 封装
-│   └── zimage.ts            # Z-Image API 封装
+│   ├── zimage.ts            # Z-Image API 封装
+│   └── picui.ts             # PicUI 图床 API
 └── types/                   # TypeScript 类型定义
 ```
 
@@ -191,6 +200,18 @@ sanhub/
 | Gitee AI | 30 |
 
 > 💡 积分消耗可在管理后台 `/admin/pricing` 自定义调整
+
+## 🖼️ 图床配置
+
+生成的图片和角色卡头像支持上传到 PicUI 图床，减少数据库体积。
+
+| 存储方式 | 说明 |
+|----------|------|
+| **PicUI 图床** | 配置 API Token 后自动上传，返回图片 URL |
+| **本地文件** | 未配置图床时保存到 `./data/media/` |
+| **Base64** | 全部失败时回退到数据库存储 |
+
+在管理后台 `/admin/api` 配置 PicUI Token（从 picui.cn 个人中心获取）。
 
 ## 📖 环境变量
 
@@ -226,5 +247,5 @@ sanhub/
 ---
 
 <p align="center">
-  Made with ❤️ by SanHub Team
+  Made with ❤️ by <a href="https://github.com/genz27">genz27</a>
 </p>

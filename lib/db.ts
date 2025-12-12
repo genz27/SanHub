@@ -65,6 +65,8 @@ CREATE TABLE IF NOT EXISTS system_config (
   zimage_base_url VARCHAR(500) DEFAULT 'https://api-inference.modelscope.cn/',
   gitee_api_key TEXT,
   gitee_base_url VARCHAR(500) DEFAULT 'https://ai.gitee.com/',
+  picui_api_key VARCHAR(500) DEFAULT '',
+  picui_base_url VARCHAR(500) DEFAULT 'https://picui.cn/api/v1',
   sora_backend_url VARCHAR(500) DEFAULT '',
   sora_backend_username VARCHAR(100) DEFAULT '',
   sora_backend_password VARCHAR(100) DEFAULT '',
@@ -747,6 +749,8 @@ export async function getSystemConfig(): Promise<SystemConfig> {
       zimageBaseUrl: process.env.ZIMAGE_BASE_URL || 'https://api-inference.modelscope.cn/',
       giteeApiKey: process.env.GITEE_API_KEY || '',
       giteeBaseUrl: process.env.GITEE_BASE_URL || 'https://ai.gitee.com/',
+      picuiApiKey: process.env.PICUI_API_KEY || '',
+      picuiBaseUrl: process.env.PICUI_BASE_URL || 'https://picui.cn/api/v1',
       pricing: {
         soraVideo10s: 100,
         soraVideo15s: 150,
@@ -781,6 +785,8 @@ export async function getSystemConfig(): Promise<SystemConfig> {
     zimageBaseUrl: row.zimage_base_url || 'https://api-inference.modelscope.cn/',
     giteeApiKey: row.gitee_api_key || '',
     giteeBaseUrl: row.gitee_base_url || 'https://ai.gitee.com/',
+    picuiApiKey: row.picui_api_key || '',
+    picuiBaseUrl: row.picui_base_url || 'https://picui.cn/api/v1',
     pricing: {
       soraVideo10s: row.pricing_sora_video_10s || 100,
       soraVideo15s: row.pricing_sora_video_15s || 150,
@@ -857,6 +863,14 @@ export async function updateSystemConfig(
   if (updates.giteeBaseUrl !== undefined) {
     fields.push('gitee_base_url = ?');
     values.push(updates.giteeBaseUrl);
+  }
+  if (updates.picuiApiKey !== undefined) {
+    fields.push('picui_api_key = ?');
+    values.push(updates.picuiApiKey);
+  }
+  if (updates.picuiBaseUrl !== undefined) {
+    fields.push('picui_base_url = ?');
+    values.push(updates.picuiBaseUrl);
   }
   if (updates.pricing) {
     const p = updates.pricing as Partial<PricingConfig>;

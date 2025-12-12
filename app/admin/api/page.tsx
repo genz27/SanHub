@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Video, Palette, Zap, GitBranch, Loader2, Save, Eye, EyeOff } from 'lucide-react';
+import { Video, Palette, Zap, GitBranch, Loader2, Save, Eye, EyeOff, Image } from 'lucide-react';
 import { toast } from '@/components/ui/toaster';
 import type { SystemConfig } from '@/types';
 
@@ -312,6 +312,39 @@ export default function ApiConfigPage() {
               onChange={(v) => setConfig({ ...config, giteeBaseUrl: v })}
               placeholder="https://ai.gitee.com/"
             />
+          </div>
+        </div>
+
+        {/* PicUI 图床 */}
+        <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+          <div className="p-4 border-b border-white/10 flex items-center gap-3">
+            <div className="w-8 h-8 bg-pink-500/20 rounded-lg flex items-center justify-center">
+              <Image className="w-4 h-4 text-pink-400" />
+            </div>
+            <div>
+              <h2 className="font-medium text-white">PicUI 图床</h2>
+              <p className="text-xs text-white/40">生成图片和角色卡头像存储</p>
+            </div>
+          </div>
+          <div className="p-4 space-y-4">
+            <ApiKeyInput
+              label="API Token"
+              value={config.picuiApiKey}
+              onChange={(v) => setConfig({ ...config, picuiApiKey: v })}
+              keyName="picui"
+              placeholder="1|1bJbwlqBfnggmOMEZqXT5XusaIwqiZjCDs7r1Ob5"
+              showKey={showKeys['picui'] || false}
+              onToggleShow={() => toggleShowKey('picui')}
+            />
+            <UrlInput
+              label="Base URL"
+              value={config.picuiBaseUrl}
+              onChange={(v) => setConfig({ ...config, picuiBaseUrl: v })}
+              placeholder="https://picui.cn/api/v1"
+            />
+            <p className="text-xs text-white/30">
+              未配置时将使用本地文件存储。从 picui.cn 个人中心获取 Token。
+            </p>
           </div>
         </div>
       </div>
