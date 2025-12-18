@@ -255,6 +255,9 @@ export default function ImageGenerationPage() {
 
   // 验证输入
   const validateInput = (): string | null => {
+    if (currentModel.id === 'qwen-image-edit' && images.length === 0) {
+      return '请上传参考图';
+    }
     if (currentModel.provider === 'gemini') {
       if (!prompt.trim() && images.length === 0) {
         return '请输入提示词或上传参考图片';
@@ -300,16 +303,20 @@ export default function ImageGenerationPage() {
       taskType = 'gemini-image';
     } else {
       const size = getImageResolution(currentModel, aspectRatio);
+      const payload: Record<string, unknown> = {
+        prompt: taskPrompt,
+        model: currentModel.apiModel,
+        size,
+        channel: currentModel.channel,
+        ...(currentModel.channel === 'gitee' && { numInferenceSteps: 9 }),
+      };
+      if (currentModel.features.supportReferenceImage && images.length > 0) {
+        payload.images = images.map((img) => ({ mimeType: img.mimeType, data: img.data }));
+      }
       res = await fetch('/api/generate/zimage', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: taskPrompt,
-          model: currentModel.apiModel,
-          size,
-          channel: currentModel.channel,
-          ...(currentModel.channel === 'gitee' && { numInferenceSteps: 9 }),
-        }),
+        body: JSON.stringify(payload),
       });
       taskType = currentModel.channel === 'gitee' ? 'gitee-image' : 'zimage-image';
     }

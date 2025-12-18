@@ -188,6 +188,75 @@ export const IMAGE_MODELS: ImageModelConfig[] = [
     },
     defaultAspectRatio: '1:1',
   },
+  // Qwen Image
+  {
+    id: 'qwen-image',
+    name: 'Qwen Image',
+    description: 'ModelScope 文生图',
+    provider: 'zimage',
+    channel: 'modelscope',
+    apiModel: 'Qwen/Qwen-Image',
+    features: {
+      supportReferenceImage: false,
+      supportImageSize: false,
+    },
+    aspectRatios: ['1:1', '1:2', '4:3', '3:4', '16:9', '9:16'],
+    resolutions: {
+      '1:1': '1024x1024',
+      '1:2': '720x1440',
+      '4:3': '1152x864',
+      '3:4': '864x1152',
+      '16:9': '1280x720',
+      '9:16': '720x1280',
+    },
+    defaultAspectRatio: '1:1',
+  },
+  // Qwen Image Edit
+  {
+    id: 'qwen-image-edit',
+    name: 'Qwen Image Edit',
+    description: 'ModelScope 图像编辑',
+    provider: 'zimage',
+    channel: 'modelscope',
+    apiModel: 'Qwen/Qwen-Image-Edit-2509',
+    features: {
+      supportReferenceImage: true,
+      supportImageSize: false,
+    },
+    aspectRatios: ['1:1', '1:2', '4:3', '3:4', '16:9', '9:16'],
+    resolutions: {
+      '1:1': '1024x1024',
+      '1:2': '720x1440',
+      '4:3': '1152x864',
+      '3:4': '864x1152',
+      '16:9': '1280x720',
+      '9:16': '720x1280',
+    },
+    defaultAspectRatio: '1:1',
+  },
+  // FLUX.2 Dev
+  {
+    id: 'flux-2-dev',
+    name: 'FLUX.2 Dev',
+    description: 'ModelScope 图生图',
+    provider: 'zimage',
+    channel: 'modelscope',
+    apiModel: 'black-forest-labs/FLUX.2-dev',
+    features: {
+      supportReferenceImage: true,
+      supportImageSize: false,
+    },
+    aspectRatios: ['1:1', '1:2', '4:3', '3:4', '16:9', '9:16'],
+    resolutions: {
+      '1:1': '1024x1024',
+      '1:2': '720x1440',
+      '4:3': '1152x864',
+      '3:4': '864x1152',
+      '16:9': '1280x720',
+      '9:16': '720x1280',
+    },
+    defaultAspectRatio: '1:1',
+  },
 ];
 
 // ========================================

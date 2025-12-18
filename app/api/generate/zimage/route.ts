@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { prompt, model, size, loras, channel, numInferenceSteps } = body;
+    const { prompt, model, size, loras, channel, numInferenceSteps, images } = body;
 
     if (!prompt) {
       return NextResponse.json(
@@ -90,12 +90,23 @@ export async function POST(req: NextRequest) {
     }
 
     // 构建请求
+    const imageList = Array.isArray(images) ? images : [];
+    const modelId = model || (isGitee ? 'z-image-turbo' : 'Tongyi-MAI/Z-Image-Turbo');
+    const requiresReference = !isGitee && modelId === 'Qwen/Qwen-Image-Edit-2509';
+    if (requiresReference && imageList.length === 0) {
+      return NextResponse.json(
+        { success: false, error: '该模型需要上传参考图' },
+        { status: 400 }
+      );
+    }
+
     const request: ZImageGenerateRequest = {
       prompt,
-      model: isGitee ? (model || 'z-image-turbo') : (model || 'Tongyi-MAI/Z-Image-Turbo'),
+      model: modelId,
       channel: channel || 'modelscope',
       ...(size && { size }),
       ...(loras && { loras }),
+      ...(!isGitee && imageList.length > 0 && { images: imageList }),
       ...(numInferenceSteps && { numInferenceSteps }),
     };
 
@@ -105,7 +116,7 @@ export async function POST(req: NextRequest) {
       userId: user.id,
       type: generationType,
       prompt,
-      params: { model: request.model, size: request.size, channel: request.channel, loras },
+      params: { model: request.model, size: request.size, channel: request.channel, loras, imageCount: imageList.length },
       resultUrl: '',
       cost: estimatedCost,
       status: 'pending',

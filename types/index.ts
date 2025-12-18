@@ -191,6 +191,7 @@ export interface ZImageGenerateRequest {
   model?: string; // 默认 Tongyi-MAI/Z-Image-Turbo
   size?: string; // 分辨率，如 1024x1024
   loras?: string | Record<string, number>; // 单个 LoRA 或多个 LoRA 配置
+  images?: { mimeType: string; data: string }[]; // 参考图（base64 数据）
   channel?: 'modelscope' | 'gitee'; // 渠道选择
   numInferenceSteps?: number; // Gitee 推理步数
 }
