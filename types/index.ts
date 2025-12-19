@@ -3,7 +3,10 @@
 // ========================================
 
 // 用户角色
-export type UserRole = 'user' | 'admin';
+// admin: 超级管理员，拥有所有权限
+// moderator: 小管理员，只能管理用户（积分、密码、禁用），不能修改超级管理员
+// user: 普通用户
+export type UserRole = 'user' | 'admin' | 'moderator';
 
 // 生成类型
 export type GenerationType = 'sora-video' | 'sora-image' | 'gemini-image' | 'zimage-image' | 'gitee-image' | 'chat' | 'character-card';

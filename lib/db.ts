@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS users (
   email VARCHAR(191) UNIQUE NOT NULL,
   password VARCHAR(255) NOT NULL,
   name VARCHAR(100) NOT NULL,
-  role ENUM('user', 'admin') DEFAULT 'user',
+  role ENUM('user', 'admin', 'moderator') DEFAULT 'user',
   balance INT DEFAULT 100,
   disabled TINYINT(1) DEFAULT 0,
   created_at BIGINT NOT NULL,
@@ -347,6 +347,15 @@ export async function initializeDatabase(): Promise<void> {
   if (dbType === 'mysql') {
     try {
       await db.execute("ALTER TABLE generations MODIFY COLUMN status ENUM('pending', 'processing', 'completed', 'failed', 'cancelled') DEFAULT 'pending'");
+    } catch {
+      // 忽略错误
+    }
+  }
+
+  // 更新 users 表的 role 字段以支持 moderator（MySQL 需要修改 ENUM）
+  if (dbType === 'mysql') {
+    try {
+      await db.execute("ALTER TABLE users MODIFY COLUMN role ENUM('user', 'admin', 'moderator') DEFAULT 'user'");
     } catch {
       // 忽略错误
     }

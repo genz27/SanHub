@@ -3,6 +3,11 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { getUserById, updateUser, getUserGenerations } from '@/lib/db';
 
+// 检查是否有管理权限（admin 或 moderator）
+function hasAdminAccess(role: string): boolean {
+  return role === 'admin' || role === 'moderator';
+}
+
 // 获取用户详情和生成记录
 export async function GET(
   request: NextRequest,
@@ -10,7 +15,7 @@ export async function GET(
 ) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user || session.user.role !== 'admin') {
+    if (!session?.user || !hasAdminAccess(session.user.role)) {
       return NextResponse.json({ error: '无权限' }, { status: 403 });
     }
 
@@ -48,8 +53,21 @@ export async function PUT(
 ) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user || session.user.role !== 'admin') {
+    if (!session?.user || !hasAdminAccess(session.user.role)) {
       return NextResponse.json({ error: '无权限' }, { status: 403 });
+    }
+
+    // 获取目标用户
+    const targetUser = await getUserById(params.id);
+    if (!targetUser) {
+      return NextResponse.json({ error: '用户不存在' }, { status: 404 });
+    }
+
+    // moderator 不能修改 admin 或其他 moderator
+    if (session.user.role === 'moderator') {
+      if (targetUser.role === 'admin' || targetUser.role === 'moderator') {
+        return NextResponse.json({ error: '无权限修改管理员账号' }, { status: 403 });
+      }
     }
 
     const data = await request.json();
@@ -66,6 +84,10 @@ export async function PUT(
     }
     if (data.name !== undefined) {
       updates.name = data.name;
+    }
+    // 只有 admin 可以修改角色
+    if (data.role !== undefined && session.user.role === 'admin') {
+      updates.role = data.role;
     }
 
     const user = await updateUser(params.id, updates);

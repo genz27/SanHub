@@ -7,7 +7,8 @@ export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     
-    if (!session?.user || session.user.role !== 'admin') {
+    // admin 和 moderator 都可以访问用户列表
+    if (!session?.user || (session.user.role !== 'admin' && session.user.role !== 'moderator')) {
       return NextResponse.json({ error: '无权限' }, { status: 403 });
     }
 

@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { 
   LayoutDashboard, 
   Users, 
@@ -11,23 +12,37 @@ import {
   ArrowLeft,
   Menu,
   X,
-  Megaphone
+  Megaphone,
+  Sparkles
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
+import type { UserRole } from '@/types';
 
-const navItems = [
-  { href: '/admin', label: '概览', icon: LayoutDashboard, exact: true },
-  { href: '/admin/users', label: '用户管理', icon: Users },
-  { href: '/admin/pricing', label: '积分定价', icon: Coins },
-  { href: '/admin/api', label: 'API 配置', icon: Settings },
-  { href: '/admin/tokens', label: 'SORA Tokens', icon: Key },
-  { href: '/admin/announcement', label: '公告管理', icon: Megaphone },
+interface NavItem {
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  exact?: boolean;
+  roles: UserRole[]; // 哪些角色可以看到这个菜单
+}
+
+const navItems: NavItem[] = [
+  { href: '/admin', label: '概览', icon: LayoutDashboard, exact: true, roles: ['admin', 'moderator'] },
+  { href: '/admin/users', label: '用户管理', icon: Users, roles: ['admin', 'moderator'] },
+  { href: '/admin/pricing', label: '积分定价', icon: Coins, roles: ['admin'] },
+  { href: '/admin/api', label: 'API 配置', icon: Settings, roles: ['admin'] },
+  { href: '/admin/tokens', label: 'SORA Tokens', icon: Key, roles: ['admin'] },
+  { href: '/admin/announcement', label: '公告管理', icon: Megaphone, roles: ['admin'] },
 ];
 
 export function AdminSidebar() {
   const pathname = usePathname();
+  const { data: session } = useSession();
   const [mobileOpen, setMobileOpen] = useState(false);
+  
+  const userRole = session?.user?.role || 'user';
+  const filteredNavItems = navItems.filter(item => item.roles.includes(userRole));
 
   const isActive = (href: string, exact?: boolean) => {
     if (exact) return pathname === href;
@@ -37,17 +52,25 @@ export function AdminSidebar() {
   const NavContent = () => (
     <>
       {/* Logo */}
-      <div className="p-4 border-b border-white/10">
-        <Link href="/image" className="flex items-center gap-2 text-white/70 hover:text-white transition-colors">
+      <div className="p-5 border-b border-white/10">
+        <Link href="/image" className="flex items-center gap-2 text-white/60 hover:text-white transition-colors text-sm">
           <ArrowLeft className="w-4 h-4" />
-          <span className="text-sm">返回首页</span>
+          <span>返回首页</span>
         </Link>
-        <h1 className="text-xl font-bold text-white mt-3">管理后台</h1>
+        <div className="flex items-center gap-3 mt-4">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center">
+            <Sparkles className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h1 className="text-lg font-semibold text-white">管理后台</h1>
+            <p className="text-xs text-white/40">SanHub Admin</p>
+          </div>
+        </div>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-3 space-y-1">
-        {navItems.map((item) => {
+      <nav className="flex-1 p-4 space-y-1.5">
+        {filteredNavItems.map((item) => {
           const active = isActive(item.href, item.exact);
           return (
             <Link
@@ -55,14 +78,17 @@ export function AdminSidebar() {
               href={item.href}
               onClick={() => setMobileOpen(false)}
               className={cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors',
+                'flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200',
                 active
-                  ? 'bg-white text-black'
-                  : 'text-white/70 hover:bg-white/10 hover:text-white'
+                  ? 'bg-gradient-to-r from-violet-500/20 to-fuchsia-500/20 text-white border border-white/10'
+                  : 'text-white/60 hover:bg-white/5 hover:text-white'
               )}
             >
-              <item.icon className="w-5 h-5" />
+              <item.icon className={cn('w-5 h-5', active && 'text-violet-400')} />
               <span className="font-medium">{item.label}</span>
+              {active && (
+                <div className="ml-auto w-1.5 h-1.5 rounded-full bg-violet-400" />
+              )}
             </Link>
           );
         })}
@@ -70,7 +96,9 @@ export function AdminSidebar() {
 
       {/* Footer */}
       <div className="p-4 border-t border-white/10">
-        <p className="text-xs text-white/40 text-center">SanHub Admin</p>
+        <div className="px-4 py-3 rounded-xl bg-white/5 border border-white/10">
+          <p className="text-xs text-white/40 text-center">v1.0.0</p>
+        </div>
       </div>
     </>
   );
@@ -80,7 +108,7 @@ export function AdminSidebar() {
       {/* Mobile Toggle */}
       <button
         onClick={() => setMobileOpen(!mobileOpen)}
-        className="lg:hidden fixed top-4 left-4 z-50 p-2 bg-white/10 rounded-lg text-white"
+        className="lg:hidden fixed top-4 left-4 z-50 p-2.5 bg-white/10 backdrop-blur-sm rounded-xl text-white border border-white/10"
       >
         {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
       </button>
@@ -88,7 +116,7 @@ export function AdminSidebar() {
       {/* Mobile Overlay */}
       {mobileOpen && (
         <div
-          className="lg:hidden fixed inset-0 bg-black/50 z-40"
+          className="lg:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
           onClick={() => setMobileOpen(false)}
         />
       )}
@@ -96,7 +124,7 @@ export function AdminSidebar() {
       {/* Sidebar - Mobile */}
       <aside
         className={cn(
-          'lg:hidden fixed inset-y-0 left-0 z-40 w-64 bg-black/95 border-r border-white/10 flex flex-col transform transition-transform duration-200',
+          'lg:hidden fixed inset-y-0 left-0 z-40 w-72 bg-black/90 backdrop-blur-xl border-r border-white/10 flex flex-col transform transition-transform duration-300 ease-out',
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
@@ -104,7 +132,7 @@ export function AdminSidebar() {
       </aside>
 
       {/* Sidebar - Desktop */}
-      <aside className="hidden lg:flex w-64 bg-black/50 border-r border-white/10 flex-col sticky top-0 h-screen">
+      <aside className="hidden lg:flex w-72 bg-black/40 backdrop-blur-xl border-r border-white/10 flex-col sticky top-0 h-screen">
         <NavContent />
       </aside>
     </>

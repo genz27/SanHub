@@ -24,7 +24,6 @@ interface ImportResult {
 }
 
 export default function TokensPage() {
-  // 配置状态
   const [config, setConfig] = useState({
     soraBackendUrl: '',
     soraBackendUsername: '',
@@ -34,17 +33,15 @@ export default function TokensPage() {
   const [configLoading, setConfigLoading] = useState(true);
   const [configSaving, setConfigSaving] = useState(false);
 
-  // 统计数据状态
+
   const [stats, setStats] = useState<SoraStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
   const [statsError, setStatsError] = useState('');
 
-  // 导入状态
   const [rtInput, setRtInput] = useState('');
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
 
-  // 加载配置
   useEffect(() => {
     loadConfig();
   }, []);
@@ -69,7 +66,6 @@ export default function TokensPage() {
     }
   };
 
-  // 保存配置
   const saveConfig = async () => {
     setConfigSaving(true);
     try {
@@ -84,8 +80,6 @@ export default function TokensPage() {
       });
 
       if (res.ok) {
-        alert('配置保存成功！');
-        // 保存成功后刷新统计数据
         loadStats();
       } else {
         const data = await res.json();
@@ -98,7 +92,6 @@ export default function TokensPage() {
     }
   };
 
-  // 加载统计数据
   const loadStats = useCallback(async () => {
     if (!config.soraBackendUrl) return;
 

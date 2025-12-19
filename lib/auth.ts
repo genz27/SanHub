@@ -73,7 +73,7 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string;
-        session.user.role = token.role as 'user' | 'admin';
+        session.user.role = token.role as 'user' | 'admin' | 'moderator';
         
         // 每次都从数据库获取最新余额，避免缓存导致积分不一致
         try {
