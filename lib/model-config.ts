@@ -10,6 +10,9 @@ export interface ImageModelConfig {
   provider: 'gemini' | 'zimage' | 'sora';
   channel?: 'modelscope' | 'gitee'; // zimage 专用
   apiModel: string; // 实际调用的模型名称
+  highlight?: boolean;
+  requiresReferenceImage?: boolean;
+  allowEmptyPrompt?: boolean;
   features: {
     supportReferenceImage: boolean; // 是否支持参考图
     supportImageSize: boolean; // 是否支持分辨率选择 (1K/2K/4K)
@@ -141,6 +144,27 @@ export const IMAGE_MODELS: ImageModelConfig[] = [
     defaultAspectRatio: '1:1',
     defaultImageSize: '1K',
   },
+  // SeedVR2 Upscale (Gitee)
+  {
+    id: 'seedvr2-upscale',
+    name: 'SeedVR2 HD',
+    description: 'Gitee AI 超清修复',
+    provider: 'zimage',
+    channel: 'gitee',
+    apiModel: 'SeedVR2-3B',
+    highlight: true,
+    requiresReferenceImage: true,
+    allowEmptyPrompt: true,
+    features: {
+      supportReferenceImage: true,
+      supportImageSize: false,
+    },
+    aspectRatios: ['原图'],
+    resolutions: {
+      原图: '',
+    },
+    defaultAspectRatio: '原图',
+  },
   // Z-Image Gitee
   {
     id: 'zimage-gitee',
@@ -219,6 +243,7 @@ export const IMAGE_MODELS: ImageModelConfig[] = [
     provider: 'zimage',
     channel: 'modelscope',
     apiModel: 'Qwen/Qwen-Image-Edit-2509',
+    requiresReferenceImage: true,
     features: {
       supportReferenceImage: true,
       supportImageSize: false,

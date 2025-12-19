@@ -1,5 +1,6 @@
 import { getSystemConfig } from './db';
 import { uploadToPicUI } from './picui';
+import { FormData, File } from 'undici';
 import type { ZImageGenerateRequest, GenerateResult } from '@/types';
 
 // ========================================
@@ -40,8 +41,9 @@ interface ModelScopeTaskResponse {
 // Gitee API 响应（同步返回base64）
 interface GiteeImageResponse {
   data: Array<{
-    b64_json: string;
-    type: string;
+    b64_json?: string;
+    type?: string;
+    url?: string;
   }>;
   created: number;
 }
@@ -112,6 +114,105 @@ async function resolveImageUrls(
   return urls;
 }
 
+function parseDataUrl(dataUrl: string): { mimeType: string; data: string } | null {
+  const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) return null;
+  return {
+    mimeType: match[1],
+    data: match[2],
+  };
+}
+
+function getGiteeFreeKey(config: Awaited<ReturnType<typeof getSystemConfig>>): string {
+  return config.giteeFreeApiKey || process.env.GITEE_FREE_API_KEY || '';
+}
+
+function getGiteePaidKeys(config: Awaited<ReturnType<typeof getSystemConfig>>): string {
+  return config.giteeApiKey || process.env.GITEE_API_KEY || '';
+}
+
+async function requestGiteeWithFallback<T>(
+  config: Awaited<ReturnType<typeof getSystemConfig>>,
+  makeRequest: (apiKey: string) => Promise<T>
+): Promise<T> {
+  const freeKey = getGiteeFreeKey(config);
+  let lastError: unknown;
+
+  if (freeKey) {
+    try {
+      return await makeRequest(freeKey);
+    } catch (error) {
+      console.warn('[Gitee] 免费 Key 请求失败，尝试付费 Keys:', error);
+      lastError = error;
+    }
+  }
+
+  const paidKeys = getGiteePaidKeys(config);
+  if (!paidKeys) {
+    throw (lastError as Error) || new Error('Gitee API Key 未配置，请在管理后台配置 API 密钥');
+  }
+
+  const apiKey = getNextGiteeApiKey(paidKeys);
+  return makeRequest(apiKey);
+}
+
+async function requestGiteeJson(
+  url: string,
+  apiKey: string,
+  payload: Record<string, unknown>
+): Promise<GiteeImageResponse> {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    let errMsg = errorText;
+    try {
+      const errJson = JSON.parse(errorText);
+      errMsg = errJson.error?.message || errJson.message || errorText;
+    } catch {
+      // ignore
+    }
+    throw new Error(`Gitee API 错误 (${response.status}): ${errMsg}`);
+  }
+
+  return response.json() as Promise<GiteeImageResponse>;
+}
+
+async function requestGiteeFormData(
+  url: string,
+  apiKey: string,
+  formData: FormData
+): Promise<GiteeImageResponse> {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    let errMsg = errorText;
+    try {
+      const errJson = JSON.parse(errorText);
+      errMsg = errJson.error?.message || errJson.message || errorText;
+    } catch {
+      // ignore
+    }
+    throw new Error(`Gitee API 错误 (${response.status}): ${errMsg}`);
+  }
+
+  return response.json() as Promise<GiteeImageResponse>;
+}
+
 async function pollModelScopeTask(baseUrl: string, apiKey: string, taskId: string): Promise<string> {
   for (let attempt = 0; attempt < TASK_POLL_MAX_ATTEMPTS; attempt++) {
     const response = await fetch(`${baseUrl}v1/tasks/${taskId}`, {
@@ -154,12 +255,10 @@ async function generateWithGitee(
   request: ZImageGenerateRequest,
   config: Awaited<ReturnType<typeof getSystemConfig>>
 ): Promise<GenerateResult> {
-  const apiKeys = config.giteeApiKey || process.env.GITEE_API_KEY || '';
-  if (!apiKeys) {
-    throw new Error('Gitee API Key 未配置，请在管理后台配置 API 密钥');
+  if (request.model === 'SeedVR2-3B') {
+    return generateWithGiteeUpscale(request, config);
   }
 
-  const apiKey = getNextGiteeApiKey(apiKeys);
   const baseUrl = (config.giteeBaseUrl || process.env.GITEE_BASE_URL || 'https://ai.gitee.com/').replace(/\/$/, '') + '/';
 
   const url = `${baseUrl}v1/images/generations`;
@@ -173,28 +272,9 @@ async function generateWithGitee(
 
   console.log('[Gitee] 开始生成:', { model: payload.model, size: request.size });
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    let errMsg = errorText;
-    try {
-      const errJson = JSON.parse(errorText);
-      errMsg = errJson.error?.message || errJson.message || errorText;
-    } catch {
-      // ignore
-    }
-    throw new Error(`Gitee API 错误 (${response.status}): ${errMsg}`);
-  }
-
-  const data: GiteeImageResponse = await response.json();
+  const data = await requestGiteeWithFallback(config, (apiKey) =>
+    requestGiteeJson(url, apiKey, payload)
+  );
   
   if (!data.data || data.data.length === 0 || !data.data[0].b64_json) {
     throw new Error('Gitee API 返回成功但未包含图片数据');
@@ -210,6 +290,68 @@ async function generateWithGitee(
   return {
     type: 'gitee-image',
     url: base64Image,
+    cost,
+  };
+}
+
+// ========================================
+// Gitee 超分辨率（SeedVR2）
+// ========================================
+
+async function generateWithGiteeUpscale(
+  request: ZImageGenerateRequest,
+  config: Awaited<ReturnType<typeof getSystemConfig>>
+): Promise<GenerateResult> {
+  const baseUrl = (config.giteeBaseUrl || process.env.GITEE_BASE_URL || 'https://ai.gitee.com/').replace(/\/$/, '') + '/';
+  const url = `${baseUrl}v1/images/upscaling`;
+
+  const input = request.images?.[0];
+  if (!input?.data) {
+    throw new Error('缺少参考图');
+  }
+
+  const outscale = request.outscale ?? 1;
+  const outputFormat = request.outputFormat || 'jpg';
+
+  const buildFormData = () => {
+    const formData = new FormData();
+    formData.append('model', request.model || 'SeedVR2-3B');
+    formData.append('outscale', String(outscale));
+    formData.append('output_format', outputFormat);
+
+    if (isHttpUrl(input.data)) {
+      formData.append('image_url', input.data);
+      return formData;
+    }
+
+    const parsed = parseDataUrl(input.data);
+    const mimeType = parsed?.mimeType || input.mimeType || 'application/octet-stream';
+    const base64Data = parsed?.data || input.data;
+    const buffer = Buffer.from(base64Data, 'base64');
+    const file = new File([buffer], 'input.jpg', { type: mimeType });
+    formData.append('image', file);
+    return formData;
+  };
+
+  const data = await requestGiteeWithFallback(config, (apiKey) =>
+    requestGiteeFormData(url, apiKey, buildFormData())
+  );
+
+  const imageData = data.data?.[0];
+  if (!imageData?.url && !imageData?.b64_json) {
+    throw new Error('Gitee API 返回成功但未包含图片');
+  }
+
+  const resultUrl = imageData.url
+    ? imageData.url
+    : `data:${imageData.type || 'image/jpeg'};base64,${imageData.b64_json}`;
+  const cost = config.pricing?.giteeImage || 30;
+
+  console.log('[Gitee] 超分完成:', { cost });
+
+  return {
+    type: 'gitee-image',
+    url: resultUrl,
     cost,
   };
 }

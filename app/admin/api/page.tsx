@@ -296,6 +296,15 @@ export default function ApiConfigPage() {
             </div>
           </div>
           <div className="p-4 space-y-4">
+            <ApiKeyInput
+              label="免费 Key"
+              value={config.giteeFreeApiKey}
+              onChange={(v) => setConfig({ ...config, giteeFreeApiKey: v })}
+              keyName="giteeFree"
+              placeholder="免费 key（失败时才会使用付费 keys）"
+              showKey={showKeys['giteeFree'] || false}
+              onToggleShow={() => toggleShowKey('giteeFree')}
+            />
             <div className="space-y-1.5">
               <label className="text-sm text-white/50">API Keys（多个用逗号分隔）</label>
               <textarea

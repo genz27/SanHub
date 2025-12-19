@@ -138,6 +138,7 @@ export interface SystemConfig {
   geminiBaseUrl: string;
   zimageApiKey: string;
   zimageBaseUrl: string;
+  giteeFreeApiKey: string;
   giteeApiKey: string; // 支持多key，用逗号分隔
   giteeBaseUrl: string;
   // PicUI 图床配置
@@ -195,6 +196,8 @@ export interface ZImageGenerateRequest {
   images?: { mimeType: string; data: string }[]; // 参考图（base64 数据）
   channel?: 'modelscope' | 'gitee'; // 渠道选择
   numInferenceSteps?: number; // Gitee 推理步数
+  outscale?: number; // 超分倍率
+  outputFormat?: string; // 输出格式
 }
 
 // 生成结果

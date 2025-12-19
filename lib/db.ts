@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS system_config (
   zimage_api_key VARCHAR(500) DEFAULT '',
   zimage_base_url VARCHAR(500) DEFAULT 'https://api-inference.modelscope.cn/',
   gitee_api_key TEXT,
+  gitee_free_api_key TEXT,
   gitee_base_url VARCHAR(500) DEFAULT 'https://ai.gitee.com/',
   picui_api_key VARCHAR(500) DEFAULT '',
   picui_base_url VARCHAR(500) DEFAULT 'https://picui.cn/api/v1',
@@ -258,6 +259,11 @@ export async function initializeDatabase(): Promise<void> {
   // 添加 Gitee 配置字段（如果不存在）
   try {
     await db.execute("ALTER TABLE system_config ADD COLUMN gitee_api_key TEXT DEFAULT ''");
+  } catch {
+    // 字段已存在，忽略错误
+  }
+  try {
+    await db.execute("ALTER TABLE system_config ADD COLUMN gitee_free_api_key TEXT DEFAULT ''");
   } catch {
     // 字段已存在，忽略错误
   }
@@ -812,10 +818,11 @@ export async function getSystemConfig(): Promise<SystemConfig> {
         soraBackendToken: '',
         geminiApiKey: process.env.GEMINI_API_KEY || '',
         geminiBaseUrl: process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com',
-        zimageApiKey: process.env.ZIMAGE_API_KEY || '',
-        zimageBaseUrl: process.env.ZIMAGE_BASE_URL || 'https://api-inference.modelscope.cn/',
-        giteeApiKey: process.env.GITEE_API_KEY || '',
-        giteeBaseUrl: process.env.GITEE_BASE_URL || 'https://ai.gitee.com/',
+      zimageApiKey: process.env.ZIMAGE_API_KEY || '',
+      zimageBaseUrl: process.env.ZIMAGE_BASE_URL || 'https://api-inference.modelscope.cn/',
+      giteeFreeApiKey: process.env.GITEE_FREE_API_KEY || '',
+      giteeApiKey: process.env.GITEE_API_KEY || '',
+      giteeBaseUrl: process.env.GITEE_BASE_URL || 'https://ai.gitee.com/',
         picuiApiKey: process.env.PICUI_API_KEY || '',
         picuiBaseUrl: process.env.PICUI_BASE_URL || 'https://picui.cn/api/v1',
         pricing: {
@@ -847,11 +854,12 @@ export async function getSystemConfig(): Promise<SystemConfig> {
       soraBackendPassword: row.sora_backend_password || '',
       soraBackendToken: row.sora_backend_token || '',
       geminiApiKey: row.gemini_api_key || '',
-      geminiBaseUrl: row.gemini_base_url || 'https://generativelanguage.googleapis.com',
-      zimageApiKey: row.zimage_api_key || '',
-      zimageBaseUrl: row.zimage_base_url || 'https://api-inference.modelscope.cn/',
-      giteeApiKey: row.gitee_api_key || '',
-      giteeBaseUrl: row.gitee_base_url || 'https://ai.gitee.com/',
+    geminiBaseUrl: row.gemini_base_url || 'https://generativelanguage.googleapis.com',
+    zimageApiKey: row.zimage_api_key || '',
+    zimageBaseUrl: row.zimage_base_url || 'https://api-inference.modelscope.cn/',
+    giteeFreeApiKey: row.gitee_free_api_key || '',
+    giteeApiKey: row.gitee_api_key || '',
+    giteeBaseUrl: row.gitee_base_url || 'https://ai.gitee.com/',
       picuiApiKey: row.picui_api_key || '',
       picuiBaseUrl: row.picui_base_url || 'https://picui.cn/api/v1',
       pricing: {
@@ -927,6 +935,10 @@ export async function updateSystemConfig(
   if (updates.giteeApiKey !== undefined) {
     fields.push('gitee_api_key = ?');
     values.push(updates.giteeApiKey);
+  }
+  if (updates.giteeFreeApiKey !== undefined) {
+    fields.push('gitee_free_api_key = ?');
+    values.push(updates.giteeFreeApiKey);
   }
   if (updates.giteeBaseUrl !== undefined) {
     fields.push('gitee_base_url = ?');

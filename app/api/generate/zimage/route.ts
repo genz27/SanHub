@@ -68,8 +68,11 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const { prompt, model, size, loras, channel, numInferenceSteps, images } = body;
+    const isGitee = channel === 'gitee';
+    const modelId = model || (isGitee ? 'z-image-turbo' : 'Tongyi-MAI/Z-Image-Turbo');
 
-    if (!prompt) {
+    const requiresPrompt = modelId !== 'SeedVR2-3B';
+    if (requiresPrompt && !prompt) {
       return NextResponse.json(
         { success: false, error: '缺少 prompt 参数' },
         { status: 400 }
@@ -78,7 +81,6 @@ export async function POST(req: NextRequest) {
 
     // 获取系统配置检查余额
     const config = await getSystemConfig();
-    const isGitee = channel === 'gitee';
     const estimatedCost = isGitee ? (config.pricing?.giteeImage || 30) : (config.pricing?.zimageImage || 30);
 
     // 检查余额
@@ -91,8 +93,7 @@ export async function POST(req: NextRequest) {
 
     // 构建请求
     const imageList = Array.isArray(images) ? images : [];
-    const modelId = model || (isGitee ? 'z-image-turbo' : 'Tongyi-MAI/Z-Image-Turbo');
-    const requiresReference = !isGitee && modelId === 'Qwen/Qwen-Image-Edit-2509';
+    const requiresReference = modelId === 'Qwen/Qwen-Image-Edit-2509' || modelId === 'SeedVR2-3B';
     if (requiresReference && imageList.length === 0) {
       return NextResponse.json(
         { success: false, error: '该模型需要上传参考图' },
@@ -100,13 +101,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const requestSize = modelId === 'SeedVR2-3B' ? undefined : size;
+
     const request: ZImageGenerateRequest = {
-      prompt,
+      prompt: prompt || '',
       model: modelId,
       channel: channel || 'modelscope',
-      ...(size && { size }),
+      ...(requestSize && { size: requestSize }),
       ...(loras && { loras }),
-      ...(!isGitee && imageList.length > 0 && { images: imageList }),
+      ...(imageList.length > 0 && { images: imageList }),
       ...(numInferenceSteps && { numInferenceSteps }),
     };
 

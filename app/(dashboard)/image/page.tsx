@@ -255,14 +255,14 @@ export default function ImageGenerationPage() {
 
   // 验证输入
   const validateInput = (): string | null => {
-    if (currentModel.id === 'qwen-image-edit' && images.length === 0) {
+    if (currentModel.requiresReferenceImage && images.length === 0) {
       return '请上传参考图';
     }
     if (currentModel.provider === 'gemini') {
       if (!prompt.trim() && images.length === 0) {
         return '请输入提示词或上传参考图片';
       }
-    } else {
+    } else if (!currentModel.allowEmptyPrompt) {
       if (!prompt.trim()) {
         return '请输入提示词';
       }
@@ -306,10 +306,12 @@ export default function ImageGenerationPage() {
       const payload: Record<string, unknown> = {
         prompt: taskPrompt,
         model: currentModel.apiModel,
-        size,
         channel: currentModel.channel,
         ...(currentModel.channel === 'gitee' && { numInferenceSteps: 9 }),
       };
+      if (size) {
+        payload.size = size;
+      }
       if (currentModel.features.supportReferenceImage && images.length > 0) {
         payload.images = images.map((img) => ({ mimeType: img.mimeType, data: img.data }));
       }
@@ -440,7 +442,14 @@ export default function ImageGenerationPage() {
                     className="w-full flex items-center justify-between px-3 py-2.5 bg-white/5 border border-white/10 text-white rounded-lg focus:outline-none focus:border-white/30"
                   >
                     <div className="flex flex-col items-start">
-                      <span className="text-sm font-medium">{currentModel.name}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">{currentModel.name}</span>
+                        {currentModel.highlight && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-200 border border-amber-400/30">
+                            HD
+                          </span>
+                        )}
+                      </div>
                       <span className="text-xs text-white/50">{currentModel.description}</span>
                     </div>
                     <ChevronDown className={`w-4 h-4 transition-transform ${showModelDropdown ? 'rotate-180' : ''}`} />
@@ -455,11 +464,20 @@ export default function ImageGenerationPage() {
                             setSelectedModelId(model.id);
                             setShowModelDropdown(false);
                           }}
-                          className={`w-full flex flex-col items-start px-3 py-2.5 hover:bg-white/10 transition-colors ${
-                            selectedModelId === model.id ? 'bg-white/10' : ''
-                          }`}
+                          className={cn(
+                            'w-full flex flex-col items-start px-3 py-2.5 transition-colors',
+                            selectedModelId === model.id ? 'bg-white/10' : 'hover:bg-white/10',
+                            model.highlight && 'bg-amber-500/10 hover:bg-amber-500/20'
+                          )}
                         >
-                          <span className="text-sm font-medium text-white">{model.name}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-white">{model.name}</span>
+                            {model.highlight && (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-200 border border-amber-400/30">
+                                HD
+                              </span>
+                            )}
+                          </div>
                           <span className="text-xs text-white/50">
                             {model.description}
                             {!model.features.supportReferenceImage && ' · 不支持参考图'}
