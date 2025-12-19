@@ -29,6 +29,7 @@ export function SoraPanel({ onTaskAdded }: SoraPanelProps) {
   const [files, setFiles] = useState<{ data: string; mimeType: string; preview: string }[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [keepPrompt, setKeepPrompt] = useState(false);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(e.target.files || []);
@@ -101,9 +102,11 @@ export function SoraPanel({ onTaskAdded }: SoraPanelProps) {
         description: '任务已加入队列，可继续提交新任务',
       });
 
-      // 清空输入
-      setPrompt('');
-      clearFiles();
+      // 清空输入（如果勾选了保留提示词则不清空提示词和文件）
+      if (!keepPrompt) {
+        setPrompt('');
+        clearFiles();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : '生成失败');
     } finally {
@@ -230,6 +233,15 @@ export function SoraPanel({ onTaskAdded }: SoraPanelProps) {
             placeholder="描述你想要生成的内容，越详细效果越好..."
             className="w-full h-28 px-4 py-3 bg-white/5 border border-white/10 text-white rounded-xl resize-none focus:outline-none focus:border-white/30 placeholder:text-white/30 text-sm"
           />
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={keepPrompt}
+              onChange={(e) => setKeepPrompt(e.target.checked)}
+              className="w-4 h-4 rounded border-white/20 bg-white/5 text-white accent-white cursor-pointer"
+            />
+            <span className="text-sm text-white/50">保留提示词</span>
+          </label>
         </div>
 
         {/* Error */}
