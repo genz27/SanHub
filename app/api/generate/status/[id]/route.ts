@@ -50,16 +50,16 @@ export async function GET(
     }
 
     // 解析 params（可能是 JSON 字符串或对象）
-    let params: Record<string, unknown> | undefined;
+    let generationParams: Record<string, unknown> | undefined;
     if (generation.params) {
       if (typeof generation.params === 'string') {
         try {
-          params = JSON.parse(generation.params);
+          generationParams = JSON.parse(generation.params);
         } catch {
-          params = undefined;
+          generationParams = undefined;
         }
       } else {
-        params = generation.params as Record<string, unknown>;
+        generationParams = generation.params as Record<string, unknown>;
       }
     }
 
@@ -72,7 +72,7 @@ export async function GET(
         url: convertToMediaUrl(generation.resultUrl, generation.id, generation.type),
         cost: generation.cost,
         errorMessage: generation.errorMessage,
-        params,
+        params: generationParams,
         createdAt: generation.createdAt,
         updatedAt: generation.updatedAt,
       },
