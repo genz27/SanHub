@@ -467,6 +467,7 @@ export default function WorkspaceEditorPage() {
               outputUrl: data.data.url,
               outputType: data.data.type?.includes('video') ? 'video' : 'image',
               generationId: data.data.id,
+              revisedPrompt: data.data.params?.revised_prompt,
               errorMessage: undefined,
             });
             abortControllersRef.current.delete(nodeId);
@@ -1183,17 +1184,28 @@ export default function WorkspaceEditorPage() {
                       <div className="mt-2">
                         {node.data.outputType === 'video' ? (
                           <video
+                            key={`${node.data.generationId}-${node.data.outputUrl}`}
                             src={node.data.outputUrl}
                             controls
                             className="w-full rounded-lg border border-white/10"
                           />
                         ) : (
                           <img
-                            src={node.data.outputUrl}
+                            key={`${node.data.generationId}-${node.data.outputUrl}`}
+                            src={`${node.data.outputUrl}${node.data.outputUrl.includes('?') ? '&' : '?'}_t=${node.data.generationId || Date.now()}`}
                             alt=""
                             className="w-full rounded-lg border border-white/10"
                           />
                         )}
+                      </div>
+                    )}
+
+                    {node.data.revisedPrompt && (
+                      <div className="space-y-1">
+                        <label className="text-[10px] uppercase tracking-wider text-white/40">改写提示词</label>
+                        <div className="text-[10px] text-white/60 bg-white/5 rounded-lg px-2 py-1.5 break-words">
+                          {node.data.revisedPrompt}
+                        </div>
                       </div>
                     )}
                   </div>

@@ -49,6 +49,20 @@ export async function GET(
       return NextResponse.json({ error: '无权访问此任务' }, { status: 403 });
     }
 
+    // 解析 params（可能是 JSON 字符串或对象）
+    let params: Record<string, unknown> | undefined;
+    if (generation.params) {
+      if (typeof generation.params === 'string') {
+        try {
+          params = JSON.parse(generation.params);
+        } catch {
+          params = undefined;
+        }
+      } else {
+        params = generation.params as Record<string, unknown>;
+      }
+    }
+
     return NextResponse.json({
       success: true,
       data: {
@@ -58,6 +72,7 @@ export async function GET(
         url: convertToMediaUrl(generation.resultUrl, generation.id, generation.type),
         cost: generation.cost,
         errorMessage: generation.errorMessage,
+        params,
         createdAt: generation.createdAt,
         updatedAt: generation.updatedAt,
       },

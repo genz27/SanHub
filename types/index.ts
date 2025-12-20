@@ -263,6 +263,7 @@ export interface WorkspaceNode {
     outputUrl?: string;
     outputType?: 'image' | 'video';
     generationId?: string;
+    revisedPrompt?: string;
     status?: 'idle' | 'pending' | 'processing' | 'completed' | 'failed';
     errorMessage?: string;
   };

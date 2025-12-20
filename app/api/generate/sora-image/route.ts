@@ -60,16 +60,22 @@ async function processGenerationTask(
       throw new Error('图片生成失败：未返回有效的图片 URL');
     }
 
+    const first = result.data[0];
     const config = await getSystemConfig();
     const cost = config.pricing.soraImage || 1;
 
-    console.log(`[Task ${generationId}] 生成成功:`, result.data[0].url);
+    console.log(`[Task ${generationId}] 生成成功:`, first.url);
 
     await updateUserBalance(userId, -cost);
 
     await updateGeneration(generationId, {
       status: 'completed',
-      resultUrl: result.data[0].url,
+      resultUrl: first.url,
+      params: {
+        model: body.model,
+        size: body.size,
+        revised_prompt: first.revised_prompt,
+      },
     });
 
     console.log(`[Task ${generationId}] 任务完成`);
