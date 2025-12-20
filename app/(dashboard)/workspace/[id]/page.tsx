@@ -1602,7 +1602,10 @@ export default function WorkspaceEditorPage() {
                                 <Link2 className="w-3 h-3" />
                                 {fromNode?.name || '图片节点'}
                                 <button
-                                  onClick={() => removeEdge(edge.id)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    removeEdge(edge.id);
+                                  }}
                                   className="text-white/40 hover:text-white"
                                 >
                                   ×
