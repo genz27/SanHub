@@ -1786,7 +1786,7 @@ export default function WorkspaceEditorPage() {
                     {node.data.revisedPrompt && (
                       <div className="space-y-1">
                         <label className="text-[10px] uppercase tracking-wider text-white/40">改写提示词</label>
-                        <div className="text-[10px] text-white/60 bg-white/5 rounded-lg px-2 py-1.5 break-words">
+                        <div className="text-[10px] text-white/60 bg-white/5 rounded-lg px-2 py-1.5 break-words max-h-24 overflow-auto">
                           {node.data.revisedPrompt}
                         </div>
                       </div>
