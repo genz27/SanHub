@@ -747,7 +747,12 @@ export default function WorkspaceEditorPage() {
         const videoInputNode = videoInputEdge
           ? nodesRef.current.find((n) => n.id === videoInputEdge.from && n.type === 'image')
           : undefined;
-        const referenceImageUrl = videoInputNode?.data.outputUrl;
+        
+        // Use connected image output, or uploaded image if no connection
+        let referenceImageUrl = videoInputNode?.data.outputUrl;
+        if (!referenceImageUrl && node.data.uploadedImages && node.data.uploadedImages.length > 0) {
+          referenceImageUrl = node.data.uploadedImages[0];
+        }
 
         const res = await fetch('/api/generate/sora', {
           method: 'POST',
@@ -1508,6 +1513,47 @@ export default function WorkspaceEditorPage() {
                           </>
                         )}
                         <div className="text-[10px] text-white/20">点击名称插入到提示词</div>
+                      </div>
+                    )}
+
+                    {/* Upload reference image for video - only when no connected image node */}
+                    {node.type === 'video' && incoming.length === 0 && (
+                      <div className="space-y-1">
+                        <label className="text-[10px] uppercase tracking-wider text-white/40">参考图 (1张)</label>
+                        <div className="flex flex-wrap gap-1">
+                          {(node.data.uploadedImages || []).slice(0, 1).map((img, idx) => (
+                            <div key={idx} className="relative group">
+                              <img src={img} alt="" className="w-12 h-12 rounded object-cover border border-white/10" />
+                              <button
+                                onClick={() => updateNodeData(node.id, { uploadedImages: [] })}
+                                className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                          {(!node.data.uploadedImages || node.data.uploadedImages.length === 0) && (
+                            <label className="w-12 h-12 rounded border border-dashed border-white/20 flex items-center justify-center cursor-pointer hover:border-white/40 transition">
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={async (e) => {
+                                  const file = e.target.files?.[0];
+                                  if (!file) return;
+                                  const base64 = await new Promise<string>((resolve) => {
+                                    const reader = new FileReader();
+                                    reader.onload = () => resolve(reader.result as string);
+                                    reader.readAsDataURL(file);
+                                  });
+                                  updateNodeData(node.id, { uploadedImages: [base64] });
+                                  e.target.value = '';
+                                }}
+                              />
+                              <ImageIcon className="w-4 h-4 text-white/30" />
+                            </label>
+                          )}
+                        </div>
                       </div>
                     )}
 
