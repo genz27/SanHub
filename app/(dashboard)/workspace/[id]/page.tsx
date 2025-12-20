@@ -120,9 +120,13 @@ export default function WorkspaceEditorPage() {
     setDirty(true);
   }, []);
 
+  // Track if polling recovery has been done for this workspace load
+  const pollingRecoveredRef = useRef(false);
+
   useEffect(() => {
     const loadWorkspace = async () => {
       setLoading(true);
+      pollingRecoveredRef.current = false; // Reset on new load
       try {
         const res = await fetch(`/api/workspaces/${workspaceId}`);
         const data = await res.json();
@@ -626,6 +630,25 @@ export default function WorkspaceEditorPage() {
     },
     [update]
   );
+
+  // Recover polling for pending/processing nodes on workspace load
+  useEffect(() => {
+    if (loading || pollingRecoveredRef.current) return;
+    
+    const pendingNodes = nodes.filter(
+      (node) =>
+        (node.type === 'image' || node.type === 'video') &&
+        (node.data.status === 'pending' || node.data.status === 'processing') &&
+        node.data.generationId
+    );
+
+    if (pendingNodes.length > 0) {
+      pollingRecoveredRef.current = true;
+      pendingNodes.forEach((node) => {
+        pollTaskStatus(node.id, node.data.generationId!);
+      });
+    }
+  }, [loading, nodes, pollTaskStatus]);
 
   const handleGenerateNode = async (node: WorkspaceNode) => {
     // Get prompt from node itself or from connected chat/template node
