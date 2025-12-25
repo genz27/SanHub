@@ -231,6 +231,82 @@ export interface SafeImageModel {
   costPerGeneration: number;
 }
 
+// ========================================
+// 视频渠道与模型配置
+// ========================================
+
+// 视频模型功能特性
+export interface VideoModelFeatures {
+  textToVideo: boolean;      // 文生视频
+  imageToVideo: boolean;     // 图生视频
+  videoToVideo: boolean;     // 视频转视频
+  supportStyles: boolean;    // 支持风格选择
+}
+
+// 视频渠道配置
+export interface VideoChannel {
+  id: string;
+  name: string;
+  type: ChannelType;
+  baseUrl: string;
+  apiKey: string;
+  enabled: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+// 视频时长选项
+export interface VideoDuration {
+  value: string;   // 如 "10s"
+  label: string;   // 如 "10 秒"
+  cost: number;    // 该时长的积分消耗
+}
+
+// 视频模型配置
+export interface VideoModel {
+  id: string;
+  channelId: string;
+  name: string;
+  description: string;
+  apiModel: string;
+  baseUrl?: string;
+  apiKey?: string;
+  features: VideoModelFeatures;
+  aspectRatios: Array<{ value: string; label: string }>;
+  durations: VideoDuration[];
+  defaultAspectRatio: string;
+  defaultDuration: string;
+  highlight?: boolean;
+  enabled: boolean;
+  sortOrder: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+// 前端使用的视频渠道
+export interface SafeVideoChannel {
+  id: string;
+  name: string;
+  type: ChannelType;
+  enabled: boolean;
+}
+
+// 前端使用的视频模型
+export interface SafeVideoModel {
+  id: string;
+  channelId: string;
+  channelType: ChannelType;
+  name: string;
+  description: string;
+  features: VideoModelFeatures;
+  aspectRatios: Array<{ value: string; label: string }>;
+  durations: VideoDuration[];
+  defaultAspectRatio: string;
+  defaultDuration: string;
+  highlight?: boolean;
+  enabled: boolean;
+}
+
 // 网站配置
 export interface SiteConfig {
   siteName: string;           // 网站名称，如 SANHUB
