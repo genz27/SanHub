@@ -396,6 +396,43 @@ export async function initializeDatabase(): Promise<void> {
     // 字段已存在，忽略错误
   }
 
+  // 添加网站配置字段
+  try {
+    await db.execute("ALTER TABLE system_config ADD COLUMN site_name VARCHAR(100) DEFAULT 'SANHUB'");
+  } catch {
+    // 字段已存在，忽略错误
+  }
+  try {
+    await db.execute("ALTER TABLE system_config ADD COLUMN site_tagline VARCHAR(200) DEFAULT 'Let Imagination Come Alive'");
+  } catch {
+    // 字段已存在，忽略错误
+  }
+  try {
+    await db.execute("ALTER TABLE system_config ADD COLUMN site_description TEXT");
+  } catch {
+    // 字段已存在，忽略错误
+  }
+  try {
+    await db.execute("ALTER TABLE system_config ADD COLUMN site_sub_description TEXT");
+  } catch {
+    // 字段已存在，忽略错误
+  }
+  try {
+    await db.execute("ALTER TABLE system_config ADD COLUMN contact_email VARCHAR(200) DEFAULT 'support@sanhub.com'");
+  } catch {
+    // 字段已存在，忽略错误
+  }
+  try {
+    await db.execute("ALTER TABLE system_config ADD COLUMN site_copyright VARCHAR(200) DEFAULT 'Copyright © 2025 SANHUB'");
+  } catch {
+    // 字段已存在，忽略错误
+  }
+  try {
+    await db.execute("ALTER TABLE system_config ADD COLUMN site_powered_by VARCHAR(200) DEFAULT 'Powered by OpenAI Sora & Google Gemini'");
+  } catch {
+    // 字段已存在，忽略错误
+  }
+
   // 更新 generations 表的 type 字段以支持 gitee-image（MySQL 需要修改 ENUM）
   if (dbType === 'mysql') {
     try {
@@ -972,6 +1009,15 @@ export async function getSystemConfig(): Promise<SystemConfig> {
           videoLimit: 0,
           characterCardLimit: 0,
         },
+        siteConfig: {
+          siteName: 'SANHUB',
+          siteTagline: 'Let Imagination Come Alive',
+          siteDescription: '「SANHUB」是专为 AI 创作打造的一站式平台',
+          siteSubDescription: '我们融合了 Sora 视频生成、Gemini 图像创作与多模型 AI 对话。在这里，技术壁垒已然消融，你唯一的使命就是释放纯粹的想象。',
+          contactEmail: 'support@sanhub.com',
+          copyright: 'Copyright © 2025 SANHUB',
+          poweredBy: 'Powered by OpenAI Sora & Google Gemini',
+        },
       };
     }
 
@@ -1020,6 +1066,15 @@ export async function getSystemConfig(): Promise<SystemConfig> {
         imageLimit: row.daily_limit_image || 0,
         videoLimit: row.daily_limit_video || 0,
         characterCardLimit: row.daily_limit_character_card || 0,
+      },
+      siteConfig: {
+        siteName: row.site_name || 'SANHUB',
+        siteTagline: row.site_tagline || 'Let Imagination Come Alive',
+        siteDescription: row.site_description || '「SANHUB」是专为 AI 创作打造的一站式平台',
+        siteSubDescription: row.site_sub_description || '我们融合了 Sora 视频生成、Gemini 图像创作与多模型 AI 对话。在这里，技术壁垒已然消融，你唯一的使命就是释放纯粹的想象。',
+        contactEmail: row.contact_email || 'support@sanhub.com',
+        copyright: row.site_copyright || 'Copyright © 2025 SANHUB',
+        poweredBy: row.site_powered_by || 'Powered by OpenAI Sora & Google Gemini',
       },
     };
   });
@@ -1189,6 +1244,38 @@ export async function updateSystemConfig(
     if (d.characterCardLimit !== undefined) {
       fields.push('daily_limit_character_card = ?');
       values.push(d.characterCardLimit);
+    }
+  }
+  // 网站配置
+  if (updates.siteConfig) {
+    const s = updates.siteConfig;
+    if (s.siteName !== undefined) {
+      fields.push('site_name = ?');
+      values.push(s.siteName);
+    }
+    if (s.siteTagline !== undefined) {
+      fields.push('site_tagline = ?');
+      values.push(s.siteTagline);
+    }
+    if (s.siteDescription !== undefined) {
+      fields.push('site_description = ?');
+      values.push(s.siteDescription);
+    }
+    if (s.siteSubDescription !== undefined) {
+      fields.push('site_sub_description = ?');
+      values.push(s.siteSubDescription);
+    }
+    if (s.contactEmail !== undefined) {
+      fields.push('contact_email = ?');
+      values.push(s.contactEmail);
+    }
+    if (s.copyright !== undefined) {
+      fields.push('site_copyright = ?');
+      values.push(s.copyright);
+    }
+    if (s.poweredBy !== undefined) {
+      fields.push('site_powered_by = ?');
+      values.push(s.poweredBy);
     }
   }
 

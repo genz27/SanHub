@@ -14,7 +14,8 @@ import {
   X,
   Megaphone,
   Sparkles,
-  MessageSquare
+  MessageSquare,
+  Globe
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -36,6 +37,7 @@ const navItems: NavItem[] = [
   { href: '/admin/models', label: '聊天模型', icon: MessageSquare, roles: ['admin'] },
   { href: '/admin/tokens', label: 'SORA Tokens', icon: Key, roles: ['admin'] },
   { href: '/admin/announcement', label: '公告管理', icon: Megaphone, roles: ['admin'] },
+  { href: '/admin/site', label: '网站配置', icon: Globe, roles: ['admin'] },
 ];
 
 export function AdminSidebar() {

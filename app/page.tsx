@@ -1,10 +1,38 @@
 'use client';
 import Link from 'next/link';
-import { ArrowRight, Video, Image, Sparkles, Zap } from 'lucide-react';
+import { ArrowRight, Video, Image, Sparkles, Zap, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AnimatedBackground } from '@/components/ui/animated-background';
+import { useState, useEffect } from 'react';
+import type { SiteConfig } from '@/types';
 
 export default function LandingPage() {
+  const [siteConfig, setSiteConfig] = useState<SiteConfig | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/site-config')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          setSiteConfig(data.data);
+        }
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  // Default values while loading
+  const siteName = siteConfig?.siteName || 'SANHUB';
+  const taglineParts = (siteConfig?.siteTagline || 'Let Imagination Come Alive').split(' ');
+  const taglineLine1 = taglineParts.slice(0, 2).join(' ');
+  const taglineLine2 = taglineParts.slice(2).join(' ');
+  const description = siteConfig?.siteDescription || '「SANHUB」是专为 AI 创作打造的一站式平台';
+  const subDescription = siteConfig?.siteSubDescription || '我们融合了 Sora 视频生成、Gemini 图像创作与多模型 AI 对话。在这里，技术壁垒已然消融，你唯一的使命就是释放纯粹的想象。';
+  const contactEmail = siteConfig?.contactEmail || 'support@sanhub.com';
+  const copyright = siteConfig?.copyright || 'Copyright © 2025 SANHUB';
+  const poweredBy = siteConfig?.poweredBy || 'Powered by OpenAI Sora & Google Gemini';
+
   return (
     <div className="min-h-screen bg-black text-white relative flex flex-col overflow-hidden">
       {/* 动态背景 */}
@@ -22,23 +50,21 @@ export default function LandingPage() {
           {/* English Tagline */}
           <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-extralight tracking-tight leading-[1.1]">
             <span className="bg-gradient-to-r from-purple-400 via-white to-blue-400 bg-clip-text text-transparent animate-gradient-x">
-              Let Imagination
+              {taglineLine1}
             </span>
             <br />
             <span className="bg-gradient-to-r from-blue-400 via-white to-pink-400 bg-clip-text text-transparent animate-gradient-x" style={{ animationDelay: '0.5s' }}>
-              Come Alive
+              {taglineLine2}
             </span>
           </h1>
 
           {/* Chinese Description */}
           <div className="space-y-4 max-w-2xl mx-auto">
             <h2 className="text-xl md:text-2xl font-light text-white/80">
-              「SANHUB」是专为 AI 创作打造的一站式平台
+              {description}
             </h2>
             <p className="text-base md:text-lg text-white/50 font-light leading-relaxed">
-              我们融合了 Sora 视频生成、Gemini 图像创作与多模型 AI 对话。
-              <br className="hidden md:block" />
-              在这里，技术壁垒已然消融，你唯一的使命就是释放纯粹的想象。
+              {subDescription}
             </p>
           </div>
 
@@ -109,10 +135,10 @@ export default function LandingPage() {
               GitHub
             </a>
             <span>·</span>
-            <span>support@sanhub.com</span>
+            <span>{contactEmail}</span>
           </div>
           <p className="text-xs text-white/20">
-            Copyright © 2025 SANHUB · Powered by OpenAI Sora & Google Gemini
+            {copyright} · {poweredBy}
           </p>
         </div>
       </footer>

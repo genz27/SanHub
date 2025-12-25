@@ -143,6 +143,17 @@ export interface DailyLimitConfig {
   characterCardLimit: number; // 角色卡每日限制，0 表示不限制
 }
 
+// 网站配置
+export interface SiteConfig {
+  siteName: string;           // 网站名称，如 SANHUB
+  siteTagline: string;        // 英文标语，如 Let Imagination Come Alive
+  siteDescription: string;    // 中文描述
+  siteSubDescription: string; // 中文副描述
+  contactEmail: string;       // 联系邮箱
+  copyright: string;          // 版权信息
+  poweredBy: string;          // 技术支持信息
+}
+
 // 系统配置
 export interface SystemConfig {
   soraApiKey: string;
@@ -171,6 +182,8 @@ export interface SystemConfig {
   channelEnabled: ChannelEnabledConfig;
   // 每日请求限制配置
   dailyLimit: DailyLimitConfig;
+  // 网站配置
+  siteConfig: SiteConfig;
 }
 
 // 定价配置
