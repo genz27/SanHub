@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server';
 import { getSystemConfig } from '@/lib/db';
 import { cache, CacheKeys } from '@/lib/cache';
 
+// 禁用 Next.js 路由缓存，确保每次请求都获取最新数据
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 // GET /api/site-config - 获取网站配置（公开接口）
 export async function GET() {
   try {

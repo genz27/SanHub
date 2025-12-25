@@ -433,23 +433,6 @@ export async function initializeDatabase(): Promise<void> {
     // 字段已存在，忽略错误
   }
 
-  // 确保已存在的配置记录有正确的网站配置默认值（仅当字段为空时更新）
-  try {
-    await db.execute(`
-      UPDATE system_config SET
-        site_name = COALESCE(NULLIF(site_name, ''), 'SANHUB'),
-        site_tagline = COALESCE(NULLIF(site_tagline, ''), 'Let Imagination Come Alive'),
-        site_description = COALESCE(NULLIF(site_description, ''), '「SANHUB」是专为 AI 创作打造的一站式平台'),
-        site_sub_description = COALESCE(NULLIF(site_sub_description, ''), '我们融合了 Sora 视频生成、Gemini 图像创作与多模型 AI 对话。在这里，技术壁垒已然消融，你唯一的使命就是释放纯粹的想象。'),
-        contact_email = COALESCE(NULLIF(contact_email, ''), 'support@sanhub.com'),
-        site_copyright = COALESCE(NULLIF(site_copyright, ''), 'Copyright © 2025 SANHUB'),
-        site_powered_by = COALESCE(NULLIF(site_powered_by, ''), 'Powered by OpenAI Sora & Google Gemini')
-      WHERE id = 1
-    `);
-  } catch {
-    // 忽略错误
-  }
-
   // 添加模型禁用配置字段
   try {
     await db.execute("ALTER TABLE system_config ADD COLUMN disabled_image_models TEXT");
