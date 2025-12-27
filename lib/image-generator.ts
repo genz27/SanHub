@@ -487,19 +487,43 @@ async function generateWithSora(
 ): Promise<GenerateResult> {
   const key = getNextApiKey(apiKey, channelId);
   const normalizedBaseUrl = baseUrl.replace(/\/$/, '');
-  const url = `${normalizedBaseUrl}/api/generations`;
+  const url = `${normalizedBaseUrl}/v1/images/generations`;
+
+  // 根据 aspectRatio 选择模型和尺寸
+  let model = apiModel || 'sora-image';
+  let size = '1024x1024';
+
+  if (request.aspectRatio) {
+    switch (request.aspectRatio) {
+      case '16:9':
+        model = 'sora-image-landscape';
+        size = '1792x1024';
+        break;
+      case '9:16':
+        model = 'sora-image-portrait';
+        size = '1024x1792';
+        break;
+      case '1:1':
+      default:
+        model = 'sora-image';
+        size = '1024x1024';
+        break;
+    }
+  }
 
   const payload: Record<string, unknown> = {
     prompt: request.prompt,
-    model: 'sora-image',
+    model,
+    size,
+    n: 1,
+    response_format: 'url',
   };
 
-  // 添加参考图
+  // 添加参考图（垫图）- 使用 input_image 参数传递 base64
   if (request.images && request.images.length > 0) {
-    payload.files = request.images.map(img => ({
-      mimeType: img.mimeType || 'image/jpeg',
-      data: img.data.replace(/^data:[^;]+;base64,/, ''),
-    }));
+    const img = request.images[0];
+    // API 支持带 data:image/...;base64, 前缀的格式
+    payload.input_image = img.data;
   }
 
   const response = await fetch(url, {
@@ -518,11 +542,13 @@ async function generateWithSora(
 
   const data = await response.json();
 
-  if (!data.url && !data.image) {
+  // OpenAI 格式响应: { data: [{ url: '...' }] }
+  const imageData = data.data?.[0];
+  if (!imageData?.url && !imageData?.b64_json) {
     throw new Error('API 返回成功但未包含图片');
   }
 
-  const resultUrl = data.url || data.image;
+  const resultUrl = imageData.url || `data:image/png;base64,${imageData.b64_json}`;
   return {
     type: 'sora-image',
     url: resultUrl,
