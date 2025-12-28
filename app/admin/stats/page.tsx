@@ -100,15 +100,15 @@ export default function StatsPage() {
             </div>
             {/* Chart */}
             <div className="flex-1 flex flex-col">
-              <div className="h-48 flex items-end gap-1 border-l border-b border-white/10 pl-1">
+              <div className="h-48 flex items-end gap-[2px] border-l border-b border-white/10 pl-1">
                 {stats.dailyStats.map((day, i) => (
-                  <div key={day.date || i} className="flex-1 flex flex-col items-center justify-end group relative">
+                  <div key={day.date || i} className="flex-1 flex flex-col items-center justify-end group relative min-w-[6px]">
                     {/* Value label */}
                     <span className="text-[9px] text-white/60 mb-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       {day.generations}
                     </span>
                     <div 
-                      className="w-full bg-gradient-to-t from-violet-500 to-fuchsia-500 rounded-t opacity-80 group-hover:opacity-100 transition-opacity"
+                      className="w-full max-w-[20px] mx-auto bg-gradient-to-t from-violet-500 to-fuchsia-500 rounded-t opacity-80 group-hover:opacity-100 transition-opacity"
                       style={{ height: `${(day.generations / genCeil) * 100}%`, minHeight: day.generations > 0 ? '4px' : '0' }}
                     />
                   </div>
@@ -140,15 +140,15 @@ export default function StatsPage() {
             </div>
             {/* Chart */}
             <div className="flex-1 flex flex-col">
-              <div className="h-48 flex items-end gap-1 border-l border-b border-white/10 pl-1">
+              <div className="h-48 flex items-end gap-[2px] border-l border-b border-white/10 pl-1">
                 {stats.dailyStats.map((day, i) => (
-                  <div key={day.date || i} className="flex-1 flex flex-col items-center justify-end group relative">
+                  <div key={day.date || i} className="flex-1 flex flex-col items-center justify-end group relative min-w-[6px]">
                     {/* Value label */}
                     <span className="text-[9px] text-white/60 mb-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       {day.users}
                     </span>
                     <div 
-                      className="w-full bg-gradient-to-t from-blue-500 to-cyan-500 rounded-t opacity-80 group-hover:opacity-100 transition-opacity"
+                      className="w-full max-w-[20px] mx-auto bg-gradient-to-t from-blue-500 to-cyan-500 rounded-t opacity-80 group-hover:opacity-100 transition-opacity"
                       style={{ height: `${(day.users / userCeil) * 100}%`, minHeight: day.users > 0 ? '4px' : '0' }}
                     />
                   </div>
