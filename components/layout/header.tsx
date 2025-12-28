@@ -51,7 +51,7 @@ export function Header({ user }: HeaderProps) {
           <div className="flex items-center gap-3">
             {/* User Menu */}
             <div className="flex items-center gap-1">
-              {user.role === 'admin' && (
+              {(user.role === 'admin' || user.role === 'moderator') && (
                 <Link 
                   href="/admin"
                   className="p-2 hover:bg-white/10 rounded-lg transition-colors"
@@ -91,7 +91,7 @@ export function Header({ user }: HeaderProps) {
                 <span className="text-sm">{item.label}</span>
               </Link>
             ))}
-            {user.role === 'admin' && (
+            {(user.role === 'admin' || user.role === 'moderator') && (
               <Link
                 href="/admin"
                 onClick={() => setMobileMenuOpen(false)}

@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
-import { User, Eye, Ban, Check, Search, Edit2, Key, Coins, History, Loader2, X, ShieldAlert } from 'lucide-react';
-import type { SafeUser, Generation } from '@/types';
+import { User, Ban, Check, Search, Edit2, Key, Coins, Loader2, ShieldAlert } from 'lucide-react';
+import type { SafeUser } from '@/types';
 import { formatBalance, formatDate, cn } from '@/lib/utils';
 
 const USERS_PAGE_SIZE = 50;
@@ -16,7 +16,6 @@ export default function UsersPage() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [selectedUser, setSelectedUser] = useState<SafeUser | null>(null);
-  const [userGenerations, setUserGenerations] = useState<Generation[]>([]);
   const [editMode, setEditMode] = useState<'password' | 'balance' | null>(null);
   const [editValue, setEditValue] = useState('');
   const [search, setSearch] = useState('');
@@ -61,7 +60,6 @@ export default function UsersPage() {
         setHasMore(Boolean(data.hasMore));
         if (!append) {
           setSelectedUser(null);
-          setUserGenerations([]);
         }
       }
     } catch (err) {
@@ -82,15 +80,6 @@ export default function UsersPage() {
   const selectUser = async (user: SafeUser) => {
     setSelectedUser(user);
     setEditMode(null);
-    try {
-      const res = await fetch(`/api/admin/users/${user.id}`);
-      if (res.ok) {
-        const data = await res.json();
-        setUserGenerations(data.generations || []);
-      }
-    } catch (err) {
-      console.error('加载用户详情失败:', err);
-    }
   };
 
   const updateUser = async (updates: Record<string, unknown>) => {
@@ -405,42 +394,6 @@ export default function UsersPage() {
                 </div>
               )}
 
-              {/* 生成记录 */}
-              <div className="bg-white/[0.03] backdrop-blur-sm border border-white/10 rounded-2xl overflow-hidden">
-                <div className="p-5 border-b border-white/10 flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center">
-                    <History className="w-5 h-5 text-purple-400" />
-                  </div>
-                  <span className="font-semibold text-white">生成记录 ({userGenerations.length})</span>
-                </div>
-                <div className="p-5">
-                  {userGenerations.length === 0 ? (
-                    <div className="text-center py-8">
-                      <History className="w-10 h-10 mx-auto mb-3 text-white/10" />
-                      <p className="text-white/40">暂无生成记录</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2 max-h-64 overflow-y-auto">
-                      {userGenerations.map(gen => (
-                        <div key={gen.id} className="flex items-center justify-between p-4 bg-white/[0.03] border border-white/10 rounded-xl hover:bg-white/[0.05] transition-colors">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-white truncate">{gen.prompt || '无提示词'}</p>
-                            <p className="text-xs text-white/40 mt-1">
-                              <span className="px-1.5 py-0.5 rounded bg-white/10 mr-2">{gen.type}</span>
-                              {formatDate(gen.createdAt)} · <span className="text-red-400">-{gen.cost}</span> 积分
-                            </p>
-                          </div>
-                          {gen.resultUrl && (
-                            <a href={gen.resultUrl} target="_blank" rel="noopener noreferrer" className="p-2.5 text-white/40 hover:text-white hover:bg-white/10 rounded-xl transition-all">
-                              <Eye className="w-4 h-4" />
-                            </a>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
             </div>
           ) : (
             <div className="bg-white/[0.03] backdrop-blur-sm border border-white/10 rounded-2xl p-16 text-center">

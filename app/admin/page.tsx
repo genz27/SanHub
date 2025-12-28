@@ -2,13 +2,17 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useSession } from 'next-auth/react';
 import { Users, Coins, Loader2, Settings, ChevronRight, TrendingUp, Activity, Zap, BarChart3, Ticket, History } from 'lucide-react';
 import type { SafeUser } from '@/types';
 import { formatBalance } from '@/lib/utils';
 
 export default function AdminPage() {
+  const { data: session } = useSession();
   const [users, setUsers] = useState<SafeUser[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const isAdmin = session?.user?.role === 'admin';
 
   useEffect(() => {
     loadData();
@@ -78,14 +82,18 @@ export default function AdminPage() {
     },
   ];
 
-  const quickLinks = [
-    { href: '/admin/users', label: '用户管理', desc: '管理用户账号和权限', icon: Users, color: 'from-blue-500/20 to-cyan-500/20' },
-    { href: '/admin/stats', label: '数据统计', desc: '查看生成量和用户增长', icon: BarChart3, color: 'from-violet-500/20 to-purple-500/20' },
-    { href: '/admin/generations', label: '生成记录', desc: '管理所有生成历史', icon: History, color: 'from-orange-500/20 to-amber-500/20' },
-    { href: '/admin/redemption', label: '卡密管理', desc: '生成和管理积分卡密', icon: Ticket, color: 'from-green-500/20 to-emerald-500/20' },
-    { href: '/admin/pricing', label: '积分定价', desc: '配置各服务消耗积分', icon: Coins, color: 'from-pink-500/20 to-rose-500/20' },
-    { href: '/admin/image-channels', label: '图像渠道', desc: '管理图像生成渠道和模型', icon: Settings, color: 'from-cyan-500/20 to-teal-500/20' },
+  // Moderator 只能看到有限的快捷入口
+  const allQuickLinks = [
+    { href: '/admin/users', label: '用户管理', desc: '管理用户账号和权限', icon: Users, color: 'from-blue-500/20 to-cyan-500/20', roles: ['admin', 'moderator'] },
+    { href: '/admin/stats', label: '数据统计', desc: '查看生成量和用户增长', icon: BarChart3, color: 'from-violet-500/20 to-purple-500/20', roles: ['admin', 'moderator'] },
+    { href: '/admin/redemption', label: '卡密管理', desc: '生成和管理积分卡密', icon: Ticket, color: 'from-green-500/20 to-emerald-500/20', roles: ['admin', 'moderator'] },
+    { href: '/admin/generations', label: '生成记录', desc: '管理所有生成历史', icon: History, color: 'from-orange-500/20 to-amber-500/20', roles: ['admin'] },
+    { href: '/admin/pricing', label: '积分定价', desc: '配置各服务消耗积分', icon: Coins, color: 'from-pink-500/20 to-rose-500/20', roles: ['admin'] },
+    { href: '/admin/image-channels', label: '图像渠道', desc: '管理图像生成渠道和模型', icon: Settings, color: 'from-cyan-500/20 to-teal-500/20', roles: ['admin'] },
   ];
+
+  const userRole = session?.user?.role || 'user';
+  const quickLinks = allQuickLinks.filter(item => item.roles.includes(userRole));
 
   return (
     <div className="space-y-8">
@@ -141,63 +149,65 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* Recent Users */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-white">最近注册</h2>
-          <Link href="/admin/users" className="text-sm text-white/50 hover:text-white/80 transition-colors">
-            查看全部 →
-          </Link>
-        </div>
-        <div className="bg-white/[0.03] backdrop-blur-sm border border-white/10 rounded-2xl overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-white/10">
-                  <th className="text-left text-sm font-medium text-white/50 px-5 py-4">用户</th>
-                  <th className="text-left text-sm font-medium text-white/50 px-5 py-4">邮箱</th>
-                  <th className="text-right text-sm font-medium text-white/50 px-5 py-4">积分</th>
-                  <th className="text-right text-sm font-medium text-white/50 px-5 py-4">状态</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.slice(0, 5).map((user) => (
-                  <tr key={user.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02] transition-colors">
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center text-white text-sm font-medium">
-                          {user.name.charAt(0).toUpperCase()}
-                        </div>
-                        <span className="text-white font-medium">{user.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-5 py-4 text-white/60">{user.email}</td>
-                    <td className="px-5 py-4 text-right">
-                      <span className="text-white font-medium">{formatBalance(user.balance)}</span>
-                    </td>
-                    <td className="px-5 py-4 text-right">
-                      {user.disabled ? (
-                        <span className="px-2.5 py-1 text-xs rounded-full bg-red-500/20 text-red-400 border border-red-500/30">
-                          已禁用
-                        </span>
-                      ) : (
-                        <span className="px-2.5 py-1 text-xs rounded-full bg-green-500/20 text-green-400 border border-green-500/30">
-                          正常
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {/* Recent Users - 仅管理员可见 */}
+      {isAdmin && (
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-white">最近注册</h2>
+            <Link href="/admin/users" className="text-sm text-white/50 hover:text-white/80 transition-colors">
+              查看全部 →
+            </Link>
           </div>
-          {users.length === 0 && (
-            <div className="text-center py-12 text-white/40">
-              暂无用户数据
+          <div className="bg-white/[0.03] backdrop-blur-sm border border-white/10 rounded-2xl overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-white/10">
+                    <th className="text-left text-sm font-medium text-white/50 px-5 py-4">用户</th>
+                    <th className="text-left text-sm font-medium text-white/50 px-5 py-4">邮箱</th>
+                    <th className="text-right text-sm font-medium text-white/50 px-5 py-4">积分</th>
+                    <th className="text-right text-sm font-medium text-white/50 px-5 py-4">状态</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.slice(0, 5).map((user) => (
+                    <tr key={user.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02] transition-colors">
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center text-white text-sm font-medium">
+                            {user.name.charAt(0).toUpperCase()}
+                          </div>
+                          <span className="text-white font-medium">{user.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4 text-white/60">{user.email}</td>
+                      <td className="px-5 py-4 text-right">
+                        <span className="text-white font-medium">{formatBalance(user.balance)}</span>
+                      </td>
+                      <td className="px-5 py-4 text-right">
+                        {user.disabled ? (
+                          <span className="px-2.5 py-1 text-xs rounded-full bg-red-500/20 text-red-400 border border-red-500/30">
+                            已禁用
+                          </span>
+                        ) : (
+                          <span className="px-2.5 py-1 text-xs rounded-full bg-green-500/20 text-green-400 border border-green-500/30">
+                            正常
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          )}
+            {users.length === 0 && (
+              <div className="text-center py-12 text-white/40">
+                暂无用户数据
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

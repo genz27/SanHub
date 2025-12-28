@@ -6,7 +6,7 @@ import { getStatsOverview } from '@/lib/db-codes';
 export async function GET(request: Request) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session || session.user.role !== 'admin') {
+    if (!session || (session.user.role !== 'admin' && session.user.role !== 'moderator')) {
       return NextResponse.json({ error: '无权限' }, { status: 403 });
     }
 

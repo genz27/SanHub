@@ -51,7 +51,7 @@ export default function StatsPage() {
         <select
           value={days}
           onChange={(e) => setDays(Number(e.target.value))}
-          className="px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:border-white/20"
+          className="px-4 py-2 bg-black border border-white/10 rounded-xl text-white focus:outline-none focus:border-white/20 [&>option]:bg-black [&>option]:text-white"
         >
           <option value={7}>最近 7 天</option>
           <option value={30}>最近 30 天</option>
@@ -70,43 +70,51 @@ export default function StatsPage() {
       {/* Generation Chart */}
       <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-6">
         <h2 className="text-lg font-semibold text-white mb-4">生成量趋势</h2>
-        <div className="h-48 flex items-end gap-1">
-          {stats.dailyStats.map((day, i) => (
-            <div key={day.date} className="flex-1 flex flex-col items-center gap-1">
-              <div 
-                className="w-full bg-gradient-to-t from-violet-500 to-fuchsia-500 rounded-t opacity-80 hover:opacity-100 transition-opacity"
-                style={{ height: `${(day.generations / maxGen) * 100}%`, minHeight: day.generations > 0 ? '4px' : '0' }}
-                title={`${day.date}: ${day.generations} 次生成`}
-              />
-              {i % Math.ceil(stats.dailyStats.length / 10) === 0 && (
-                <span className="text-[10px] text-white/30 rotate-45 origin-left whitespace-nowrap">
-                  {day.date.slice(5)}
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
+        {stats.dailyStats.length === 0 ? (
+          <div className="h-48 flex items-center justify-center text-white/40">暂无数据</div>
+        ) : (
+          <div className="h-48 flex items-end gap-1">
+            {stats.dailyStats.map((day, i) => (
+              <div key={day.date || i} className="flex-1 flex flex-col items-center gap-1">
+                <div 
+                  className="w-full bg-gradient-to-t from-violet-500 to-fuchsia-500 rounded-t opacity-80 hover:opacity-100 transition-opacity"
+                  style={{ height: `${(day.generations / maxGen) * 100}%`, minHeight: day.generations > 0 ? '4px' : '0' }}
+                  title={`${day.date}: ${day.generations} 次生成`}
+                />
+                {i % Math.ceil(stats.dailyStats.length / 7) === 0 && day.date && (
+                  <span className="text-[10px] text-white/40 whitespace-nowrap mt-2">
+                    {day.date.slice(5)}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* User Growth Chart */}
       <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-6">
         <h2 className="text-lg font-semibold text-white mb-4">用户增长</h2>
-        <div className="h-48 flex items-end gap-1">
-          {stats.dailyStats.map((day, i) => (
-            <div key={day.date} className="flex-1 flex flex-col items-center gap-1">
-              <div 
-                className="w-full bg-gradient-to-t from-blue-500 to-cyan-500 rounded-t opacity-80 hover:opacity-100 transition-opacity"
-                style={{ height: `${(day.users / maxUsers) * 100}%`, minHeight: day.users > 0 ? '4px' : '0' }}
-                title={`${day.date}: ${day.users} 新用户`}
-              />
-              {i % Math.ceil(stats.dailyStats.length / 10) === 0 && (
-                <span className="text-[10px] text-white/30 rotate-45 origin-left whitespace-nowrap">
-                  {day.date.slice(5)}
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
+        {stats.dailyStats.length === 0 ? (
+          <div className="h-48 flex items-center justify-center text-white/40">暂无数据</div>
+        ) : (
+          <div className="h-48 flex items-end gap-1">
+            {stats.dailyStats.map((day, i) => (
+              <div key={day.date || i} className="flex-1 flex flex-col items-center gap-1">
+                <div 
+                  className="w-full bg-gradient-to-t from-blue-500 to-cyan-500 rounded-t opacity-80 hover:opacity-100 transition-opacity"
+                  style={{ height: `${(day.users / maxUsers) * 100}%`, minHeight: day.users > 0 ? '4px' : '0' }}
+                  title={`${day.date}: ${day.users} 新用户`}
+                />
+                {i % Math.ceil(stats.dailyStats.length / 7) === 0 && day.date && (
+                  <span className="text-[10px] text-white/40 whitespace-nowrap mt-2">
+                    {day.date.slice(5)}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Daily Details Table */}

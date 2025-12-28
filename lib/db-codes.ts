@@ -467,8 +467,10 @@ export async function getStatsOverview(days = 30): Promise<StatsOverview> {
   const db = getAdapter();
   const dbType = process.env.DB_TYPE || 'sqlite';
 
-  const todayStart = new Date().setHours(0, 0, 0, 0);
-  const startDate = todayStart - (days - 1) * 24 * 60 * 60 * 1000;
+  // Use UTC for consistency
+  const now = new Date();
+  const todayUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const startDate = todayUTC - (days - 1) * 24 * 60 * 60 * 1000;
 
   // Total counts
   const [userRows] = await db.execute('SELECT COUNT(1) as count FROM users');
@@ -481,10 +483,10 @@ export async function getStatsOverview(days = 30): Promise<StatsOverview> {
   const totalPoints = Number((pointsRows as any[])[0]?.total || 0);
 
   // Today counts
-  const [todayUserRows] = await db.execute('SELECT COUNT(1) as count FROM users WHERE created_at >= ?', [todayStart]);
+  const [todayUserRows] = await db.execute('SELECT COUNT(1) as count FROM users WHERE created_at >= ?', [todayUTC]);
   const todayUsers = Number((todayUserRows as any[])[0]?.count || 0);
 
-  const [todayGenRows] = await db.execute('SELECT COUNT(1) as count FROM generations WHERE created_at >= ?', [todayStart]);
+  const [todayGenRows] = await db.execute('SELECT COUNT(1) as count FROM generations WHERE created_at >= ?', [todayUTC]);
   const todayGenerations = Number((todayGenRows as any[])[0]?.count || 0);
 
   // Daily stats - use aggregation query instead of per-day queries
@@ -498,10 +500,10 @@ export async function getStatsOverview(days = 30): Promise<StatsOverview> {
     dayMap.set(dateStr, { date: dateStr, generations: 0, users: 0, points: 0 });
   }
 
-  // Aggregate generations by day
+  // Aggregate generations by day - use strftime for SQLite to ensure consistent format
   const dateExpr = dbType === 'mysql' 
     ? "DATE(FROM_UNIXTIME(created_at / 1000))"
-    : "DATE(created_at / 1000, 'unixepoch')";
+    : "strftime('%Y-%m-%d', created_at / 1000, 'unixepoch')";
   
   const [genByDay] = await db.execute(
     `SELECT ${dateExpr} as day, COUNT(1) as count, SUM(cost) as points 
@@ -511,7 +513,8 @@ export async function getStatsOverview(days = 30): Promise<StatsOverview> {
     [startDate]
   );
   for (const row of genByDay as any[]) {
-    const stat = dayMap.get(row.day);
+    const dayKey = String(row.day);
+    const stat = dayMap.get(dayKey);
     if (stat) {
       stat.generations = Number(row.count || 0);
       stat.points = Number(row.points || 0);
@@ -527,7 +530,8 @@ export async function getStatsOverview(days = 30): Promise<StatsOverview> {
     [startDate]
   );
   for (const row of usersByDay as any[]) {
-    const stat = dayMap.get(row.day);
+    const dayKey = String(row.day);
+    const stat = dayMap.get(dayKey);
     if (stat) {
       stat.users = Number(row.count || 0);
     }
