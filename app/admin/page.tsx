@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Users, Coins, Loader2, Settings, ChevronRight, TrendingUp, Activity, Zap } from 'lucide-react';
+import { Users, Coins, Loader2, Settings, ChevronRight, TrendingUp, Activity, Zap, BarChart3, Ticket, History } from 'lucide-react';
 import type { SafeUser } from '@/types';
 import { formatBalance } from '@/lib/utils';
 
@@ -80,8 +80,11 @@ export default function AdminPage() {
 
   const quickLinks = [
     { href: '/admin/users', label: '用户管理', desc: '管理用户账号和权限', icon: Users, color: 'from-blue-500/20 to-cyan-500/20' },
-    { href: '/admin/pricing', label: '积分定价', desc: '配置各服务消耗积分', icon: Coins, color: 'from-green-500/20 to-emerald-500/20' },
-    { href: '/admin/image-channels', label: '图像渠道', desc: '管理图像生成渠道和模型', icon: Settings, color: 'from-violet-500/20 to-purple-500/20' },
+    { href: '/admin/stats', label: '数据统计', desc: '查看生成量和用户增长', icon: BarChart3, color: 'from-violet-500/20 to-purple-500/20' },
+    { href: '/admin/generations', label: '生成记录', desc: '管理所有生成历史', icon: History, color: 'from-orange-500/20 to-amber-500/20' },
+    { href: '/admin/redemption', label: '卡密管理', desc: '生成和管理积分卡密', icon: Ticket, color: 'from-green-500/20 to-emerald-500/20' },
+    { href: '/admin/pricing', label: '积分定价', desc: '配置各服务消耗积分', icon: Coins, color: 'from-pink-500/20 to-rose-500/20' },
+    { href: '/admin/image-channels', label: '图像渠道', desc: '管理图像生成渠道和模型', icon: Settings, color: 'from-cyan-500/20 to-teal-500/20' },
   ];
 
   return (
@@ -115,7 +118,7 @@ export default function AdminPage() {
       {/* Quick Links */}
       <div>
         <h2 className="text-lg font-semibold text-white mb-4">快捷入口</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {quickLinks.map((item) => (
             <Link key={item.href} href={item.href}>
               <div className="bg-white/[0.03] backdrop-blur-sm border border-white/10 rounded-2xl p-5 hover:border-white/20 hover:bg-white/[0.05] transition-all duration-300 group h-full">

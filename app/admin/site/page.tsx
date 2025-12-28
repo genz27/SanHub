@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Globe, Loader2, Save, Upload } from 'lucide-react';
+import { Globe, Loader2, Save, Upload, UserPlus, Coins } from 'lucide-react';
 import { toast } from '@/components/ui/toaster';
 import type { SystemConfig } from '@/types';
 
@@ -40,6 +40,8 @@ export default function SiteConfigPage() {
           siteConfig: config.siteConfig,
           picuiApiKey: config.picuiApiKey,
           picuiBaseUrl: config.picuiBaseUrl,
+          registerEnabled: config.registerEnabled,
+          defaultBalance: config.defaultBalance,
         }),
       });
 
@@ -233,6 +235,58 @@ export default function SiteConfigPage() {
             <p className="text-xs text-white/30">
               从 <a href="https://picui.cn" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">picui.cn</a> 获取 API Key
             </p>
+          </div>
+        </div>
+      </div>
+
+      {/* 注册设置 */}
+      <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+        <div className="p-4 border-b border-white/10 flex items-center gap-3">
+          <div className="w-8 h-8 bg-violet-500/20 rounded-lg flex items-center justify-center">
+            <UserPlus className="w-4 h-4 text-violet-400" />
+          </div>
+          <div>
+            <h2 className="font-medium text-white">注册设置</h2>
+            <p className="text-xs text-white/40">控制用户注册和初始积分</p>
+          </div>
+        </div>
+
+        <div className="p-4 space-y-4">
+          {/* 开放注册开关 */}
+          <div className="flex items-center justify-between">
+            <div>
+              <label className="text-sm text-white">开放注册</label>
+              <p className="text-xs text-white/30 mt-1">关闭后新用户将无法注册</p>
+            </div>
+            <button
+              onClick={() => setConfig({ ...config, registerEnabled: !config.registerEnabled })}
+              className={`relative w-12 h-6 rounded-full transition-colors ${
+                config.registerEnabled ? 'bg-green-500' : 'bg-white/20'
+              }`}
+            >
+              <div
+                className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
+                  config.registerEnabled ? 'left-7' : 'left-1'
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* 注册送积分 */}
+          <div className="space-y-2">
+            <label className="text-sm text-white/50">注册送积分</label>
+            <div className="flex items-center gap-2">
+              <Coins className="w-4 h-4 text-yellow-400" />
+              <input
+                type="number"
+                min="0"
+                value={config.defaultBalance}
+                onChange={(e) => setConfig({ ...config, defaultBalance: Math.max(0, parseInt(e.target.value) || 0) })}
+                className="w-32 px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+              />
+              <span className="text-white/50 text-sm">积分</span>
+            </div>
+            <p className="text-xs text-white/30">新用户注册时自动获得的积分数量</p>
           </div>
         </div>
       </div>

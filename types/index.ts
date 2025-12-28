@@ -419,6 +419,58 @@ export interface CharacterCard {
 }
 
 // ========================================
+// 邀请码系统
+// ========================================
+
+export interface InviteCode {
+  id: string;
+  code: string;
+  creatorId: string;
+  usedBy?: string;
+  usedAt?: number;
+  bonusPoints: number;    // 被邀请人获得的额外积分
+  creatorBonus: number;   // 邀请人获得的积分奖励
+  expiresAt?: number;
+  createdAt: number;
+}
+
+// ========================================
+// 卡密系统
+// ========================================
+
+export interface RedemptionCode {
+  id: string;
+  code: string;
+  points: number;
+  usedBy?: string;
+  usedAt?: number;
+  expiresAt?: number;
+  batchId?: string;
+  note?: string;
+  createdAt: number;
+}
+
+// ========================================
+// 数据统计
+// ========================================
+
+export interface DailyStats {
+  date: string;           // YYYY-MM-DD
+  generations: number;
+  users: number;
+  points: number;
+}
+
+export interface StatsOverview {
+  totalUsers: number;
+  totalGenerations: number;
+  totalPoints: number;
+  todayUsers: number;
+  todayGenerations: number;
+  dailyStats: DailyStats[];
+}
+
+// ========================================
 // Workspace types
 // ========================================
 
