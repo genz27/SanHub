@@ -500,9 +500,9 @@ export async function getStatsOverview(days = 30): Promise<StatsOverview> {
     dayMap.set(dateStr, { date: dateStr, generations: 0, users: 0, points: 0 });
   }
 
-  // Aggregate generations by day - use strftime for SQLite to ensure consistent format
+  // Aggregate generations by day - ensure consistent YYYY-MM-DD string format
   const dateExpr = dbType === 'mysql' 
-    ? "DATE(FROM_UNIXTIME(created_at / 1000))"
+    ? "DATE_FORMAT(FROM_UNIXTIME(created_at / 1000), '%Y-%m-%d')"
     : "strftime('%Y-%m-%d', created_at / 1000, 'unixepoch')";
   
   const [genByDay] = await db.execute(
@@ -513,7 +513,13 @@ export async function getStatsOverview(days = 30): Promise<StatsOverview> {
     [startDate]
   );
   for (const row of genByDay as any[]) {
-    const dayKey = String(row.day);
+    // Handle both string and Date object formats
+    let dayKey: string;
+    if (row.day instanceof Date) {
+      dayKey = row.day.toISOString().split('T')[0];
+    } else {
+      dayKey = String(row.day);
+    }
     const stat = dayMap.get(dayKey);
     if (stat) {
       stat.generations = Number(row.count || 0);
@@ -530,7 +536,13 @@ export async function getStatsOverview(days = 30): Promise<StatsOverview> {
     [startDate]
   );
   for (const row of usersByDay as any[]) {
-    const dayKey = String(row.day);
+    // Handle both string and Date object formats
+    let dayKey: string;
+    if (row.day instanceof Date) {
+      dayKey = row.day.toISOString().split('T')[0];
+    } else {
+      dayKey = String(row.day);
+    }
     const stat = dayMap.get(dayKey);
     if (stat) {
       stat.users = Number(row.count || 0);
