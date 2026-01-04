@@ -259,8 +259,8 @@ export async function generateVideo(
 
   const rawData = await response.json() as any;
 
-  // 版本标记 v3 - 支持 NewAPI 格式
-  console.log('[Sora API v3] 原始响应:', JSON.stringify(rawData));
+  // 版本标记 v4 - 改进 NewAPI 格式解析
+  console.log('[Sora API v4] 原始响应:', JSON.stringify(rawData));
 
   // 处理 NewAPI 包装格式：{code: "...", message: "{json string}", data: null}
   let data = rawData;
@@ -269,15 +269,33 @@ export async function generateVideo(
       // 尝试解析 message 字段中的 JSON
       const parsed = JSON.parse(rawData.message);
       if (parsed?.id) {
-        console.log('[Sora API v3] 检测到 NewAPI 格式，解析 message 字段');
+        console.log('[Sora API v4] 检测到 NewAPI 格式，解析 message 字段成功');
         data = parsed;
       }
-    } catch {
-      // message 不是有效 JSON，保持原样
+    } catch (parseError) {
+      console.log('[Sora API v4] message JSON 解析失败:', parseError);
+      // 尝试修复常见的 JSON 问题（如未转义的特殊字符）
+      try {
+        // 提取关键字段
+        const idMatch = rawData.message.match(/"id"\s*:\s*"([^"]+)"/);
+        const statusMatch = rawData.message.match(/"status"\s*:\s*"([^"]+)"/);
+        const urlMatch = rawData.message.match(/"url"\s*:\s*"(https?:\/\/[^"]+)"/);
+        
+        if (idMatch) {
+          console.log('[Sora API v4] 使用正则提取关键字段');
+          data = {
+            id: idMatch[1],
+            status: statusMatch ? statusMatch[1] : undefined,
+            url: urlMatch ? urlMatch[1] : undefined,
+          };
+        }
+      } catch {
+        // 正则提取也失败，保持原样
+      }
     }
   }
 
-  console.log('[Sora API v3] 解析后数据:', {
+  console.log('[Sora API v4] 解析后数据:', {
     hasId: !!data?.id,
     taskStatus: data?.status,
     taskId: data?.id,
@@ -287,7 +305,7 @@ export async function generateVideo(
   // 检查是否是错误响应（NewAPI 格式的真正错误）
   if (!response.ok && !data?.id) {
     const errorMessage = data?.error?.message || rawData?.message || data?.error || '视频生成失败';
-    console.error('[Sora API v3] 视频生成错误:', errorMessage);
+    console.error('[Sora API v4] 视频生成错误:', errorMessage);
     throw new Error(errorMessage);
   }
 
