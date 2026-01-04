@@ -80,13 +80,14 @@ export interface VideoTaskResponse {
   object: string;
   model: string;
   created_at: number;
-  status: 'processing' | 'succeeded' | 'failed';
+  status: 'processing' | 'succeeded' | 'failed' | 'completed';
   progress: number;
   expires_at?: number;
   size?: string;
   seconds?: string;
   quality?: string;
   url?: string;
+  output?: { url?: string };
   permalink?: string;
   revised_prompt?: string;
   remixed_from_video_id?: string | null;
@@ -269,24 +270,28 @@ export async function generateVideo(
       // 尝试解析 message 字段中的 JSON
       const parsed = JSON.parse(rawData.message);
       if (parsed?.id) {
-        console.log('[Sora API v4] 检测到 NewAPI 格式，解析 message 字段成功');
+        console.log('[Sora API v5] 检测到 NewAPI 格式，解析 message 字段成功');
+        // 处理 output.url 格式
+        if (parsed.output?.url && !parsed.url) {
+          parsed.url = parsed.output.url;
+        }
         data = parsed;
       }
     } catch (parseError) {
-      console.log('[Sora API v4] message JSON 解析失败:', parseError);
-      // 尝试修复常见的 JSON 问题（如未转义的特殊字符）
+      console.log('[Sora API v5] message JSON 解析失败:', parseError);
+      // 尝试用正则提取关键字段
       try {
-        // 提取关键字段
         const idMatch = rawData.message.match(/"id"\s*:\s*"([^"]+)"/);
         const statusMatch = rawData.message.match(/"status"\s*:\s*"([^"]+)"/);
-        const urlMatch = rawData.message.match(/"url"\s*:\s*"(https?:\/\/[^"]+)"/);
+        // 匹配 "url" 或 "output":{"url" 格式
+        const urlMatch = rawData.message.match(/"url"\s*:\s*"(https?:\/\/[^"\\]*(?:\\.[^"\\]*)*)"/);
         
         if (idMatch) {
-          console.log('[Sora API v4] 使用正则提取关键字段');
+          console.log('[Sora API v5] 使用正则提取关键字段');
           data = {
             id: idMatch[1],
             status: statusMatch ? statusMatch[1] : undefined,
-            url: urlMatch ? urlMatch[1] : undefined,
+            url: urlMatch ? urlMatch[1].replace(/\\"/g, '"') : undefined,
           };
         }
       } catch {
@@ -295,17 +300,18 @@ export async function generateVideo(
     }
   }
 
-  console.log('[Sora API v4] 解析后数据:', {
+  console.log('[Sora API v5] 解析后数据:', {
     hasId: !!data?.id,
     taskStatus: data?.status,
     taskId: data?.id,
     hasUrl: !!data?.url,
+    url: data?.url?.substring(0, 50),
   });
 
   // 检查是否是错误响应（NewAPI 格式的真正错误）
   if (!response.ok && !data?.id) {
     const errorMessage = data?.error?.message || rawData?.message || data?.error || '视频生成失败';
-    console.error('[Sora API v4] 视频生成错误:', errorMessage);
+    console.error('[Sora API v5] 视频生成错误:', errorMessage);
     throw new Error(errorMessage);
   }
 
@@ -313,11 +319,12 @@ export async function generateVideo(
   if (data?.id && (data?.status || data?.url)) {
     const taskResponse = data as VideoTaskResponse;
     
-    // 如果已经成功（有 url 或 status === 'succeeded'）
-    if (taskResponse.url || taskResponse.status === 'succeeded') {
+    // 如果已经成功（有 url 或 status === 'succeeded' 或 'completed'）
+    const isCompleted = taskResponse.status === 'succeeded' || taskResponse.status === 'completed';
+    if (taskResponse.url || isCompleted) {
       if (taskResponse.url) {
         const videoUrl = parseVideoUrl(taskResponse.url);
-        console.log('[Sora API] 视频生成成功（同步模式）:', videoUrl);
+        console.log('[Sora API v5] 视频生成成功:', videoUrl?.substring(0, 80));
         return {
           id: taskResponse.id,
           object: taskResponse.object || 'video',
@@ -330,6 +337,10 @@ export async function generateVideo(
           }],
         };
       }
+      // 状态是完成但没有 URL，尝试轮询获取
+      if (isCompleted && !taskResponse.url) {
+        console.log('[Sora API v5] 状态已完成但无 URL，尝试轮询获取...');
+      }
     }
     
     // 如果失败，抛出错误
@@ -337,9 +348,9 @@ export async function generateVideo(
       throw new Error(taskResponse.error?.message || '视频生成失败');
     }
     
-    // 如果还在处理中，轮询等待
+    // 如果还在处理中或需要获取 URL，轮询等待
     if (taskResponse.status === 'processing' || (taskResponse.id && !taskResponse.url)) {
-      console.log('[Sora API] 视频正在处理中，开始轮询... taskId:', taskResponse.id);
+      console.log('[Sora API v5] 开始轮询... taskId:', taskResponse.id);
       const finalStatus = await pollVideoCompletion(taskResponse.id, onProgress);
       
       if (!finalStatus.url) {
