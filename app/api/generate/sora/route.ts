@@ -41,8 +41,21 @@ async function processGenerationTask(
       console.error(`[Task ${generationId}] 更新状态失败:`, err);
     });
 
+    // 进度更新回调（节流：每5%更新一次）
+    let lastProgress = 0;
+    const onProgress = async (progress: number) => {
+      if (progress - lastProgress >= 5 || progress >= 100) {
+        lastProgress = progress;
+        await updateGeneration(generationId, { 
+          params: { model: body.model, progress } 
+        }).catch(err => {
+          console.error(`[Task ${generationId}] 更新进度失败:`, err);
+        });
+      }
+    };
+
     // 调用 Sora API 生成内容
-    const result = await generateWithSora(body);
+    const result = await generateWithSora(body, onProgress);
 
     console.log(`[Task ${generationId}] 生成成功:`, result.url);
 

@@ -58,7 +58,8 @@ function parseModelParams(model: string): {
 
 // 生成内容 (Non-Streaming)
 export async function generateWithSora(
-  request: SoraGenerateRequest
+  request: SoraGenerateRequest,
+  onProgress?: (progress: number) => void
 ): Promise<GenerateResult> {
   const config = await getSystemConfig();
 
@@ -97,8 +98,8 @@ export async function generateWithSora(
     videoRequest.remix_target_id = request.remix_target_id;
   }
 
-  // 调用非流式 API
-  const result = await generateVideo(videoRequest);
+  // 调用非流式 API，传递进度回调
+  const result = await generateVideo(videoRequest, onProgress ? (progress) => onProgress(progress) : undefined);
 
   if (!result.data || result.data.length === 0 || !result.data[0].url) {
     throw new Error('视频生成失败：未返回有效的视频 URL');

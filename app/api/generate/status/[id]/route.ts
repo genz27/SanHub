@@ -71,6 +71,7 @@ export async function GET(
         type: generation.type,
         url: convertToMediaUrl(generation.resultUrl, generation.id, generation.type),
         cost: generation.cost,
+        progress: generationParams?.progress ?? 0,
         errorMessage: generation.errorMessage,
         params: generationParams,
         createdAt: generation.createdAt,

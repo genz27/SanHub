@@ -14,7 +14,7 @@ export interface Task {
   model?: string;
   type?: string;
   status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
-  progress?: string;
+  progress?: number; // 0-100
   errorMessage?: string;
   result?: Generation;
   createdAt: number;
@@ -107,6 +107,18 @@ export function ResultGallery({ generations, tasks = [], onRemoveTask }: ResultG
                     <p className="text-xs text-white/60">
                       {task.status === 'processing' ? '生成中...' : '排队中...'}
                     </p>
+                    {/* 进度显示 */}
+                    {typeof task.progress === 'number' && task.progress > 0 && (
+                      <div className="mt-2 w-24">
+                        <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-300"
+                            style={{ width: `${task.progress}%` }}
+                          />
+                        </div>
+                        <p className="text-[10px] text-white/50 text-center mt-1">{task.progress}%</p>
+                      </div>
+                    )}
                   </div>
                   {/* 任务类型标签 */}
                   <div className="absolute top-2 left-2 px-2 py-1 bg-blue-500/50 backdrop-blur-sm rounded-md flex items-center gap-1">

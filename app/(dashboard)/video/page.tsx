@@ -276,7 +276,11 @@ export default function VideoGenerationPage() {
             setTasks((prev) =>
               prev.map((t) =>
                 t.id === taskId
-                  ? { ...t, status: status as 'pending' | 'processing' }
+                  ? { 
+                      ...t, 
+                      status: status as 'pending' | 'processing',
+                      progress: typeof data.data.progress === 'number' ? data.data.progress : t.progress,
+                    }
                   : t
               )
             );
