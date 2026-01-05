@@ -5,6 +5,23 @@ import { fetch as undiciFetch, Agent, FormData } from 'undici';
 // Sora OpenAI-Style Non-Streaming API
 // ========================================
 
+// 从响应数据中提取视频 URL（支持多种格式）
+function extractVideoUrl(data: any): string | undefined {
+  // 格式1: data.url (字符串或 JSON 字符串数组)
+  if (data?.url) {
+    return parseVideoUrl(data.url);
+  }
+  // 格式2: data.output.url
+  if (data?.output?.url) {
+    return parseVideoUrl(data.output.url);
+  }
+  // 格式3: data.data[0].url (旧格式)
+  if (data?.data?.[0]?.url) {
+    return parseVideoUrl(data.data[0].url);
+  }
+  return undefined;
+}
+
 // 解析视频 URL（处理字符串、JSON 字符串数组、数组等格式）
 function parseVideoUrl(url: string | string[] | unknown): string {
   if (typeof url === 'string') {
@@ -253,7 +270,12 @@ async function pollVideoCompletion(
       onProgress(status.progress, status.status);
     }
     
-    console.log(`[Sora API v5] 视频状态: ${status.status}, 进度: ${status.progress}%, hasUrl: ${!!status.url}`);
+    console.log(`[Sora API v5] 视频状态: ${status.status}, 进度: ${status.progress}%, hasUrl: ${!!status.url || !!status.output?.url}`);
+    
+    // 统一处理 output.url 格式
+    if (status.output?.url && !status.url) {
+      status.url = status.output.url;
+    }
     
     // 成功状态
     if (status.status === 'succeeded' || status.status === 'completed') {
@@ -397,9 +419,14 @@ export async function generateVideo(
     hasId: !!data?.id,
     taskStatus: data?.status,
     taskId: data?.id,
-    hasUrl: !!data?.url,
-    url: data?.url?.substring(0, 80),
+    hasUrl: !!data?.url || !!data?.output?.url,
+    url: (data?.url || data?.output?.url)?.substring(0, 80),
   });
+
+  // 统一处理 output.url 格式
+  if (data?.output?.url && !data?.url) {
+    data.url = data.output.url;
+  }
 
   // 检查是否是错误响应（NewAPI 格式的真正错误）
   if (!response.ok && !data?.id) {
