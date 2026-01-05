@@ -5,23 +5,6 @@ import { fetch as undiciFetch, Agent, FormData } from 'undici';
 // Sora OpenAI-Style Non-Streaming API
 // ========================================
 
-// 从响应数据中提取视频 URL（支持多种格式）
-function extractVideoUrl(data: any): string | undefined {
-  // 格式1: data.url (字符串或 JSON 字符串数组)
-  if (data?.url) {
-    return parseVideoUrl(data.url);
-  }
-  // 格式2: data.output.url
-  if (data?.output?.url) {
-    return parseVideoUrl(data.output.url);
-  }
-  // 格式3: data.data[0].url (旧格式)
-  if (data?.data?.[0]?.url) {
-    return parseVideoUrl(data.data[0].url);
-  }
-  return undefined;
-}
-
 // 解析视频 URL（处理字符串、JSON 字符串数组、数组等格式）
 function parseVideoUrl(url: string | string[] | unknown): string {
   if (typeof url === 'string') {
@@ -88,18 +71,51 @@ export interface VideoGenerationRequest {
   style_id?: string;
   input_image?: string; // Base64 encoded image
   remix_target_id?: string;
+  metadata?: string; // JSON string for extended params
   async_mode?: boolean;
 }
 
-// New API response format
+// Video Remix request
+export interface VideoRemixRequest {
+  prompt: string;
+  model?: string;
+  seconds?: '10' | '15' | '25';
+  size?: string;
+  style_id?: string;
+  async_mode?: boolean;
+}
+
+// Helper: check if status indicates completion
+function isCompletedStatus(status: VideoTaskStatus): boolean {
+  return status === 'completed' || status === 'succeeded';
+}
+
+// Helper: check if status indicates in progress
+function isInProgressStatus(status: VideoTaskStatus): boolean {
+  return status === 'queued' || status === 'pending' || status === 'in_progress' || status === 'processing';
+}
+
+// Video task status (new-api-main compatible)
+export type VideoTaskStatus = 
+  | 'queued'      // 排队中
+  | 'pending'     // 等待中
+  | 'in_progress' // 处理中 (new-api-main)
+  | 'processing'  // 处理中 (legacy)
+  | 'completed'   // 成功 (new-api-main)
+  | 'succeeded'   // 成功 (legacy)
+  | 'failed'      // 失败
+  | 'cancelled';  // 已取消
+
+// New API response format (new-api-main compatible)
 export interface VideoTaskResponse {
   id: string;
   object: string;
   model: string;
   created_at: number;
-  status: 'processing' | 'succeeded' | 'failed' | 'completed';
-  progress: number;
+  completed_at?: number;
   expires_at?: number;
+  status: VideoTaskStatus;
+  progress: number;
   size?: string;
   seconds?: string;
   quality?: string;
@@ -108,9 +124,11 @@ export interface VideoTaskResponse {
   permalink?: string;
   revised_prompt?: string;
   remixed_from_video_id?: string | null;
+  metadata?: Record<string, unknown>;
   error?: {
     message: string;
-    type: string;
+    type?: string;
+    code?: string;
   } | null;
 }
 
@@ -277,8 +295,8 @@ async function pollVideoCompletion(
       status.url = status.output.url;
     }
     
-    // 成功状态
-    if (status.status === 'succeeded' || status.status === 'completed') {
+    // 成功状态 (兼容 new-api-main)
+    if (isCompletedStatus(status.status)) {
       // 如果没有 URL，尝试通过 /content 端点获取
       if (!status.url) {
         try {
@@ -439,8 +457,8 @@ export async function generateVideo(
   if (data?.id && (data?.status || data?.url)) {
     const taskResponse = data as VideoTaskResponse;
     
-    // 如果已经成功（有 url 或 status === 'succeeded' 或 'completed'）
-    const isCompleted = taskResponse.status === 'succeeded' || taskResponse.status === 'completed';
+    // 如果已经成功（有 url 或状态为完成）
+    const isCompleted = isCompletedStatus(taskResponse.status);
     if (taskResponse.url || isCompleted) {
       if (taskResponse.url) {
         const videoUrl = parseVideoUrl(taskResponse.url);
@@ -469,7 +487,7 @@ export async function generateVideo(
     }
     
     // 如果还在处理中或需要获取 URL，轮询等待
-    if (taskResponse.status === 'processing' || (taskResponse.id && !taskResponse.url)) {
+    if (isInProgressStatus(taskResponse.status) || (taskResponse.id && !taskResponse.url)) {
       console.log('[Sora API v5] 开始轮询... taskId:', taskResponse.id);
       const finalStatus = await pollVideoCompletion(taskResponse.id, onProgress);
       
@@ -545,6 +563,150 @@ export async function createVideoTask(request: VideoGenerationRequest): Promise<
 
   if (!response.ok) {
     throw new Error(data?.error?.message || '创建视频任务失败');
+  }
+
+  return data as VideoTaskResponse;
+}
+
+// ========================================
+// Video Remix API (new-api compatible)
+// POST /v1/videos/{video_id}/remix
+// ========================================
+
+export async function remixVideo(
+  videoId: string,
+  request: VideoRemixRequest,
+  onProgress?: (progress: number, status: string) => void
+): Promise<VideoGenerationResponse> {
+  const { apiKey, baseUrl } = await getSoraConfig();
+
+  if (!apiKey) {
+    throw new Error('Sora API Key 未配置');
+  }
+
+  if (!baseUrl) {
+    throw new Error('Sora Base URL 未配置');
+  }
+
+  const normalizedBaseUrl = baseUrl.replace(/\/$/, '');
+  const apiUrl = `${normalizedBaseUrl}/v1/videos/${encodeURIComponent(videoId)}/remix`;
+
+  console.log('[Sora API] Remix 请求:', {
+    apiUrl,
+    videoId,
+    prompt: request.prompt?.substring(0, 50),
+    model: request.model,
+  });
+
+  const response = await undiciFetch(apiUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      prompt: request.prompt,
+      model: request.model,
+      seconds: request.seconds,
+      size: request.size,
+      style_id: request.style_id,
+      async_mode: request.async_mode ?? true,
+    }),
+    dispatcher: soraAgent,
+  });
+
+  const rawData = await response.json() as any;
+  console.log('[Sora API] Remix 响应:', JSON.stringify(rawData).substring(0, 200));
+
+  if (!response.ok && !rawData?.id) {
+    const errorMessage = rawData?.error?.message || rawData?.message || 'Remix 失败';
+    throw new Error(errorMessage);
+  }
+
+  const taskResponse = rawData as VideoTaskResponse;
+
+  // 如果已完成且有 URL
+  if (isCompletedStatus(taskResponse.status) && taskResponse.url) {
+    const videoUrl = parseVideoUrl(taskResponse.url);
+    return {
+      id: taskResponse.id,
+      object: taskResponse.object || 'video',
+      created: taskResponse.created_at || Date.now(),
+      model: taskResponse.model || '',
+      data: [{
+        url: videoUrl,
+        permalink: taskResponse.permalink,
+        revised_prompt: taskResponse.revised_prompt,
+      }],
+    };
+  }
+
+  // 如果失败
+  if (taskResponse.status === 'failed' || taskResponse.status === 'cancelled') {
+    throw new Error(taskResponse.error?.message || 'Remix 失败');
+  }
+
+  // 异步模式或需要轮询
+  if (isInProgressStatus(taskResponse.status) || (taskResponse.id && !taskResponse.url)) {
+    console.log('[Sora API] Remix 开始轮询... taskId:', taskResponse.id);
+    const finalStatus = await pollVideoCompletion(taskResponse.id, onProgress);
+
+    if (!finalStatus.url) {
+      throw new Error('Remix 完成但未返回 URL');
+    }
+
+    const videoUrl = parseVideoUrl(finalStatus.url);
+    return {
+      id: finalStatus.id,
+      object: finalStatus.object || 'video',
+      created: finalStatus.created_at || Date.now(),
+      model: finalStatus.model || '',
+      data: [{
+        url: videoUrl,
+        permalink: finalStatus.permalink,
+        revised_prompt: finalStatus.revised_prompt,
+      }],
+    };
+  }
+
+  throw new Error('Remix 返回了未知格式的响应');
+}
+
+// 异步创建 Remix 任务（立即返回任务ID）
+export async function createRemixTask(
+  videoId: string,
+  request: VideoRemixRequest
+): Promise<VideoTaskResponse> {
+  const { apiKey, baseUrl } = await getSoraConfig();
+
+  if (!apiKey) {
+    throw new Error('Sora API Key 未配置');
+  }
+
+  const normalizedBaseUrl = baseUrl.replace(/\/$/, '');
+  const apiUrl = `${normalizedBaseUrl}/v1/videos/${encodeURIComponent(videoId)}/remix`;
+
+  const response = await undiciFetch(apiUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      prompt: request.prompt,
+      model: request.model,
+      seconds: request.seconds,
+      size: request.size,
+      style_id: request.style_id,
+      async_mode: true,
+    }),
+    dispatcher: soraAgent,
+  });
+
+  const data = await response.json() as any;
+
+  if (!response.ok) {
+    throw new Error(data?.error?.message || '创建 Remix 任务失败');
   }
 
   return data as VideoTaskResponse;
