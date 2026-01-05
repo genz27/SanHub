@@ -3,11 +3,17 @@
 import { SessionProvider } from 'next-auth/react';
 import { Toaster } from '@/components/ui/toaster';
 import { SiteConfigProvider } from '@/components/providers/site-config-provider';
+import type { SiteConfig } from '@/types';
 
-export function Providers({ children }: { children: React.ReactNode }) {
+interface ProvidersProps {
+  children: React.ReactNode;
+  initialSiteConfig?: SiteConfig;
+}
+
+export function Providers({ children, initialSiteConfig }: ProvidersProps) {
   return (
     <SessionProvider>
-      <SiteConfigProvider>
+      <SiteConfigProvider initialConfig={initialSiteConfig}>
         {children}
         <Toaster />
       </SiteConfigProvider>

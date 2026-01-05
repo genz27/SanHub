@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import type { SiteConfig } from '@/types';
 
 const defaultSiteConfig: SiteConfig = {
@@ -33,8 +33,14 @@ export function useSiteConfigRefresh() {
   return refreshConfig;
 }
 
-export function SiteConfigProvider({ children }: { children: ReactNode }) {
-  const [config, setConfig] = useState<SiteConfig>(defaultSiteConfig);
+interface SiteConfigProviderProps {
+  children: ReactNode;
+  initialConfig?: SiteConfig;
+}
+
+export function SiteConfigProvider({ children, initialConfig }: SiteConfigProviderProps) {
+  // Use server-provided initial config to avoid flash of default values
+  const [config, setConfig] = useState<SiteConfig>(initialConfig || defaultSiteConfig);
 
   const fetchConfig = useCallback(async () => {
     try {
@@ -47,10 +53,6 @@ export function SiteConfigProvider({ children }: { children: ReactNode }) {
       console.error('Failed to fetch site config:', error);
     }
   }, []);
-
-  useEffect(() => {
-    fetchConfig();
-  }, [fetchConfig]);
 
   return (
     <SiteConfigContext.Provider value={{ config, refreshConfig: fetchConfig }}>
