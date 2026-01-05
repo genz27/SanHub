@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
 import type { SiteConfig } from '@/types';
 
 const defaultSiteConfig: SiteConfig = {
@@ -13,28 +13,47 @@ const defaultSiteConfig: SiteConfig = {
   poweredBy: 'Powered by OpenAI Sora & Google Gemini',
 };
 
-const SiteConfigContext = createContext<SiteConfig>(defaultSiteConfig);
+interface SiteConfigContextType {
+  config: SiteConfig;
+  refreshConfig: () => Promise<void>;
+}
+
+const SiteConfigContext = createContext<SiteConfigContextType>({
+  config: defaultSiteConfig,
+  refreshConfig: async () => {},
+});
 
 export function useSiteConfig() {
-  return useContext(SiteConfigContext);
+  const { config } = useContext(SiteConfigContext);
+  return config;
+}
+
+export function useSiteConfigRefresh() {
+  const { refreshConfig } = useContext(SiteConfigContext);
+  return refreshConfig;
 }
 
 export function SiteConfigProvider({ children }: { children: ReactNode }) {
   const [config, setConfig] = useState<SiteConfig>(defaultSiteConfig);
 
-  useEffect(() => {
-    fetch('/api/site-config')
-      .then(res => res.json())
-      .then(data => {
-        if (data.success && data.data) {
-          setConfig(data.data);
-        }
-      })
-      .catch(console.error);
+  const fetchConfig = useCallback(async () => {
+    try {
+      const res = await fetch('/api/site-config', { cache: 'no-store' });
+      const data = await res.json();
+      if (data.success && data.data) {
+        setConfig(data.data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch site config:', error);
+    }
   }, []);
 
+  useEffect(() => {
+    fetchConfig();
+  }, [fetchConfig]);
+
   return (
-    <SiteConfigContext.Provider value={config}>
+    <SiteConfigContext.Provider value={{ config, refreshConfig: fetchConfig }}>
       {children}
     </SiteConfigContext.Provider>
   );

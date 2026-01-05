@@ -3,12 +3,14 @@
 import { useState, useEffect } from 'react';
 import { Globe, Loader2, Save, Upload, UserPlus, Coins } from 'lucide-react';
 import { toast } from '@/components/ui/toaster';
+import { useSiteConfigRefresh } from '@/components/providers/site-config-provider';
 import type { SystemConfig } from '@/types';
 
 export default function SiteConfigPage() {
   const [config, setConfig] = useState<SystemConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const refreshSiteConfig = useSiteConfigRefresh();
 
   useEffect(() => {
     loadConfig();
@@ -50,6 +52,8 @@ export default function SiteConfigPage() {
         throw new Error(data.error);
       }
 
+      // Refresh site config in provider so all pages get updated
+      await refreshSiteConfig();
       toast({ title: '配置已保存' });
     } catch (err) {
       toast({ title: '保存失败', description: err instanceof Error ? err.message : '未知错误', variant: 'destructive' });

@@ -7,10 +7,12 @@ import Link from 'next/link';
 import { Loader2, ArrowRight, Sparkles } from 'lucide-react';
 import { Captcha } from '@/components/ui/captcha';
 import { AnimatedBackground } from '@/components/ui/animated-background';
+import { useSiteConfig } from '@/components/providers/site-config-provider';
 
 export default function LoginPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
+  const siteConfig = useSiteConfig();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [captchaId, setCaptchaId] = useState('');
@@ -111,7 +113,7 @@ export default function LoginPage() {
                   <Sparkles className="w-5 h-5 text-purple-400" />
                 </div>
               </div>
-              <h1 className="text-3xl font-extralight tracking-wider text-white">SANHUB</h1>
+              <h1 className="text-3xl font-extralight tracking-wider text-white">{siteConfig.siteName}</h1>
             </Link>
             <p className="text-white/40 text-sm">欢迎回来</p>
           </div>
@@ -178,7 +180,7 @@ export default function LoginPage() {
 
       {/* Footer */}
       <footer className="relative z-10 py-6 text-center">
-        <p className="text-xs text-white/20">© 2025 SANHUB</p>
+        <p className="text-xs text-white/20">{siteConfig.copyright}</p>
       </footer>
     </div>
   );

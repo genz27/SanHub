@@ -7,10 +7,12 @@ import Link from 'next/link';
 import { Loader2, ArrowRight, Gift, Sparkles } from 'lucide-react';
 import { Captcha } from '@/components/ui/captcha';
 import { AnimatedBackground } from '@/components/ui/animated-background';
+import { useSiteConfig } from '@/components/providers/site-config-provider';
 
 export default function RegisterPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
+  const siteConfig = useSiteConfig();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -19,19 +21,9 @@ export default function RegisterPage() {
   const [captchaCode, setCaptchaCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [defaultBalance, setDefaultBalance] = useState<number>(100);
 
-  // 获取站点配置
-  useEffect(() => {
-    fetch('/api/site-config')
-      .then(res => res.json())
-      .then(data => {
-        if (data.success && data.data?.defaultBalance !== undefined) {
-          setDefaultBalance(data.data.defaultBalance);
-        }
-      })
-      .catch(() => {});
-  }, []);
+  // defaultBalance now comes from siteConfig
+  const defaultBalance = (siteConfig as any).defaultBalance ?? 100;
 
   // 已登录用户自动跳转
   useEffect(() => {
@@ -136,7 +128,7 @@ export default function RegisterPage() {
                   <Sparkles className="w-5 h-5 text-purple-400" />
                 </div>
               </div>
-              <h1 className="text-3xl font-extralight tracking-wider text-white">SANHUB</h1>
+              <h1 className="text-3xl font-extralight tracking-wider text-white">{siteConfig.siteName}</h1>
             </Link>
             <p className="text-white/40 text-sm">创建账号，开启创作之旅</p>
           </div>
@@ -231,7 +223,7 @@ export default function RegisterPage() {
 
       {/* Footer */}
       <footer className="relative z-10 py-6 text-center">
-        <p className="text-xs text-white/20">© 2025 SANHUB</p>
+        <p className="text-xs text-white/20">{siteConfig.copyright}</p>
       </footer>
     </div>
   );
