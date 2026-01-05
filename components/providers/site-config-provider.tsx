@@ -3,7 +3,12 @@
 import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import type { SiteConfig } from '@/types';
 
-const defaultSiteConfig: SiteConfig = {
+// Extended config that includes runtime settings
+export interface ExtendedSiteConfig extends SiteConfig {
+  defaultBalance: number;
+}
+
+const defaultSiteConfig: ExtendedSiteConfig = {
   siteName: 'SANHUB',
   siteTagline: 'Let Imagination Come Alive',
   siteDescription: '「SANHUB」是专为 AI 创作打造的一站式平台',
@@ -11,10 +16,11 @@ const defaultSiteConfig: SiteConfig = {
   contactEmail: 'support@sanhub.com',
   copyright: 'Copyright © 2025 SANHUB',
   poweredBy: 'Powered by OpenAI Sora & Google Gemini',
+  defaultBalance: 100,
 };
 
 interface SiteConfigContextType {
-  config: SiteConfig;
+  config: ExtendedSiteConfig;
   refreshConfig: () => Promise<void>;
 }
 
@@ -35,19 +41,21 @@ export function useSiteConfigRefresh() {
 
 interface SiteConfigProviderProps {
   children: ReactNode;
-  initialConfig?: SiteConfig;
+  initialConfig?: ExtendedSiteConfig;
 }
 
 export function SiteConfigProvider({ children, initialConfig }: SiteConfigProviderProps) {
-  // Use server-provided initial config to avoid flash of default values
-  const [config, setConfig] = useState<SiteConfig>(initialConfig || defaultSiteConfig);
+  const [config, setConfig] = useState<ExtendedSiteConfig>(initialConfig || defaultSiteConfig);
 
   const fetchConfig = useCallback(async () => {
     try {
       const res = await fetch('/api/site-config', { cache: 'no-store' });
       const data = await res.json();
       if (data.success && data.data) {
-        setConfig(data.data);
+        setConfig({
+          ...data.data,
+          defaultBalance: data.data.defaultBalance ?? 100,
+        });
       }
     } catch (error) {
       console.error('Failed to fetch site config:', error);

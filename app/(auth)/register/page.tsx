@@ -23,7 +23,7 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
 
   // defaultBalance now comes from siteConfig
-  const defaultBalance = (siteConfig as any).defaultBalance ?? 100;
+  const defaultBalance = siteConfig.defaultBalance;
 
   // 已登录用户自动跳转
   useEffect(() => {

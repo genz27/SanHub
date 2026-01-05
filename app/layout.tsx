@@ -3,14 +3,14 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import { Providers } from '@/components/providers';
 import { getSystemConfig } from '@/lib/db';
-import type { SiteConfig } from '@/types';
+import type { ExtendedSiteConfig } from '@/components/providers/site-config-provider';
 
 // Disable caching to always get fresh config
 export const dynamic = 'force-dynamic';
 
 const inter = Inter({ subsets: ['latin'] });
 
-async function getSiteConfig(): Promise<SiteConfig> {
+async function getSiteConfig(): Promise<ExtendedSiteConfig> {
   const config = await getSystemConfig();
   return {
     siteName: config.siteConfig?.siteName || 'SANHUB',
@@ -20,6 +20,7 @@ async function getSiteConfig(): Promise<SiteConfig> {
     contactEmail: config.siteConfig?.contactEmail || 'support@sanhub.com',
     copyright: config.siteConfig?.copyright || 'Copyright © 2025 SANHUB',
     poweredBy: config.siteConfig?.poweredBy || 'Powered by OpenAI Sora & Google Gemini',
+    defaultBalance: config.defaultBalance ?? 100,
   };
 }
 

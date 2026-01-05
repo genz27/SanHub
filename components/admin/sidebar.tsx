@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
+import { useSiteConfig } from '@/components/providers/site-config-provider';
 import type { UserRole } from '@/types';
 
 interface NavItem {
@@ -50,6 +51,7 @@ export function AdminSidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const siteConfig = useSiteConfig();
   
   const userRole = session?.user?.role || 'user';
   const filteredNavItems = navItems.filter(item => item.roles.includes(userRole));
@@ -73,7 +75,7 @@ export function AdminSidebar() {
           </div>
           <div>
             <h1 className="text-lg font-semibold text-white">管理后台</h1>
-            <p className="text-xs text-white/40">SanHub Admin</p>
+            <p className="text-xs text-white/40">{siteConfig.siteName} Admin</p>
           </div>
         </div>
       </div>
