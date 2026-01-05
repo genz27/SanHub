@@ -21,18 +21,29 @@ function getTypeAndCost(
 }
 
 // 从模型名称解析方向、时长和分辨率
+// 前端传入: sora2-landscape-10s, sora2-portrait-15s 等
+// API 需要: model=sora-2, orientation=landscape, seconds=10
 function parseModelParams(model: string): {
+  apiModel: 'sora-2' | 'sora-2-pro';
   orientation: 'landscape' | 'portrait';
   seconds: '10' | '15' | '25';
   size?: string;
 } {
+  let apiModel: 'sora-2' | 'sora-2-pro' = 'sora-2';
   let orientation: 'landscape' | 'portrait' = 'landscape';
   let seconds: '10' | '15' | '25' = '10';
 
+  // 检查是否使用 pro 模型
+  if (model.includes('pro')) {
+    apiModel = 'sora-2-pro';
+  }
+
+  // 解析方向
   if (model.includes('portrait')) {
     orientation = 'portrait';
   }
-  
+
+  // 解析时长
   if (model.includes('25s') || model.includes('25')) {
     seconds = '25';
   } else if (model.includes('15s') || model.includes('15')) {
@@ -40,9 +51,9 @@ function parseModelParams(model: string): {
   }
 
   // 根据方向设置默认分辨率
-  const size = orientation === 'portrait' ? '1080x1920' : '1920x1080';
+  const size = orientation === 'portrait' ? '720x1280' : '1280x720';
 
-  return { orientation, seconds, size };
+  return { apiModel, orientation, seconds, size };
 }
 
 // 生成内容 (Non-Streaming)
@@ -59,12 +70,12 @@ export async function generateWithSora(
   });
 
   // 解析模型参数
-  const { orientation, seconds, size } = parseModelParams(request.model);
+  const { apiModel, orientation, seconds, size } = parseModelParams(request.model);
 
   // 构建非流式 API 请求
   const videoRequest: VideoGenerationRequest = {
     prompt: request.prompt,
-    model: request.model,
+    model: apiModel, // 使用解析后的 API 模型名 (sora-2 或 sora-2-pro)
     orientation,
     seconds,
     size,
