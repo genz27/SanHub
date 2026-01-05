@@ -247,7 +247,7 @@ export async function getVideoStatus(videoId: string): Promise<VideoTaskResponse
   return data as VideoTaskResponse;
 }
 
-// 获取视频内容 URL（通过 /content 端点）
+// 获取视频内容 URL（通过 /content 端点，跟随 302 重定向）
 export async function getVideoContentUrl(videoId: string): Promise<string> {
   const { apiKey, baseUrl } = await getSoraConfig();
   
@@ -260,7 +260,7 @@ export async function getVideoContentUrl(videoId: string): Promise<string> {
   
   console.log('[Sora API v5] 获取视频内容:', apiUrl);
   
-  // 使用 HEAD 请求获取重定向 URL，或者直接返回 content URL
+  // 使用 redirect: 'manual' 来捕获 302 重定向的 Location
   const response = await undiciFetch(apiUrl, {
     method: 'GET',
     headers: {
@@ -270,16 +270,40 @@ export async function getVideoContentUrl(videoId: string): Promise<string> {
     dispatcher: soraAgent,
   });
   
-  // 如果是重定向，返回 Location
+  console.log('[Sora API v5] /content 响应状态:', response.status);
+  
+  // 如果是重定向，返回 Location header 中的实际视频 URL
   if (response.status === 302 || response.status === 301) {
     const location = response.headers.get('location');
+    console.log('[Sora API v5] /content 重定向 Location:', location?.substring(0, 100));
     if (location) {
       return location;
     }
   }
   
-  // 否则直接返回 content URL
-  return apiUrl;
+  // 如果是 200，可能直接返回了视频内容或 JSON
+  if (response.status === 200) {
+    const contentType = response.headers.get('content-type') || '';
+    // 如果是 JSON，尝试解析获取 URL
+    if (contentType.includes('application/json')) {
+      const data = await response.json() as any;
+      console.log('[Sora API v5] /content JSON 响应:', JSON.stringify(data).substring(0, 200));
+      if (data?.url) {
+        return data.url;
+      }
+    }
+  }
+  
+  // 如果是错误响应
+  if (response.status >= 400) {
+    const data = await response.json().catch(() => ({})) as any;
+    console.log('[Sora API v5] /content 错误响应:', response.status, JSON.stringify(data));
+    throw new Error(data?.error?.message || `获取视频内容失败: ${response.status}`);
+  }
+  
+  // 兜底：返回 content URL（不推荐，因为需要认证）
+  console.log('[Sora API v5] /content 未获取到重定向，返回原始 URL');
+  throw new Error('无法获取视频直链');
 }
 
 // 轮询等待视频完成
