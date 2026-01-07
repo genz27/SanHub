@@ -1,9 +1,11 @@
+/* eslint-disable no-console */
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { saveCharacterCard, updateCharacterCard, deleteCharacterCard, getUserById } from '@/lib/db';
 import { createCharacterCard } from '@/lib/sora-api';
 import { uploadToPicUI } from '@/lib/picui';
+import { checkRateLimit, RateLimitConfig } from '@/lib/rate-limit';
 
 // 配置路由段选项
 export const maxDuration = 300; // 5分钟超时
@@ -73,6 +75,14 @@ async function processCharacterCardTask(
 
 export async function POST(request: NextRequest) {
   try {
+    const rateLimit = checkRateLimit(request, RateLimitConfig.GENERATE, 'generate-character-card');
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Too many requests' },
+        { status: 429, headers: rateLimit.headers }
+      );
+    }
+
     // 验证登录
     const session = await getServerSession(authOptions);
     if (!session?.user) {

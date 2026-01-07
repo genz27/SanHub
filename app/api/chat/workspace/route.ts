@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { getChatModel, getUserById, updateUserBalance } from '@/lib/db';
+import { checkRateLimit, RateLimitConfig } from '@/lib/rate-limit';
 
 // Validation constants
 const CHAT_MAX_LENGTH = 2000;
@@ -10,6 +11,14 @@ const MAX_IMAGE_URL_LENGTH = 100000; // ~100KB for base64 data URLs
 
 export async function POST(request: NextRequest) {
   try {
+    const rateLimit = checkRateLimit(request, RateLimitConfig.CHAT, 'chat');
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { success: false, error: 'Too many requests' },
+        { status: 429, headers: rateLimit.headers }
+      );
+    }
+
     const session = await getServerSession(authOptions);
     if (!session?.user) {
       return NextResponse.json({ success: false, error: '未登录' }, { status: 401 });
@@ -139,7 +148,7 @@ export async function POST(request: NextRequest) {
     const assistantContent = data.choices?.[0]?.message?.content || '';
 
     // Deduct balance
-    await updateUserBalance(session.user.id, -model.costPerMessage);
+    await updateUserBalance(session.user.id, -model.costPerMessage, 'strict');
 
     return NextResponse.json({
       success: true,

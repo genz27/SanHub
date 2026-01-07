@@ -1,4 +1,5 @@
 'use client';
+/* eslint-disable @next/next/no-img-element */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useSession } from 'next-auth/react';
@@ -114,10 +115,13 @@ export default function VideoGenerationPage() {
           const models = data.data?.models || [];
           setAvailableModels(models);
           // 设置默认选中第一个模型
-          if (models.length > 0 && !selectedModelId) {
-            setSelectedModelId(models[0].id);
-            setAspectRatio(models[0].defaultAspectRatio);
-            setDuration(models[0].defaultDuration);
+          if (models.length > 0) {
+            setSelectedModelId((prev) => {
+              if (prev) return prev;
+              setAspectRatio(models[0].defaultAspectRatio);
+              setDuration(models[0].defaultDuration);
+              return models[0].id;
+            });
           }
         }
       } catch (err) {
@@ -168,11 +172,9 @@ export default function VideoGenerationPage() {
         const res = await fetch('/api/user/character-cards');
         if (res.ok) {
           const data = await res.json();
-          console.log('[CharacterCards] Loaded:', data.data);
           const completedCards = (data.data || []).filter(
             (c: CharacterCard) => c.status === 'completed' && c.characterName
           );
-          console.log('[CharacterCards] Filtered completed:', completedCards);
           setCharacterCards(completedCards);
         }
       } catch (err) {
@@ -326,6 +328,7 @@ export default function VideoGenerationPage() {
 
   // 加载 pending 任务
   useEffect(() => {
+    const abortControllers = abortControllersRef.current;
     const loadPendingTasks = async () => {
       try {
         const res = await fetch('/api/user/tasks');
@@ -356,8 +359,8 @@ export default function VideoGenerationPage() {
     loadPendingTasks();
 
     return () => {
-      abortControllersRef.current.forEach((controller) => controller.abort());
-      abortControllersRef.current.clear();
+      abortControllers.forEach((controller) => controller.abort());
+      abortControllers.clear();
     };
   }, [pollTaskStatus]);
 

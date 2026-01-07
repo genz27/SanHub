@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '参数错误' }, { status: 400 });
     }
 
-    const newBalance = await updateUserBalance(userId, delta);
+    const newBalance = await updateUserBalance(userId, delta, 'clamp');
     return NextResponse.json({ success: true, data: { balance: newBalance } });
   } catch (error) {
     return NextResponse.json(

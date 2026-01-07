@@ -1,4 +1,5 @@
 ﻿'use client';
+/* eslint-disable @next/next/no-img-element */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
@@ -262,11 +263,12 @@ export default function WorkspaceEditorPage() {
   }, []);
 
   useEffect(() => {
+    const abortControllers = abortControllersRef.current;
     return () => {
-      abortControllersRef.current.forEach((controller) => controller.abort());
-      abortControllersRef.current.clear();
+      abortControllers.forEach((controller) => controller.abort());
+      abortControllers.clear();
     };
-  }, []);
+  }, [setNodesDirty]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -582,7 +584,7 @@ export default function WorkspaceEditorPage() {
     return map;
   }, [edges]);
 
-  const updateNodeData = (id: string, partial: Partial<WorkspaceNode['data']>) => {
+  const updateNodeData = useCallback((id: string, partial: Partial<WorkspaceNode['data']>) => {
     setNodesDirty((prev) =>
       prev.map((node) =>
         node.id === id
@@ -593,7 +595,7 @@ export default function WorkspaceEditorPage() {
           : node
       )
     );
-  };
+  }, [setNodesDirty]);
 
   const updateNode = (id: string, partial: Partial<WorkspaceNode>) => {
     setNodesDirty((prev) => prev.map((node) => (node.id === id ? { ...node, ...partial } : node)));
@@ -711,7 +713,7 @@ export default function WorkspaceEditorPage() {
 
       await poll();
     },
-    [update]
+    [update, updateNodeData]
   );
 
   // Recover polling for pending/processing nodes on workspace load
@@ -733,7 +735,7 @@ export default function WorkspaceEditorPage() {
     }
   }, [loading, nodes, pollTaskStatus]);
 
-  const handleGenerateNode = async (node: WorkspaceNode) => {
+  const handleGenerateNode = useCallback(async (node: WorkspaceNode) => {
     // Get prompt from node itself or from connected chat/template node
     let basePrompt = node.data.prompt.trim();
     
@@ -862,7 +864,7 @@ export default function WorkspaceEditorPage() {
         errorMessage: error instanceof Error ? error.message : '生成失败',
       });
     }
-  };
+  }, [imageModels, pollTaskStatus, updateNodeData, videoModels]);
 
   const handleChatGenerate = async (node: WorkspaceNode) => {
     let prompt = node.data.prompt.trim();

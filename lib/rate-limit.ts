@@ -76,8 +76,9 @@ export const RateLimitConfig = {
 
 // 获取客户端 IP
 export function getClientIP(request: Request): string {
+  const trustProxy = process.env.TRUST_PROXY === 'true';
   const forwarded = request.headers.get('x-forwarded-for');
-  if (forwarded) {
+  if (trustProxy && forwarded) {
     return forwarded.split(',')[0].trim();
   }
   const realIP = request.headers.get('x-real-ip');

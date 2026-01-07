@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 import type { User, Generation, SystemConfig, SafeUser, PricingConfig, ChatModel, ChatSession, ChatMessage, CharacterCard, Workspace, WorkspaceData, WorkspaceSummary } from '@/types';
 import { generateId } from './utils';
 import bcrypt from 'bcryptjs';
@@ -645,20 +646,49 @@ export async function updateUser(
   return getUserById(id);
 }
 
-export async function updateUserBalance(id: string, delta: number): Promise<number> {
+export type BalanceUpdateMode = 'strict' | 'clamp';
+
+export async function updateUserBalance(
+  id: string,
+  delta: number,
+  mode: BalanceUpdateMode = 'strict'
+): Promise<number> {
   await initializeDatabase();
   const db = getAdapter();
 
-  const user = await getUserById(id);
-  if (!user) throw new Error('用户不存在');
+  const safeDelta = Number(delta);
+  if (!Number.isFinite(safeDelta)) {
+    throw new Error('Invalid balance delta');
+  }
 
-  const newBalance = Math.max(0, user.balance + delta);
-  await db.execute(
-    'UPDATE users SET balance = ?, updated_at = ? WHERE id = ?',
-    [newBalance, Date.now(), id]
+  const now = Date.now();
+  if (mode === 'clamp') {
+    const [result] = await db.execute(
+      'UPDATE users SET balance = CASE WHEN balance + ? < 0 THEN 0 ELSE balance + ? END, updated_at = ? WHERE id = ?',
+      [safeDelta, safeDelta, now, id]
+    );
+    if (!(result as any).affectedRows) {
+      throw new Error('User not found');
+    }
+    const user = await getUserById(id);
+    if (!user) throw new Error('User not found');
+    return user.balance;
+  }
+
+  const [result] = await db.execute(
+    'UPDATE users SET balance = balance + ?, updated_at = ? WHERE id = ? AND balance + ? >= 0',
+    [safeDelta, now, id, safeDelta]
   );
 
-  return newBalance;
+  if (!(result as any).affectedRows) {
+    const user = await getUserById(id);
+    if (!user) throw new Error('User not found');
+    throw new Error('Insufficient balance');
+  }
+
+  const user = await getUserById(id);
+  if (!user) throw new Error('User not found');
+  return user.balance;
 }
 
 export async function getAllUsers(options: {

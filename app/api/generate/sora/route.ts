@@ -1,29 +1,33 @@
+/* eslint-disable no-console */
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { generateWithSora } from '@/lib/sora';
 import { saveGeneration, updateUserBalance, getUserById, updateGeneration, getSystemConfig } from '@/lib/db';
 import type { SoraGenerateRequest } from '@/types';
+import { checkRateLimit, RateLimitConfig } from '@/lib/rate-limit';
+import { fetchExternalBuffer } from '@/lib/safe-fetch';
 
 // 配置路由段选项
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
+const MAX_REFERENCE_IMAGE_BYTES = 10 * 1024 * 1024;
+
 async function fetchImageAsBase64(imageUrl: string, origin: string): Promise<{ mimeType: string; data: string }> {
-  const resolvedUrl = imageUrl.startsWith('/')
-    ? new URL(imageUrl, origin).toString()
-    : imageUrl;
-  const response = await fetch(resolvedUrl, {
+  const { buffer, contentType } = await fetchExternalBuffer(imageUrl, {
+    origin,
+    allowRelative: true,
+    maxBytes: MAX_REFERENCE_IMAGE_BYTES,
+    timeoutMs: 10000,
     headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
     },
   });
-  if (!response.ok) {
-    throw new Error(`参考图下载失败 (${response.status})`);
+  if (!contentType.startsWith('image/')) {
+    throw new Error('Unsupported reference image content type');
   }
-  const contentType = response.headers.get('content-type') || 'image/png';
-  const arrayBuffer = await response.arrayBuffer();
-  const data = Buffer.from(arrayBuffer).toString('base64');
+  const data = buffer.toString('base64');
   return { mimeType: contentType, data };
 }
 
@@ -60,7 +64,7 @@ async function processGenerationTask(
     console.log(`[Task ${generationId}] 生成成功:`, result.url);
 
     // 扣除余额
-    await updateUserBalance(userId, -result.cost).catch(err => {
+    await updateUserBalance(userId, -result.cost, 'strict').catch(err => {
       console.error(`[Task ${generationId}] 扣除余额失败:`, err);
     });
 
@@ -105,6 +109,14 @@ async function processGenerationTask(
 
 export async function POST(request: NextRequest) {
   try {
+    const rateLimit = checkRateLimit(request, RateLimitConfig.GENERATE, 'generate-sora-video');
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Too many requests' },
+        { status: 429, headers: rateLimit.headers }
+      );
+    }
+
     // 验证登录
     const session = await getServerSession(authOptions);
     if (!session?.user) {

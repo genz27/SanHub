@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 import { getSystemConfig } from './db';
 import type { SoraGenerateRequest, GenerateResult } from '@/types';
 import { generateVideo, type VideoGenerationRequest } from './sora-api';

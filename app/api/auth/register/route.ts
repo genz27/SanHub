@@ -1,8 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createUser, getSystemConfig } from '@/lib/db';
+import { checkRateLimit, RateLimitConfig } from '@/lib/rate-limit';
 
 export async function POST(request: NextRequest) {
   try {
+    const rateLimit = checkRateLimit(request, RateLimitConfig.AUTH, 'auth-register');
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Too many requests' },
+        { status: 429, headers: rateLimit.headers }
+      );
+    }
+
     const { name, email, password } = await request.json();
 
     if (!name || !email || !password) {

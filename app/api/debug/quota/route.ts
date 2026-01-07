@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 import { getSystemConfig, updateSystemConfig } from '@/lib/db';
 
 // 登录 SORA 后台获取 admin token
@@ -79,6 +81,16 @@ async function ensureAdminToken(config: {
 
 export async function GET() {
   try {
+    const debugEnabled = process.env.NODE_ENV !== 'production' || process.env.DEBUG_ENDPOINTS_ENABLED === 'true';
+    if (!debugEnabled) {
+      return NextResponse.json({ error: 'Not Found' }, { status: 404 });
+    }
+
+    const session = await getServerSession(authOptions);
+    if (!session?.user || session.user.role !== 'admin') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const config = await getSystemConfig();
 
     // 测试获取 tokens

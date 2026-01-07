@@ -1,11 +1,16 @@
+/* eslint-disable no-console */
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { generateImage } from '@/lib/sora-api';
 import { saveGeneration, updateUserBalance, getUserById, updateGeneration, getSystemConfig } from '@/lib/db';
+import { checkRateLimit, RateLimitConfig } from '@/lib/rate-limit';
+import { fetchExternalBuffer } from '@/lib/safe-fetch';
 
 export const maxDuration = 120;
 export const dynamic = 'force-dynamic';
+
+const MAX_REFERENCE_IMAGE_BYTES = 10 * 1024 * 1024;
 
 interface SoraImageRequest {
   prompt: string;
@@ -19,20 +24,19 @@ async function fetchImageAsBase64(
   imageUrl: string,
   origin: string
 ): Promise<{ mimeType: string; data: string }> {
-  const resolvedUrl = imageUrl.startsWith('/')
-    ? new URL(imageUrl, origin).toString()
-    : imageUrl;
-  const response = await fetch(resolvedUrl, {
+  const { buffer, contentType } = await fetchExternalBuffer(imageUrl, {
+    origin,
+    allowRelative: true,
+    maxBytes: MAX_REFERENCE_IMAGE_BYTES,
+    timeoutMs: 10000,
     headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
     },
   });
-  if (!response.ok) {
-    throw new Error(`参考图下载失败 (${response.status})`);
+  if (!contentType.startsWith('image/')) {
+    throw new Error('Unsupported reference image content type');
   }
-  const contentType = response.headers.get('content-type') || 'image/png';
-  const arrayBuffer = await response.arrayBuffer();
-  const data = Buffer.from(arrayBuffer).toString('base64');
+  const data = buffer.toString('base64');
   return { mimeType: contentType, data };
 }
 
@@ -66,7 +70,7 @@ async function processGenerationTask(
 
     console.log(`[Task ${generationId}] 生成成功:`, first.url);
 
-    await updateUserBalance(userId, -cost);
+    await updateUserBalance(userId, -cost, 'strict');
 
     await updateGeneration(generationId, {
       status: 'completed',
@@ -91,6 +95,14 @@ async function processGenerationTask(
 
 export async function POST(request: NextRequest) {
   try {
+    const rateLimit = checkRateLimit(request, RateLimitConfig.GENERATE, 'generate-sora-image');
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Too many requests' },
+        { status: 429, headers: rateLimit.headers }
+      );
+    }
+
     const session = await getServerSession(authOptions);
     if (!session?.user) {
       return NextResponse.json({ error: '请先登录' }, { status: 401 });

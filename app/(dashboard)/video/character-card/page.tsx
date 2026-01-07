@@ -1,4 +1,5 @@
 'use client';
+/* eslint-disable @next/next/no-img-element */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
@@ -424,7 +425,7 @@ export default function CharacterCardPage() {
                       <div className="w-12 h-12 rounded-lg overflow-hidden border border-white/20 shrink-0">
                         <img
                           src={videoFile.firstFrame}
-                          alt="视频第一帧"
+                          alt="Video first frame"
                           className="w-full h-full object-cover"
                         />
                       </div>
@@ -610,18 +611,15 @@ export default function CharacterCardPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {/* 内存中的任务（优先显示，有实时状态） */}
                   {pendingTasks.map((task) => {
-                    console.log('[Render] PendingTask:', task);
                     return <PendingTaskItem key={task.id} task={task} />;
                   })}
                   {/* 数据库中的角色卡（去重：排除已在 pendingTasks 中的） */}
                   {characterCards
                     .filter((card) => {
                       const isDuplicate = pendingTasks.some((t) => t.id === card.id);
-                      console.log(`[Render] Card ${card.characterName} (${card.id}): duplicate=${isDuplicate}`);
                       return !isDuplicate;
                     })
                     .map((card) => {
-                      console.log('[Render] CharacterCard:', card);
                       return <CharacterCardItem key={card.id} card={card} onDelete={handleDeleteCard} />;
                     })}
                 </div>

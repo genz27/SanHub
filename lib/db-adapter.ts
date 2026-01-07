@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 // 数据库适配器接口
 export interface DatabaseAdapter {
   execute(sql: string, params?: unknown[]): Promise<[unknown[], unknown]>;

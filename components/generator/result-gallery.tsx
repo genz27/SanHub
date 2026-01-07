@@ -1,7 +1,8 @@
 'use client';
+/* eslint-disable @next/next/no-img-element */
 
 import { useState } from 'react';
-import { Download, Maximize2, X, Play, Image, Sparkles, Loader2, AlertCircle, Copy, ExternalLink } from 'lucide-react';
+import { Download, Maximize2, X, Play, Image as ImageIcon, Sparkles, Loader2, AlertCircle, Copy, ExternalLink } from 'lucide-react';
 import type { Generation } from '@/types';
 import { formatDate, truncate } from '@/lib/utils';
 import { downloadAsset } from '@/lib/download';
@@ -88,7 +89,7 @@ export function ResultGallery({ generations, tasks = [], onRemoveTask }: ResultG
           {totalCount === 0 && failedTasks.length === 0 ? (
             <div className="h-64 flex flex-col items-center justify-center border border-dashed border-white/20 rounded-xl">
               <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center mb-4">
-                <Image className="w-8 h-8 text-white/20" />
+                <ImageIcon className="w-8 h-8 text-white/20" />
               </div>
               <p className="text-white/40">暂无生成结果</p>
               <p className="text-white/20 text-sm mt-1">开始创作你的第一个作品</p>
@@ -129,7 +130,7 @@ export function ResultGallery({ generations, tasks = [], onRemoveTask }: ResultG
                       </>
                     ) : (
                       <>
-                        <Image className="w-3 h-3 text-white" />
+                        <ImageIcon className="w-3 h-3 text-white" />
                         <span className="text-[10px] text-white">IMAGE</span>
                       </>
                     )}

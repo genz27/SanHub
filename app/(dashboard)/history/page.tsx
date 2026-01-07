@@ -1,4 +1,5 @@
 'use client';
+/* eslint-disable @next/next/no-img-element */
 
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { useSession } from 'next-auth/react';
@@ -9,7 +10,7 @@ import {
   Filter,
   Play,
   Video,
-  Image,
+  Image as ImageIcon,
   X,
   Check,
   CheckSquare,
@@ -47,10 +48,10 @@ const isTaskVideoType = (type: string) => type?.includes('video');
 
 const TYPE_BADGE_MAP: Record<string, { label: string; icon: any }> = {
   'sora-video': { label: 'Sora 视频', icon: Video },
-  'sora-image': { label: 'Sora 图像', icon: Image },
+  'sora-image': { label: 'Sora 图像', icon: ImageIcon },
   'gemini-image': { label: 'Gemini', icon: Palette },
-  'zimage-image': { label: 'Z-Image', icon: Image },
-  'gitee-image': { label: 'Gitee', icon: Image },
+  'zimage-image': { label: 'Z-Image', icon: ImageIcon },
+  'gitee-image': { label: 'Gitee', icon: ImageIcon },
   'character-card': { label: '角色卡', icon: User },
 };
 
@@ -63,7 +64,7 @@ const getGenerationBadge = (gen: Generation) => {
   if (gen.type === 'zimage-image' || gen.type === 'gitee-image') {
     const modelLabel = gen.params?.model ? IMAGE_MODEL_LABELS.get(gen.params.model) : undefined;
     if (modelLabel) {
-      return { label: modelLabel, icon: Image };
+      return { label: modelLabel, icon: ImageIcon };
     }
   }
   return getTypeBadge(gen.type);
@@ -157,7 +158,7 @@ const GenerationCard = memo(function GenerationCard({
     } else {
       onView(gen);
     }
-  }, [selectMode, gen.id, gen, onSelect, onView]);
+  }, [selectMode, gen, onSelect, onView]);
   
   const handleMouseEnter = useCallback(() => {
     if (!selectMode && videoRef.current) {
@@ -315,78 +316,6 @@ export default function HistoryPage() {
     }
   }, []);
 
-  // 初始加载 - 只在组件挂载时执行一次
-  const initialLoadRef = useRef(false);
-  useEffect(() => {
-    if (session?.user && !initialLoadRef.current) {
-      initialLoadRef.current = true;
-      loadHistory(1);
-      loadPendingTasks();
-      loadCharacterCards();
-    }
-
-    return () => {
-      abortControllersRef.current.forEach(controller => controller.abort());
-      abortControllersRef.current.clear();
-    };
-  }, [session?.user?.id, loadHistory]);
-
-  // 使用 ref 存储最新状态，避免 observer 回调中的闭包问题
-  const stateRef = useRef({ page, hasMore, loading, loadingMore });
-  useEffect(() => {
-    stateRef.current = { page, hasMore, loading, loadingMore };
-  }, [page, hasMore, loading, loadingMore]);
-
-  // 使用 ref 保存 loadHistory 函数避免 observer 重建
-  const loadHistoryRef = useRef(loadHistory);
-  useEffect(() => {
-    loadHistoryRef.current = loadHistory;
-  }, [loadHistory]);
-
-  // 无限滚动 - 只创建一次 observer，不依赖 loadHistory
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const { page: currentPage, hasMore: canLoadMore, loading: isLoading, loadingMore: isLoadingMore } = stateRef.current;
-        if (entries[0].isIntersecting && canLoadMore && !isLoading && !isLoadingMore) {
-          const nextPage = currentPage + 1;
-          setPage(nextPage);
-          loadHistoryRef.current(nextPage, true);
-        }
-      },
-      { threshold: 0.1 }
-    );
-
-    if (loadMoreRef.current) {
-      observer.observe(loadMoreRef.current);
-    }
-
-    return () => observer.disconnect();
-  }, []);
-
-  const loadPendingTasks = async () => {
-    try {
-      const res = await fetch('/api/user/tasks');
-      if (res.ok) {
-        const data = await res.json();
-        const tasks: Task[] = (data.data || []).map((t: any) => ({
-          id: t.id,
-          prompt: t.prompt,
-          type: t.type,
-          status: t.status,
-          createdAt: t.createdAt,
-        }));
-        
-        if (tasks.length > 0) {
-          setPendingTasks(tasks);
-          tasks.forEach(task => pollTaskStatus(task.id));
-        }
-      }
-    } catch (err) {
-      console.error('Failed to load pending tasks:', err);
-    }
-  };
-
   const pollTaskStatus = useCallback(async (taskId: string) => {
     // 防止重复轮询
     if (abortControllersRef.current.has(taskId)) return;
@@ -461,6 +390,80 @@ export default function HistoryPage() {
 
     await poll();
   }, [update]);
+
+  const loadPendingTasks = useCallback(async () => {
+    try {
+      const res = await fetch('/api/user/tasks');
+      if (res.ok) {
+        const data = await res.json();
+        const tasks: Task[] = (data.data || []).map((t: any) => ({
+          id: t.id,
+          prompt: t.prompt,
+          type: t.type,
+          status: t.status,
+          createdAt: t.createdAt,
+        }));
+        
+        if (tasks.length > 0) {
+          setPendingTasks(tasks);
+          tasks.forEach(task => pollTaskStatus(task.id));
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load pending tasks:', err);
+    }
+  }, [pollTaskStatus]);
+
+  // 初始加载 - 只在组件挂载时执行一次
+  const initialLoadRef = useRef(false);
+  useEffect(() => {
+    const abortControllers = abortControllersRef.current;
+    if (session?.user?.id && !initialLoadRef.current) {
+      initialLoadRef.current = true;
+      loadHistory(1);
+      loadPendingTasks();
+      loadCharacterCards();
+    }
+
+    return () => {
+      abortControllers.forEach(controller => controller.abort());
+      abortControllers.clear();
+    };
+  }, [session?.user?.id, loadHistory, loadPendingTasks, loadCharacterCards]);
+
+  // 使用 ref 存储最新状态，避免 observer 回调中的闭包问题
+  const stateRef = useRef({ page, hasMore, loading, loadingMore });
+  useEffect(() => {
+    stateRef.current = { page, hasMore, loading, loadingMore };
+  }, [page, hasMore, loading, loadingMore]);
+
+  // 使用 ref 保存 loadHistory 函数避免 observer 重建
+  const loadHistoryRef = useRef(loadHistory);
+  useEffect(() => {
+    loadHistoryRef.current = loadHistory;
+  }, [loadHistory]);
+
+  // 无限滚动 - 只创建一次 observer，不依赖 loadHistory
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const { page: currentPage, hasMore: canLoadMore, loading: isLoading, loadingMore: isLoadingMore } = stateRef.current;
+        if (entries[0].isIntersecting && canLoadMore && !isLoading && !isLoadingMore) {
+          const nextPage = currentPage + 1;
+          setPage(nextPage);
+          loadHistoryRef.current(nextPage, true);
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    if (loadMoreRef.current) {
+      observer.observe(loadMoreRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, []);
+
 
   const downloadFile = async (url: string, id: string, type: string) => {
     if (!url) {
@@ -831,7 +834,7 @@ export default function HistoryPage() {
             ) : filteredGenerations.length === 0 && filteredTasks.length === 0 ? (
               <div className="h-64 flex flex-col items-center justify-center border border-dashed border-white/20 rounded-xl">
                 <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center mb-4">
-                  <Image className="w-8 h-8 text-white/20" />
+                  <ImageIcon className="w-8 h-8 text-white/20" />
                 </div>
                 <p className="text-white/40">暂无{filter === 'video' ? '视频' : filter === 'image' ? '图像' : ''}作品</p>
                 <p className="text-white/20 text-sm mt-1">开始创作你的第一个作品</p>
@@ -870,7 +873,7 @@ export default function HistoryPage() {
                         {isTaskVideoType(task.type) ? (
                           <Play className="w-3 h-3 text-white" />
                         ) : (
-                          <Image className="w-3 h-3 text-white" />
+                          <ImageIcon className="w-3 h-3 text-white" />
                         )}
                         <span className="text-[10px] text-white">
                           {task.status === 'processing' ? '生成中' : '排队中'}

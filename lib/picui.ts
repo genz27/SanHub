@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 import { getSystemConfig } from './db';
 import { fetch as undiciFetch, FormData, File } from 'undici';
 

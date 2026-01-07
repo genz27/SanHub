@@ -1,4 +1,5 @@
 'use client';
+/* eslint-disable @next/next/no-img-element */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useSession } from 'next-auth/react';
@@ -81,12 +82,15 @@ export default function ImageGenerationPage() {
           const models = data.data?.models || [];
           setAvailableModels(models);
           // 设置默认选中第一个模型
-          if (models.length > 0 && !selectedModelId) {
-            setSelectedModelId(models[0].id);
-            setAspectRatio(models[0].defaultAspectRatio);
-            if (models[0].defaultImageSize) {
-              setImageSize(models[0].defaultImageSize);
-            }
+          if (models.length > 0) {
+            setSelectedModelId((prev) => {
+              if (prev) return prev;
+              setAspectRatio(models[0].defaultAspectRatio);
+              if (models[0].defaultImageSize) {
+                setImageSize(models[0].defaultImageSize);
+              }
+              return models[0].id;
+            });
           }
         }
       } catch (err) {
@@ -132,49 +136,6 @@ export default function ImageGenerationPage() {
       }
     }
   }, [selectedModelId, availableModels]);
-
-  // 加载 pending 任务
-  useEffect(() => {
-    const loadPendingTasks = async () => {
-      try {
-        const res = await fetch('/api/user/tasks');
-        if (res.ok) {
-          const data = await res.json();
-          // 加载图像类型的任务 (sora, gemini, zimage)
-          const imageTasks: Task[] = (data.data || [])
-            .filter((t: any) =>
-              t.type?.includes('sora-image') ||
-              t.type?.includes('gemini') ||
-              t.type?.includes('zimage') ||
-              t.type?.includes('gitee')
-            )
-            .map((t: any) => ({
-              id: t.id,
-              prompt: t.prompt,
-              type: t.type,
-              status: t.status as 'pending' | 'processing',
-              createdAt: t.createdAt,
-            }));
-
-          if (imageTasks.length > 0) {
-            setTasks(imageTasks);
-            imageTasks.forEach((task) => {
-              pollTaskStatus(task.id, task.prompt);
-            });
-          }
-        }
-      } catch (err) {
-        console.error('Failed to load pending tasks:', err);
-      }
-    };
-
-    loadPendingTasks();
-
-    return () => {
-      abortControllersRef.current.forEach((controller) => controller.abort());
-      abortControllersRef.current.clear();
-    };
-  }, []);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(e.target.files || []);
@@ -304,6 +265,50 @@ export default function ImageGenerationPage() {
     [update]
   );
 
+  // ?? pending ??
+  useEffect(() => {
+    const abortControllers = abortControllersRef.current;
+    const loadPendingTasks = async () => {
+      try {
+        const res = await fetch('/api/user/tasks');
+        if (res.ok) {
+          const data = await res.json();
+          // ?????????(sora, gemini, zimage)
+          const imageTasks: Task[] = (data.data || [])
+            .filter((t: any) =>
+              t.type?.includes('sora-image') ||
+              t.type?.includes('gemini') ||
+              t.type?.includes('zimage') ||
+              t.type?.includes('gitee')
+            )
+            .map((t: any) => ({
+              id: t.id,
+              prompt: t.prompt,
+              type: t.type,
+              status: t.status as 'pending' | 'processing',
+              createdAt: t.createdAt,
+            }));
+
+          if (imageTasks.length > 0) {
+            setTasks(imageTasks);
+            imageTasks.forEach((task) => {
+              pollTaskStatus(task.id, task.prompt);
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load pending tasks:', err);
+      }
+    };
+
+    loadPendingTasks();
+
+    return () => {
+      abortControllers.forEach((controller) => controller.abort());
+      abortControllers.clear();
+    };
+  }, [pollTaskStatus]);
+
   const handleRemoveTask = useCallback(async (taskId: string) => {
     const controller = abortControllersRef.current.get(taskId);
     if (controller) {
@@ -326,14 +331,14 @@ export default function ImageGenerationPage() {
   // 验证输入
   const validateInput = (): string | null => {
     if (!currentModel) return '请选择模型';
-    // 检查每日限制
+  // 检查每日限制
     if (isImageLimitReached) {
       return `今日图像生成次数已达上限 (${dailyLimits.imageLimit} 次)`;
     }
     if (currentModel.requiresReferenceImage && images.length === 0) {
       return '请上传参考图';
     }
-    // Gemini 类型允许图片或提示词
+  // Gemini 类型允许图片或提示词
     if (currentModel.channelType === 'gemini') {
       if (!prompt.trim() && images.length === 0) {
         return '请输入提示词或上传参考图片';

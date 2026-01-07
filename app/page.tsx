@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { ArrowRight, Video, Image, Sparkles, Zap } from 'lucide-react';
+import { ArrowRight, Video, Image as ImageIcon, Sparkles, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AnimatedBackground } from '@/components/ui/animated-background';
 import { useSiteConfig } from '@/components/providers/site-config-provider';
@@ -61,7 +61,7 @@ export default function LandingPage() {
             </div>
             <div className="group flex items-center gap-3 px-5 py-4 bg-white/5 border border-white/10 rounded-2xl backdrop-blur-sm hover:bg-white/10 hover:border-white/20 transition-all">
               <div className="w-10 h-10 bg-gradient-to-br from-blue-500/30 to-blue-600/30 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
-                <Image className="w-5 h-5 text-blue-400" />
+                <ImageIcon className="w-5 h-5 text-blue-400" />
               </div>
               <div className="text-left">
                 <p className="text-sm font-medium text-white">Gemini 图像</p>

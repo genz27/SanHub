@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import {
   Loader2, Save, Plus, Trash2, Edit2, Eye, EyeOff,
-  Layers, ChevronDown, ChevronUp, Image, RefreshCw
+  Layers, ChevronDown, ChevronUp, Image as ImageIcon, RefreshCw
 } from 'lucide-react';
 import { toast } from '@/components/ui/toaster';
 import type { ImageChannel, ImageModel, ChannelType, ImageModelFeatures } from '@/types';
@@ -441,7 +441,7 @@ export default function ImageChannelsPage() {
         <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-6 space-y-4">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 bg-purple-500/20 rounded-xl flex items-center justify-center">
-              <Image className="w-5 h-5 text-purple-400" />
+              <ImageIcon className="w-5 h-5 text-purple-400" />
             </div>
             <h2 className="text-lg font-semibold text-white">
               {editingModel ? '编辑模型' : '添加模型'}
@@ -728,7 +728,7 @@ export default function ImageChannelsPage() {
                         channelModels.map(model => (
                           <div key={model.id} className="flex items-center justify-between p-3 bg-white/5 rounded-xl hover:bg-white/10 transition-colors">
                             <div className="flex items-center gap-3">
-                              <Image className="w-4 h-4 text-purple-400" />
+                              <ImageIcon className="w-4 h-4 text-purple-400" />
                               <div>
                                 <div className="flex items-center gap-2">
                                   <span className="text-white font-medium">{model.name}</span>

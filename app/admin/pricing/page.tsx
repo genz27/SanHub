@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Coins, Loader2, Save, Image, Video, MessageSquare } from 'lucide-react';
+import { Coins, Loader2, Save, Image as ImageIcon, Video, MessageSquare } from 'lucide-react';
 import { toast } from '@/components/ui/toaster';
 import type { SystemConfig } from '@/types';
 
@@ -125,7 +125,7 @@ export default function PricingPage() {
       <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
         <div className="p-4 border-b border-white/10 flex items-center gap-3">
           <div className="w-8 h-8 bg-blue-500/20 rounded-lg flex items-center justify-center">
-            <Image className="w-4 h-4 text-blue-400" />
+            <ImageIcon className="w-4 h-4 text-blue-400" />
           </div>
           <h2 className="font-medium text-white">图像生成</h2>
         </div>

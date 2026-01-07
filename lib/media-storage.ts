@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 import fs from 'fs';
 import { promises as fsp } from 'fs';
 import path from 'path';
