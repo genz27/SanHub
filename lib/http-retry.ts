@@ -83,7 +83,7 @@ export async function fetchWithRetry<TInput, TInit extends Record<string, unknow
   const maxDelayMs = Math.max(baseDelayMs, options.maxDelayMs ?? DEFAULT_MAX_DELAY_MS);
 
   let lastError: unknown;
-  let lastResponse: ResponseLike | null = null;
+  let lastResponse: TResponse | null = null;
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
