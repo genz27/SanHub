@@ -72,7 +72,7 @@ async function drainResponse(response: ResponseLike): Promise<void> {
   }
 }
 
-export async function fetchWithRetry<TInput, TInit extends Record<string, unknown>, TResponse extends ResponseLike>(
+export async function fetchWithRetry<TInput, TInit extends object, TResponse extends ResponseLike>(
   fetcher: (input: TInput, init?: TInit) => Promise<TResponse>,
   input: TInput,
   initFactory: () => TInit = () => ({} as TInit),

@@ -182,12 +182,13 @@ export async function fetchExternalBuffer(
 
   try {
     for (let i = 0; i <= maxRedirects; i += 1) {
-      const response = await fetchWithRetry(fetch, currentUrl.toString(), () => ({
+      const requestInit: RequestInit = {
         method: 'GET',
         headers,
         redirect: 'manual',
         signal: controller.signal,
-      }));
+      };
+      const response = await fetchWithRetry(fetch, currentUrl.toString(), () => requestInit);
 
       if (isRedirectStatus(response.status)) {
         const location = response.headers.get('location');
