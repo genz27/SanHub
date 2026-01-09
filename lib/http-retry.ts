@@ -32,7 +32,18 @@ function isRetryableError(error: unknown): boolean {
   );
 }
 
-function getRetryAfterMs(response: Response): number | null {
+type ResponseHeaders = {
+  get: (name: string) => string | null;
+};
+
+type ResponseLike = {
+  ok: boolean;
+  status: number;
+  headers: ResponseHeaders;
+  arrayBuffer: () => Promise<ArrayBuffer>;
+};
+
+function getRetryAfterMs(response: ResponseLike): number | null {
   const retryAfter = response.headers.get('retry-after');
   if (!retryAfter) return null;
   const seconds = Number(retryAfter);
@@ -53,7 +64,7 @@ function getBackoffDelay(attempt: number, baseDelayMs: number, maxDelayMs: numbe
   return delay - jitter;
 }
 
-async function drainResponse(response: Response): Promise<void> {
+async function drainResponse(response: ResponseLike): Promise<void> {
   try {
     await response.arrayBuffer();
   } catch {
@@ -61,20 +72,18 @@ async function drainResponse(response: Response): Promise<void> {
   }
 }
 
-type RetryFetchInit = RequestInit & { [key: string]: unknown };
-
-export async function fetchWithRetry(
-  fetcher: (input: RequestInfo | URL, init?: RetryFetchInit) => Promise<Response>,
-  input: RequestInfo | URL,
-  initFactory: () => RetryFetchInit = () => ({}),
+export async function fetchWithRetry<TInput, TInit extends Record<string, unknown>, TResponse extends ResponseLike>(
+  fetcher: (input: TInput, init?: TInit) => Promise<TResponse>,
+  input: TInput,
+  initFactory: () => TInit = () => ({} as TInit),
   options: RetryOptions = {}
-): Promise<Response> {
+): Promise<TResponse> {
   const attempts = Math.max(1, options.attempts ?? DEFAULT_ATTEMPTS);
   const baseDelayMs = Math.max(0, options.baseDelayMs ?? DEFAULT_BASE_DELAY_MS);
   const maxDelayMs = Math.max(baseDelayMs, options.maxDelayMs ?? DEFAULT_MAX_DELAY_MS);
 
   let lastError: unknown;
-  let lastResponse: Response | null = null;
+  let lastResponse: ResponseLike | null = null;
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
