@@ -11,6 +11,8 @@ import {
   Link2,
   Loader2,
   MousePointer2,
+  Plus,
+  Video,
   Maximize2,
   RotateCcw,
   Save,
@@ -53,6 +55,17 @@ interface PromptTemplate {
 
 const CHAT_MAX_LENGTH = 2000;
 
+const MOBILE_NODE_OPTIONS: Array<{
+  type: WorkspaceNodeType;
+  label: string;
+  icon: typeof ImageIcon;
+}> = [
+  { type: 'image', label: 'Image', icon: ImageIcon },
+  { type: 'video', label: 'Video', icon: Video },
+  { type: 'chat', label: 'Chat', icon: MessageSquare },
+  { type: 'prompt-template', label: 'Template', icon: FileText },
+];
+
 const BASE_CANVAS_WIDTH = 2400;
 const BASE_CANVAS_HEIGHT = 1400;
 const CANVAS_PADDING = 400; // Extra space beyond nodes
@@ -84,6 +97,7 @@ export default function WorkspaceEditorPage() {
   const [connectingFrom, setConnectingFrom] = useState<string | null>(null);
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [mobileAddOpen, setMobileAddOpen] = useState(false);
   const [hoveredCard, setHoveredCard] = useState<{
     nodeId: string;
     card: CharacterCard;
@@ -130,6 +144,15 @@ export default function WorkspaceEditorPage() {
     },
     [zoom]
   );
+
+  const getViewportCenter = useCallback(() => {
+    const container = scrollRef.current;
+    if (!container) return { x: 0, y: 0 };
+    return {
+      x: (container.scrollLeft + container.clientWidth / 2) / zoom,
+      y: (container.scrollTop + container.clientHeight / 2) / zoom,
+    };
+  }, [zoom]);
 
   useEffect(() => {
     nodesRef.current = nodes;
@@ -372,8 +395,21 @@ export default function WorkspaceEditorPage() {
     [createNode, setNodesDirty]
   );
 
+  const handleAddNodeAtCenter = useCallback(
+    (type: WorkspaceNodeType) => {
+      const point = getViewportCenter();
+      addNodeAt(type, point);
+      setMobileAddOpen(false);
+      setContextMenu(null);
+    },
+    [addNodeAt, getViewportCenter]
+  );
+
   const handleCanvasContextMenu = (event: React.MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
+    if (window.innerWidth < 640) {
+      return;
+    }
     const point = getCanvasPoint(event);
     setContextMenu(point);
   };
@@ -1072,7 +1108,7 @@ export default function WorkspaceEditorPage() {
   }
 
   return (
-    <div className="h-full w-full min-w-0 flex flex-col gap-4 p-6">
+    <div className="h-full w-full min-w-0 flex flex-col gap-4 p-4 pb-24 sm:p-6 sm:pb-6">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between min-w-0">
         <div className="flex flex-col gap-2">
           <input
@@ -1081,14 +1117,14 @@ export default function WorkspaceEditorPage() {
               setWorkspaceName(e.target.value);
               setDirty(true);
             }}
-            className="text-2xl font-light text-foreground bg-transparent border border-border/70 rounded-lg px-3 py-2 w-full max-w-md focus:outline-none focus:border-border"
+            className="text-xl sm:text-2xl font-light text-foreground bg-transparent border border-border/70 rounded-lg px-3 py-2 w-full max-w-md focus:outline-none focus:border-border"
           />
         </div>
         <button
           onClick={handleSave}
           disabled={!dirty || saving}
           className={cn(
-            'inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition shrink-0',
+            'w-full sm:w-auto inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition shrink-0',
             dirty
               ? 'bg-foreground text-background hover:bg-foreground/90'
               : 'bg-card/70 text-foreground/40 cursor-not-allowed'
@@ -1100,12 +1136,15 @@ export default function WorkspaceEditorPage() {
       </div>
 
       <div className="bg-card/60 border border-border/70 rounded-2xl overflow-hidden flex-1 min-h-0">
-        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border/70 text-foreground/60 text-sm">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3 px-4 py-3 border-b border-border/70 text-foreground/60 text-sm">
+          <div className="hidden sm:flex items-center gap-3">
             <MousePointer2 className="w-4 h-4" />
             右键添加节点，拖拽布局，点击节点右侧圆点开始连线（Alt/Option + 滚轮缩放）
           </div>
-          <div className="flex items-center gap-2">
+          <div className="sm:hidden text-xs text-foreground/50">
+            Tap + to add nodes. Drag to move. Use the bottom bar to zoom.
+          </div>
+          <div className="hidden sm:flex items-center gap-2">
             <button
               onClick={handleZoomOut}
               className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-border/70 text-foreground/60 hover:text-foreground hover:border-border transition"
@@ -1219,7 +1258,7 @@ export default function WorkspaceEditorPage() {
                   <div
                     key={node.id}
                     data-workspace-node
-                    className="absolute w-72 bg-background/70 border border-border/70 rounded-xl shadow-lg"
+                    className="absolute w-64 sm:w-72 bg-background/70 border border-border/70 rounded-xl shadow-lg"
                     style={{ left: node.position.x, top: node.position.y }}
                   >
                   <div
@@ -1869,6 +1908,78 @@ export default function WorkspaceEditorPage() {
           </div>
         </div>
       </div>
+
+      <div className="sm:hidden fixed bottom-0 left-0 right-0 z-40 p-3 safe-bottom">
+        <div className="flex items-center justify-between gap-2 bg-card/80 border border-border/70 rounded-2xl px-3 py-2 backdrop-blur">
+          <button
+            onClick={handleZoomOut}
+            className="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-border/70 text-foreground/60 hover:text-foreground hover:border-border transition"
+            title="Zoom out"
+          >
+            <ZoomOut className="w-4 h-4" />
+          </button>
+          <button
+            onClick={handleZoomIn}
+            className="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-border/70 text-foreground/60 hover:text-foreground hover:border-border transition"
+            title="Zoom in"
+          >
+            <ZoomIn className="w-4 h-4" />
+          </button>
+          <button
+            onClick={handleZoomFit}
+            className="h-9 w-9 inline-flex items-center justify-center rounded-lg border border-border/70 text-foreground/60 hover:text-foreground hover:border-border transition"
+            title="Fit"
+          >
+            <Maximize2 className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => setMobileAddOpen(true)}
+            className="h-9 w-9 inline-flex items-center justify-center rounded-lg bg-foreground text-background hover:opacity-90 transition"
+            title="Add node"
+          >
+            <Plus className="w-4 h-4" />
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={!dirty || saving}
+            className={cn(
+              'h-9 w-9 inline-flex items-center justify-center rounded-lg border transition',
+              dirty
+                ? 'border-border/70 text-foreground/70 hover:text-foreground hover:border-border'
+                : 'border-border/40 text-foreground/30 cursor-not-allowed'
+            )}
+            title="Save"
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+          </button>
+        </div>
+      </div>
+
+      {mobileAddOpen && (
+        <div className="sm:hidden fixed inset-0 z-50">
+          <div
+            className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+            onClick={() => setMobileAddOpen(false)}
+          />
+          <div className="absolute bottom-0 left-0 right-0 p-4 safe-bottom">
+            <div className="bg-card/95 border border-border/70 rounded-2xl p-4 space-y-3">
+              <div className="text-[10px] uppercase tracking-wider text-foreground/40">Add node</div>
+              <div className="grid grid-cols-2 gap-2">
+                {MOBILE_NODE_OPTIONS.map(({ type, label, icon: Icon }) => (
+                  <button
+                    key={type}
+                    onClick={() => handleAddNodeAtCenter(type)}
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-card/70 border border-border/70 text-foreground/70 hover:text-foreground hover:border-border transition"
+                  >
+                    <Icon className="w-4 h-4" />
+                    <span className="text-xs font-medium">{label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {connectingFrom && (
         <div className="text-xs text-foreground/40 flex items-center gap-2">

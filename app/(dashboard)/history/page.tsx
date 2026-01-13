@@ -689,32 +689,32 @@ export default function HistoryPage() {
           </div>
           
           {/* Stats */}
-          <div className="flex items-center gap-6">
+          <div className="flex flex-wrap items-center gap-4 md:gap-6">
             {stats.pending > 0 && (
               <>
-                <div className="text-center">
+                <div className="text-center min-w-[72px]">
                   <p className="text-2xl font-light text-sky-300">{stats.pending}</p>
                   <p className="text-xs text-foreground/40">进行中</p>
                 </div>
-                <div className="w-px h-8 bg-card/70" />
+                <div className="hidden md:block w-px h-8 bg-card/70" />
               </>
             )}
-            <div className="text-center">
+            <div className="text-center min-w-[72px]">
               <p className="text-2xl font-light text-foreground">{stats.total}</p>
               <p className="text-xs text-foreground/40">总作品</p>
             </div>
-            <div className="w-px h-8 bg-card/70" />
-            <div className="text-center">
+            <div className="hidden md:block w-px h-8 bg-card/70" />
+            <div className="text-center min-w-[72px]">
               <p className="text-2xl font-light text-foreground">{stats.videos}</p>
               <p className="text-xs text-foreground/40">视频</p>
             </div>
-            <div className="w-px h-8 bg-card/70" />
-            <div className="text-center">
+            <div className="hidden md:block w-px h-8 bg-card/70" />
+            <div className="text-center min-w-[72px]">
               <p className="text-2xl font-light text-foreground">{stats.images}</p>
               <p className="text-xs text-foreground/40">图像</p>
             </div>
-            <div className="w-px h-8 bg-card/70" />
-            <div className="text-center">
+            <div className="hidden md:block w-px h-8 bg-card/70" />
+            <div className="text-center min-w-[72px]">
               <p className="text-2xl font-light text-emerald-300">{stats.characters}</p>
               <p className="text-xs text-foreground/40">角色卡</p>
             </div>
@@ -723,7 +723,7 @@ export default function HistoryPage() {
 
         {/* Filter Tabs & Actions */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-2 px-2">
             {(['all', 'video', 'image', 'character'] as const).map((f) => (
               <button
                 key={f}
@@ -740,12 +740,12 @@ export default function HistoryPage() {
           </div>
 
           {/* 操作按钮 */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {selectMode ? (
               <>
                 <button
                   onClick={toggleSelectAll}
-                  className="flex items-center gap-2 px-3 py-2 bg-card/60 text-foreground/60 rounded-lg text-sm hover:bg-card/70 hover:text-foreground transition-all"
+                  className="flex items-center gap-2 px-3 py-2 w-full sm:w-auto bg-card/60 text-foreground/60 rounded-lg text-sm hover:bg-card/70 hover:text-foreground transition-all"
                 >
                   {selectedIds.size === filteredGenerations.length ? (
                     <CheckSquare className="w-4 h-4" />
@@ -757,7 +757,7 @@ export default function HistoryPage() {
                 <button
                   onClick={() => setShowDeleteConfirm('batch')}
                   disabled={selectedIds.size === 0 || deleting}
-                  className="flex items-center gap-2 px-3 py-2 bg-red-500/20 text-red-400 rounded-lg text-sm hover:bg-red-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center gap-2 px-3 py-2 w-full sm:w-auto bg-red-500/20 text-red-400 rounded-lg text-sm hover:bg-red-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Trash2 className="w-4 h-4" />
                   删除选中
@@ -767,7 +767,7 @@ export default function HistoryPage() {
                     setSelectMode(false);
                     setSelectedIds(new Set());
                   }}
-                  className="flex items-center gap-2 px-3 py-2 bg-card/60 text-foreground/60 rounded-lg text-sm hover:bg-card/70 hover:text-foreground transition-all"
+                  className="flex items-center gap-2 px-3 py-2 w-full sm:w-auto bg-card/60 text-foreground/60 rounded-lg text-sm hover:bg-card/70 hover:text-foreground transition-all"
                 >
                   <X className="w-4 h-4" />
                   取消
@@ -778,7 +778,7 @@ export default function HistoryPage() {
                 <button
                   onClick={() => setSelectMode(true)}
                   disabled={filteredGenerations.length === 0 && filter !== 'character'}
-                  className="flex items-center gap-2 px-3 py-2 bg-card/60 text-foreground/60 rounded-lg text-sm hover:bg-card/70 hover:text-foreground transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center gap-2 px-3 py-2 w-full sm:w-auto bg-card/60 text-foreground/60 rounded-lg text-sm hover:bg-card/70 hover:text-foreground transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Edit3 className="w-4 h-4" />
                   管理
@@ -786,7 +786,7 @@ export default function HistoryPage() {
                 <button
                   onClick={() => setShowDeleteConfirm('all-media')}
                   disabled={completedGenerations.length === 0 || deleting}
-                  className="flex items-center gap-2 px-3 py-2 bg-red-500/20 text-red-400 rounded-lg text-sm hover:bg-red-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center gap-2 px-3 py-2 w-full sm:w-auto bg-red-500/20 text-red-400 rounded-lg text-sm hover:bg-red-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Trash2 className="w-4 h-4" />
                   清空媒体
@@ -794,7 +794,7 @@ export default function HistoryPage() {
                 <button
                   onClick={() => setShowDeleteConfirm('all-characters')}
                   disabled={completedCharacterCards.length === 0 || deleting}
-                  className="flex items-center gap-2 px-3 py-2 bg-emerald-500/15 text-emerald-300 rounded-lg text-sm hover:bg-emerald-500/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center gap-2 px-3 py-2 w-full sm:w-auto bg-emerald-500/15 text-emerald-300 rounded-lg text-sm hover:bg-emerald-500/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <User className="w-4 h-4" />
                   清空角色卡
@@ -806,7 +806,7 @@ export default function HistoryPage() {
 
         {/* Content */}
         <div className="bg-card/60 border border-border/70 rounded-2xl overflow-hidden backdrop-blur-sm">
-          <div className={`p-6 border-b border-border/70 ${filter === 'character' ? 'bg-gradient-to-r from-emerald-500/10 to-sky-500/10' : 'bg-gradient-to-r from-sky-500/10 to-emerald-500/10'}`}>
+          <div className={`p-4 sm:p-6 border-b border-border/70 ${filter === 'character' ? 'bg-gradient-to-r from-emerald-500/10 to-sky-500/10' : 'bg-gradient-to-r from-sky-500/10 to-emerald-500/10'}`}>
             <div className="flex items-center gap-3">
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${filter === 'character' ? 'bg-gradient-to-br from-emerald-500/25 to-sky-500/25' : 'bg-gradient-to-br from-sky-500/25 to-emerald-500/25'}`}>
                 {filter === 'character' ? <User className="w-5 h-5 text-emerald-300" /> : <History className="w-5 h-5 text-sky-300" />}
@@ -818,9 +818,9 @@ export default function HistoryPage() {
             </div>
           </div>
 
-          <div className="p-6">
+          <div className="p-4 sm:p-6">
             {loading ? (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                 {Array.from({ length: 8 }).map((_, i) => (
                   <SkeletonCard key={i} />
                 ))}
@@ -836,7 +836,7 @@ export default function HistoryPage() {
                   <p className="text-foreground/30 text-sm mt-1">去视频页面生成你的第一个角色卡</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                   {/* 进行中的角色卡任务 */}
                   {processingCharacterCards.map((card) => (
                     <div
@@ -884,7 +884,7 @@ export default function HistoryPage() {
               </div>
             ) : (
               <>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                   {/* Pending 任务 */}
                   {filteredTasks.map((task) => {
                     const badge = getTypeBadge(task.type);

@@ -38,25 +38,28 @@ async function processCharacterCardTask(
     });
 
     // 调试日志：打印完整返回结果
-    console.log(`[Task ${cardId}] API 返回结果:`, JSON.stringify(result, null, 2));
+    console.log(`[Task ${cardId}] API 返回结果:`, JSON.stringify(result));
 
-    const directUsername = result.data?.username;
-    const directDisplayName = result.data?.display_name;
-    let returnedUsername = directUsername;
-    let returnedDisplayName = directDisplayName;
+    // 尝试从多个来源获取角色名称
+    // 1. 直接从 data 字段获取
+    let returnedUsername = result.data?.username;
+    let returnedDisplayName = result.data?.display_name;
+    const cameoId = result.data?.cameo_id;
 
-    if (!returnedUsername && result.data?.message) {
+    // 2. 如果 data.message 是 JSON 字符串，尝试解析
+    if (!returnedUsername && result.data?.message && result.data.message.startsWith('{')) {
       try {
         const messageData = JSON.parse(result.data.message);
         returnedUsername = messageData.username;
         returnedDisplayName = messageData.display_name;
         console.log(`[Task ${cardId}] 从 message 解析: username=${returnedUsername}`);
-      } catch (e) {
-        console.error(`[Task ${cardId}] 解析 message 失败:`, e);
+      } catch {
+        // message 不是 JSON，忽略
       }
     }
 
-    const characterName = returnedUsername || returnedDisplayName || '未命名角色';
+    // 3. 使用 cameo_id 或 result.id 作为备选
+    const characterName = returnedUsername || returnedDisplayName || cameoId || result.id || '未命名角色';
 
     console.log(`[Task ${cardId}] 角色卡创建成功: ${characterName}`);
 

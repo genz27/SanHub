@@ -186,18 +186,18 @@ export default function WorkspaceListPage() {
             className="w-full pl-9 pr-3 py-2.5 rounded-lg bg-card/60 border border-border/70 text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
           />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
           <select
             value={sort}
             onChange={(e) => setSort(e.target.value as SortKey)}
-            className="px-3 py-2.5 rounded-lg bg-card/60 border border-border/70 text-foreground text-sm focus:outline-none focus:border-border"
+            className="w-full sm:w-auto px-3 py-2.5 rounded-lg bg-card/60 border border-border/70 text-foreground text-sm focus:outline-none focus:border-border"
           >
             <option value="updated">按最近更新</option>
             <option value="created">按创建时间</option>
           </select>
           <button
             onClick={() => setOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
-            className="px-3 py-2.5 rounded-lg bg-card/60 border border-border/70 text-foreground/70 hover:text-foreground hover:border-border transition"
+            className="w-full sm:w-auto px-3 py-2.5 rounded-lg bg-card/60 border border-border/70 text-foreground/70 hover:text-foreground hover:border-border transition"
             title={`排序：${sortedLabel}`}
           >
             <ArrowUpDown className="w-4 h-4" />

@@ -25,7 +25,7 @@ export default async function AdminLayout({
       <DashboardBackgroundWrapper />
       <div className="flex relative z-10">
         <AdminSidebar />
-        <main className="flex-1 p-6 lg:p-8 min-h-screen">
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 pt-16 lg:pt-8 min-h-screen">
           {children}
         </main>
       </div>

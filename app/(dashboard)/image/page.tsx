@@ -472,7 +472,7 @@ export default function ImageGenerationPage() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-8">
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-3xl font-light text-foreground">图像生成</h1>
           <p className="text-foreground/50 mt-1 font-light">
@@ -617,7 +617,7 @@ export default function ImageGenerationPage() {
                   <label className="text-xs text-foreground/50 uppercase tracking-wider">画面比例</label>
                   <span className="text-xs text-foreground/40">{getCurrentResolutionDisplay()}</span>
                 </div>
-                <div className="grid grid-cols-5 gap-1.5">
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
                   {currentModel.aspectRatios.map((r) => (
                     <button
                       key={r}
@@ -705,12 +705,12 @@ export default function ImageGenerationPage() {
               )}
 
               {/* Generate Buttons */}
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <button
                   onClick={handleGenerate}
                   disabled={submitting}
                   className={cn(
-                    'flex-1 flex items-center justify-center gap-2 px-5 py-3 rounded-lg font-medium transition-all',
+                    'w-full sm:flex-1 flex items-center justify-center gap-2 px-5 py-3 rounded-lg font-medium transition-all',
                     submitting
                       ? 'bg-card/60 text-foreground/40 cursor-not-allowed'
                       : 'bg-foreground text-background hover:opacity-90'
@@ -733,7 +733,7 @@ export default function ImageGenerationPage() {
                     onClick={handleGachaMode}
                     disabled={submitting}
                     className={cn(
-                      'h-[46px] w-[46px] flex items-center justify-center rounded-lg font-medium transition-all',
+                      'h-[46px] w-full sm:w-[46px] flex items-center justify-center rounded-lg font-medium transition-all',
                       submitting
                         ? 'bg-card/60 text-foreground/40 cursor-not-allowed'
                         : 'bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:opacity-90'

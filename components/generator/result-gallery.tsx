@@ -104,7 +104,7 @@ export function ResultGallery({ generations, tasks = [], onRemoveTask }: ResultG
     <>
       <div className="surface overflow-hidden">
         {/* Header */}
-        <div className="p-6 border-b border-border/70">
+        <div className="p-4 sm:p-6 border-b border-border/70">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-card/60 border border-border/70 rounded-xl flex items-center justify-center">
               <Sparkles className="w-5 h-5 text-foreground" />
@@ -119,7 +119,7 @@ export function ResultGallery({ generations, tasks = [], onRemoveTask }: ResultG
           </div>
         </div>
 
-        <div className="p-6">
+        <div className="p-4 sm:p-6">
           {totalCount === 0 && failedTasks.length === 0 ? (
             <div className="h-64 flex flex-col items-center justify-center border border-dashed border-border/70 rounded-xl">
               <div className="w-16 h-16 bg-card/60 rounded-2xl flex items-center justify-center mb-4">
@@ -129,7 +129,7 @@ export function ResultGallery({ generations, tasks = [], onRemoveTask }: ResultG
               <p className="text-foreground/30 text-sm mt-1">开始创作你的第一个作品</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               {/* 正在进行的任务 */}
               {activeTasks.map((task) => (
                 <div

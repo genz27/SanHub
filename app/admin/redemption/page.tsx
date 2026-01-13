@@ -100,12 +100,12 @@ export default function RedemptionPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-light text-foreground">卡密管理</h1>
           <p className="text-foreground/50 mt-1">生成和管理积分兑换卡密</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-2 text-sm text-foreground/60">
             <input
               type="checkbox"
@@ -192,8 +192,8 @@ export default function RedemptionPage() {
 
       {/* Codes Table */}
       <div className="bg-card/60 border border-border/70 rounded-2xl overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
+        <div className="overflow-x-auto no-scrollbar">
+          <table className="w-full min-w-[760px]">
             <thead>
               <tr className="border-b border-border/70">
                 <th className="text-left text-sm font-medium text-foreground/50 px-5 py-4">卡密</th>

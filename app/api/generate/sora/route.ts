@@ -13,6 +13,49 @@ export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
 const MAX_REFERENCE_IMAGE_BYTES = 10 * 1024 * 1024;
+const RATE_LIMIT_RETRIES = 3;
+const RATE_LIMIT_BASE_DELAY_MS = 1500;
+const RATE_LIMIT_MAX_DELAY_MS = 10000;
+
+function isRateLimitError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  return (
+    message.includes('429') ||
+    message.includes('rate limit') ||
+    message.includes('rate limited') ||
+    message.includes('too many requests')
+  );
+}
+
+function getRateLimitDelayMs(attempt: number): number {
+  const delay = Math.min(RATE_LIMIT_BASE_DELAY_MS * 2 ** (attempt - 1), RATE_LIMIT_MAX_DELAY_MS);
+  const jitter = Math.floor(delay * 0.25 * Math.random());
+  return delay - jitter;
+}
+
+async function generateWithRateLimitRetry(
+  body: SoraGenerateRequest,
+  onProgress: (progress: number) => void,
+  taskId: string
+) {
+  let attempt = 0;
+  while (true) {
+    try {
+      if (attempt > 0) {
+        console.warn(`[Task ${taskId}] Retry attempt ${attempt} after rate limit`);
+      }
+      return await generateWithSora(body, onProgress);
+    } catch (error) {
+      if (!isRateLimitError(error) || attempt >= RATE_LIMIT_RETRIES) {
+        throw error;
+      }
+      attempt += 1;
+      const delayMs = getRateLimitDelayMs(attempt);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+}
 
 async function fetchImageAsBase64(imageUrl: string, origin: string): Promise<{ mimeType: string; data: string }> {
   const { buffer, contentType } = await fetchExternalBuffer(imageUrl, {
@@ -59,7 +102,7 @@ async function processGenerationTask(
     };
 
     // 调用 Sora API 生成内容
-    const result = await generateWithSora(body, onProgress);
+    const result = await generateWithRateLimitRetry(body, onProgress, generationId);
 
     console.log(`[Task ${generationId}] 生成成功:`, result.url);
 

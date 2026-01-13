@@ -61,7 +61,7 @@ export default function StatsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-light text-foreground">数据统计</h1>
           <p className="text-foreground/50 mt-1">系统运行数据概览</p>
@@ -164,8 +164,8 @@ export default function StatsPage() {
         <div className="p-5 border-b border-border/70">
           <h2 className="text-lg font-semibold text-foreground">每日明细</h2>
         </div>
-        <div className="overflow-x-auto max-h-96">
-          <table className="w-full">
+        <div className="overflow-x-auto no-scrollbar max-h-96">
+          <table className="w-full min-w-[640px]">
             <thead className="sticky top-0 bg-background/60 backdrop-blur">
               <tr className="border-b border-border/70">
                 <th className="text-left text-sm font-medium text-foreground/50 px-5 py-3">日期</th>

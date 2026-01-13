@@ -696,7 +696,7 @@ export default function VideoGenerationPage() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-3xl font-light text-foreground">视频生成</h1>
           <p className="text-foreground/50 mt-1 font-light">
@@ -752,7 +752,7 @@ export default function VideoGenerationPage() {
 
             <div className="px-5 py-4 space-y-4">
               {/* Creation Mode Selection */}
-              <OptionGroup label="创作模式" contentClassName="grid grid-cols-3 gap-2">
+              <OptionGroup label="创作模式" contentClassName="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 {CREATION_MODES.map((mode) => (
                   <button
                     key={mode.id}
@@ -773,7 +773,7 @@ export default function VideoGenerationPage() {
               {/* Model Selection */}
               <OptionGroup
                 label="模型"
-                contentClassName="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1"
+                contentClassName="flex gap-2 overflow-x-auto no-scrollbar pb-1 -mx-1 px-1"
               >
                 {availableModels.map((model) => (
                   <button
@@ -816,7 +816,7 @@ export default function VideoGenerationPage() {
 
               {/* Duration */}
               {currentModel && (
-              <OptionGroup label="视频时长" contentClassName="grid grid-cols-3 gap-2">
+              <OptionGroup label="视频时长" contentClassName="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {currentModel.durations.map((d) => (
                   <button
                     key={d.value}
@@ -850,7 +850,7 @@ export default function VideoGenerationPage() {
                         </button>
                       )}
                     </div>
-                    <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+                    <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1 -mx-1 px-1">
                       {VIDEO_STYLES.map((style) => (
                         <button
                           key={style.id}
@@ -1104,12 +1104,12 @@ export default function VideoGenerationPage() {
               )}
 
               {/* Generate Buttons */}
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <button
                   onClick={handleGenerate}
                   disabled={submitting}
                   className={cn(
-                    'flex-1 flex items-center justify-center gap-2 px-5 py-3 rounded-lg font-medium transition-all',
+                    'w-full sm:flex-1 flex items-center justify-center gap-2 px-5 py-3 rounded-lg font-medium transition-all',
                     submitting
                       ? 'bg-card/60 text-foreground/40 cursor-not-allowed'
                       : 'bg-gradient-to-r from-sky-500 to-emerald-500 text-white hover:opacity-90'
@@ -1132,7 +1132,7 @@ export default function VideoGenerationPage() {
                     onClick={handleGachaMode}
                     disabled={submitting}
                     className={cn(
-                      'h-[46px] w-[46px] flex items-center justify-center rounded-lg font-medium transition-all',
+                      'h-[46px] w-full sm:w-[46px] flex items-center justify-center rounded-lg font-medium transition-all',
                       submitting
                         ? 'bg-card/60 text-foreground/40 cursor-not-allowed'
                         : 'bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:opacity-90'

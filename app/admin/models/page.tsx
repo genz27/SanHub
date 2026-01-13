@@ -263,7 +263,8 @@ export default function ModelsPage() {
 
       {/* Models List */}
       <div className="bg-card/60 border border-border/70 rounded-2xl overflow-hidden">
-        <table className="w-full">
+        <div className="overflow-x-auto no-scrollbar">
+          <table className="w-full min-w-[760px]">
           <thead>
             <tr className="border-b border-border/70">
               <th className="text-left text-sm font-medium text-foreground/50 px-5 py-4">名称</th>
@@ -318,7 +319,8 @@ export default function ModelsPage() {
               </tr>
             ))}
           </tbody>
-        </table>
+          </table>
+        </div>
         {models.length === 0 && (
           <div className="text-center py-12 text-foreground/40">
             <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-20" />

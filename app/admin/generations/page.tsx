@@ -146,8 +146,8 @@ export default function GenerationsPage() {
 
       {/* Records Table */}
       <div className="bg-card/60 border border-border/70 rounded-2xl overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
+        <div className="overflow-x-auto no-scrollbar">
+          <table className="w-full min-w-[760px]">
             <thead>
               <tr className="border-b border-border/70">
                 <th className="text-left text-sm font-medium text-foreground/50 px-5 py-4">用户</th>
