@@ -34,7 +34,7 @@ interface VideoTaskStatus {
 
 const STATUS_POLL_MS = 10_000;
 const VIDEO_POLL_MS = 5 * 60 * 1000;
-const VIDEO_DISPLAY_LIMIT = 5;
+const VIDEO_DISPLAY_LIMIT = 3;
 
 const statusLabelMap: Record<GenerationStatus, string> = {
   pending: '排队中',
@@ -98,11 +98,11 @@ export function Sidebar({ user }: SidebarProps) {
 
   const fetchPendingTasks = useCallback(async () => {
     try {
-      const res = await fetch('/api/user/tasks');
+      const res = await fetch('/api/status/pending');
       if (!res.ok) return;
       const data = await res.json();
-      const tasks = Array.isArray(data.data) ? data.data : [];
-      setPendingCount(tasks.length);
+      const count = Number(data?.data?.count);
+      setPendingCount(Number.isFinite(count) ? count : 0);
       setPendingUpdatedAt(Date.now());
     } catch (error) {
       console.error('[Status Panel] Failed to fetch pending tasks:', error);
@@ -111,7 +111,7 @@ export function Sidebar({ user }: SidebarProps) {
 
   const fetchVideoTasks = useCallback(async () => {
     try {
-      const res = await fetch('/api/user/status');
+      const res = await fetch('/api/status/video');
       if (!res.ok) return;
       const data = await res.json();
       const payload = data?.data;

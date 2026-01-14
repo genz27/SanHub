@@ -1,5 +1,9 @@
 import { cache } from './cache';
-import { getRecentSoraVideoGenerationsByUser, getUserIdsWithRecentSoraVideos } from './db';
+import {
+  getRecentSoraVideoGenerations,
+  getRecentSoraVideoGenerationsByUser,
+  getUserIdsWithRecentSoraVideos,
+} from './db';
 import type { Generation } from '@/types';
 
 export type VideoStatusTask = {
@@ -17,11 +21,12 @@ export type VideoStatusSnapshot = {
 };
 
 const VIDEO_STATUS_CACHE_PREFIX = 'status:video:';
+const VIDEO_STATUS_CACHE_SITE_KEY = `${VIDEO_STATUS_CACHE_PREFIX}site`;
 const VIDEO_STATUS_TTL_SECONDS = 10 * 60;
 const POLL_INTERVAL_MS = 5 * 60 * 1000;
 const LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
 const TASK_LIMIT = 20;
-const DISPLAY_LIMIT = 5;
+const DISPLAY_LIMIT = 3;
 
 const globalForStatusPoller = globalThis as typeof globalThis & {
   __videoStatusPollerStarted?: boolean;
@@ -64,6 +69,20 @@ export async function buildVideoStatusSnapshotForUser(
   };
 }
 
+export async function buildVideoStatusSnapshotForSite(
+  now = Date.now()
+): Promise<VideoStatusSnapshot> {
+  const generations = await getRecentSoraVideoGenerations(TASK_LIMIT);
+  const tasks = generations
+    .map((generation) => buildTaskSnapshot(generation, now))
+    .slice(0, DISPLAY_LIMIT);
+
+  return {
+    updatedAt: now,
+    tasks,
+  };
+}
+
 export function getCachedVideoStatus(userId: string): VideoStatusSnapshot | null {
   return cache.get<VideoStatusSnapshot>(getCacheKey(userId));
 }
@@ -72,9 +91,24 @@ export function setCachedVideoStatus(userId: string, snapshot: VideoStatusSnapsh
   cache.set(getCacheKey(userId), snapshot, VIDEO_STATUS_TTL_SECONDS);
 }
 
+export function getCachedSiteVideoStatus(): VideoStatusSnapshot | null {
+  return cache.get<VideoStatusSnapshot>(VIDEO_STATUS_CACHE_SITE_KEY);
+}
+
+export function setCachedSiteVideoStatus(snapshot: VideoStatusSnapshot): void {
+  cache.set(VIDEO_STATUS_CACHE_SITE_KEY, snapshot, VIDEO_STATUS_TTL_SECONDS);
+}
+
 async function refreshAllVideoStatusSnapshots(): Promise<void> {
   const now = Date.now();
   const userIds = await getUserIdsWithRecentSoraVideos(now - LOOKBACK_MS);
+
+  try {
+    const snapshot = await buildVideoStatusSnapshotForSite(now);
+    setCachedSiteVideoStatus(snapshot);
+  } catch (error) {
+    console.error('[Status Poller] Failed to refresh site status:', error);
+  }
 
   await Promise.all(
     userIds.map(async (userId) => {

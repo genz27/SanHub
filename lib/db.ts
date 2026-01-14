@@ -950,6 +950,17 @@ export async function getPendingGenerations(userId: string, limit = 50): Promise
   }));
 }
 
+export async function getPendingGenerationsCount(): Promise<number> {
+  await initializeDatabase();
+  const db = getAdapter();
+
+  const [rows] = await db.execute(
+    `SELECT COUNT(1) as count FROM generations WHERE status IN ('pending', 'processing')`
+  );
+
+  return Number((rows as any[])[0]?.count || 0);
+}
+
 export async function getUserIdsWithRecentSoraVideos(sinceMs: number): Promise<string[]> {
   await initializeDatabase();
   const db = getAdapter();
@@ -977,6 +988,34 @@ export async function getRecentSoraVideoGenerationsByUser(
      WHERE user_id = ? AND type = 'sora-video'
      ORDER BY created_at DESC LIMIT ${safeLimit}`,
     [userId]
+  );
+
+  return (rows as any[]).map((row) => ({
+    id: row.id,
+    userId: row.user_id,
+    type: row.type,
+    prompt: row.prompt,
+    params: typeof row.params === 'string' ? JSON.parse(row.params) : row.params,
+    resultUrl: row.result_url,
+    cost: row.cost,
+    status: row.status || 'completed',
+    balancePrecharged: Boolean(row.balance_precharged),
+    balanceRefunded: Boolean(row.balance_refunded),
+    errorMessage: row.error_message || undefined,
+    createdAt: Number(row.created_at),
+    updatedAt: Number(row.updated_at || row.created_at),
+  }));
+}
+
+export async function getRecentSoraVideoGenerations(limit = 20): Promise<Generation[]> {
+  await initializeDatabase();
+  const db = getAdapter();
+  const safeLimit = Math.max(Number(limit) || 20, 1);
+
+  const [rows] = await db.execute(
+    `SELECT * FROM generations
+     WHERE type = 'sora-video'
+     ORDER BY created_at DESC LIMIT ${safeLimit}`
   );
 
   return (rows as any[]).map((row) => ({
