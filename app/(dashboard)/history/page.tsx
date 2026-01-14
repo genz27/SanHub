@@ -61,7 +61,7 @@ const IMAGE_MODEL_LABELS = new Map(
 
 const getTypeBadge = (type: string) => TYPE_BADGE_MAP[type] || { label: type, icon: Palette };
 const getGenerationBadge = (gen: Generation) => {
-  if (gen.type === 'zimage-image' || gen.type === 'gitee-image') {
+  if (gen.type === 'gemini-image' || gen.type === 'zimage-image' || gen.type === 'gitee-image') {
     const modelLabel = gen.params?.model ? IMAGE_MODEL_LABELS.get(gen.params.model) : undefined;
     if (modelLabel) {
       return { label: modelLabel, icon: ImageIcon };

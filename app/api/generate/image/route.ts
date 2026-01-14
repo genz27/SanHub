@@ -8,18 +8,25 @@ import {
   updateUserBalance,
   getUserById,
   updateGeneration,
-  getImageModel,
+  getImageModelWithChannel,
   refundGenerationBalance,
 } from '@/lib/db';
 import { saveMediaAsync } from '@/lib/media-storage';
 import { checkRateLimit, RateLimitConfig } from '@/lib/rate-limit';
 import { fetchExternalBuffer } from '@/lib/safe-fetch';
-import type { Generation } from '@/types';
+import type { ChannelType, Generation, GenerationType } from '@/types';
 
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
 const MAX_REFERENCE_IMAGE_BYTES = 10 * 1024 * 1024;
+const IMAGE_TYPE_BY_CHANNEL: Record<ChannelType, GenerationType> = {
+  'openai-compatible': 'gemini-image',
+  gemini: 'gemini-image',
+  modelscope: 'zimage-image',
+  gitee: 'gitee-image',
+  sora: 'sora-image',
+};
 
 async function fetchImageAsBase64(
   imageUrl: string,
@@ -113,10 +120,11 @@ export async function POST(request: NextRequest) {
     }
 
     // 获取模型配置
-    const model = await getImageModel(modelId);
-    if (!model) {
+    const modelConfig = await getImageModelWithChannel(modelId);
+    if (!modelConfig) {
       return NextResponse.json({ error: '模型不存在' }, { status: 404 });
     }
+    const { model, channel } = modelConfig;
     if (!model.enabled) {
       return NextResponse.json({ error: '模型已禁用' }, { status: 400 });
     }
@@ -202,7 +210,7 @@ export async function POST(request: NextRequest) {
     try {
       generation = await saveGeneration({
         userId: user.id,
-        type: 'gemini-image', // 统一类型，后续可根据需要细分
+        type: IMAGE_TYPE_BY_CHANNEL[channel.type] || 'gemini-image',
         prompt: prompt || '',
         params: {
           model: model.apiModel,

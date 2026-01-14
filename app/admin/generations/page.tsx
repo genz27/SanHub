@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { History, Trash2, Search, Loader2, Eye } from 'lucide-react';
 import { formatDate, cn } from '@/lib/utils';
+import { IMAGE_MODELS } from '@/lib/model-config';
 
 interface GenerationRecord {
   id: string;
@@ -10,6 +11,7 @@ interface GenerationRecord {
   userEmail: string;
   userName: string;
   type: string;
+  params?: { model?: string };
   prompt: string;
   resultUrl: string;
   cost: number;
@@ -22,6 +24,7 @@ const TYPE_OPTIONS = [
   { value: 'sora-video', label: '视频' },
   { value: 'sora-image', label: 'Sora 图像' },
   { value: 'gemini-image', label: 'Gemini 图像' },
+  { value: 'zimage-image', label: 'Z-Image 图像' },
   { value: 'gitee-image', label: 'Gitee 图像' },
 ];
 
@@ -32,6 +35,33 @@ const STATUS_OPTIONS = [
   { value: 'processing', label: '处理中' },
   { value: 'failed', label: '失败' },
 ];
+
+const IMAGE_MODEL_LABELS = new Map(
+  IMAGE_MODELS.map((model) => [model.apiModel, model.name])
+);
+
+const TYPE_LABELS: Record<string, string> = {
+  'sora-video': '视频',
+  'sora-image': 'Sora 图像',
+  'gemini-image': 'Gemini 图像',
+  'zimage-image': 'Z-Image 图像',
+  'gitee-image': 'Gitee 图像',
+};
+
+function getRecordTypeLabel(record: GenerationRecord): string {
+  if (
+    record.type === 'gemini-image' ||
+    record.type === 'zimage-image' ||
+    record.type === 'gitee-image'
+  ) {
+    const modelLabel = record.params?.model
+      ? IMAGE_MODEL_LABELS.get(record.params.model)
+      : undefined;
+    if (modelLabel) return modelLabel;
+  }
+
+  return TYPE_LABELS[record.type] || record.type;
+}
 
 export default function GenerationsPage() {
   const [records, setRecords] = useState<GenerationRecord[]>([]);
@@ -170,7 +200,7 @@ export default function GenerationsPage() {
                   </td>
                   <td className="px-5 py-4">
                     <span className="px-2 py-1 text-xs rounded-full bg-card/70 text-foreground/70">
-                      {record.type}
+                      {getRecordTypeLabel(record)}
                     </span>
                   </td>
                   <td className="px-5 py-4 max-w-xs">

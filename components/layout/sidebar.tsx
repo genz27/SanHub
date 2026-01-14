@@ -32,8 +32,8 @@ interface VideoTaskStatus {
   elapsedMs?: number;
 }
 
-const STATUS_POLL_MS = 10_000;
-const VIDEO_POLL_MS = 5 * 60 * 1000;
+const STATUS_POLL_MS = 5_000;
+const VIDEO_POLL_MS = 5_000;
 const VIDEO_DISPLAY_LIMIT = 3;
 
 const statusLabelMap: Record<GenerationStatus, string> = {
@@ -98,7 +98,7 @@ export function Sidebar({ user }: SidebarProps) {
 
   const fetchPendingTasks = useCallback(async () => {
     try {
-      const res = await fetch('/api/status/pending');
+      const res = await fetch('/api/status/pending', { cache: 'no-store' });
       if (!res.ok) return;
       const data = await res.json();
       const count = Number(data?.data?.count);
@@ -111,7 +111,7 @@ export function Sidebar({ user }: SidebarProps) {
 
   const fetchVideoTasks = useCallback(async () => {
     try {
-      const res = await fetch('/api/status/video');
+      const res = await fetch('/api/status/video', { cache: 'no-store' });
       if (!res.ok) return;
       const data = await res.json();
       const payload = data?.data;
