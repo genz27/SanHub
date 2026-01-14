@@ -67,7 +67,7 @@ export const RateLimitConfig = {
   // API 通用限流：每分钟 60 次
   API: { maxRequests: 60, windowSeconds: 60 },
   // 生成 API：每分钟 10 次
-  GENERATE: { maxRequests: 20, windowSeconds: 60 },
+  GENERATE: { maxRequests: 15, windowSeconds: 60 },
   // 聊天 API：每分钟 30 次
   CHAT: { maxRequests: 30, windowSeconds: 60 },
   // 登录 API：每分钟 5 次
