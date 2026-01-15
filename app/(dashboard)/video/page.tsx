@@ -87,7 +87,7 @@ export default function VideoGenerationPage() {
   const [aspectRatio, setAspectRatio] = useState<string>('landscape');
   const [duration, setDuration] = useState<string>('10s');
   const [prompt, setPrompt] = useState('');
-  const [files, setFiles] = useState<Array<{ data: string; mimeType: string; preview: string }>>([]);
+  const [files, setFiles] = useState<Array<{ data: string; mimeType: string; preview: string; file?: File }>>([]);;
 
   // 视频风格选择 (仅普通模式可用)
   const [selectedStyle, setSelectedStyle] = useState<string | null>(null);
@@ -457,7 +457,6 @@ export default function VideoGenerationPage() {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(e.target.files || []);
     const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB limit
-    const PREVIEW_THRESHOLD = 5 * 1024 * 1024; // 5MB: use thumbnail for preview
     
     for (const file of selectedFiles) {
       // Only allow images, no videos
@@ -480,73 +479,14 @@ export default function VideoGenerationPage() {
         continue;
       }
       
-      try {
-        // Keep original data for upload
-        const data = await fileToBase64(file);
-        
-        // For large files, generate a small thumbnail for preview only
-        let previewUrl: string;
-        if (file.size > PREVIEW_THRESHOLD) {
-          previewUrl = await generateThumbnail(file, 400);
-        } else {
-          previewUrl = URL.createObjectURL(file);
-        }
-        
-        setFiles((prev) => [
-          ...prev,
-          { data, mimeType: file.type, preview: previewUrl },
-        ]);
-      } catch (err) {
-        console.error('Failed to process image:', err);
-        toast({
-          title: '图片处理失败',
-          description: '请尝试使用较小的图片',
-          variant: 'destructive',
-        });
-      }
+      // Store file reference for lazy conversion, use blob URL for preview
+      const previewUrl = URL.createObjectURL(file);
+      setFiles((prev) => [
+        ...prev,
+        { data: '', mimeType: file.type, preview: previewUrl, file },
+      ]);
     }
     e.target.value = '';
-  };
-  
-  // Generate small thumbnail for preview only (original data unchanged)
-  const generateThumbnail = (file: File, maxSize: number): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      const url = URL.createObjectURL(file);
-      
-      img.onload = () => {
-        URL.revokeObjectURL(url);
-        
-        let { width, height } = img;
-        if (width > height) {
-          height = Math.round((height * maxSize) / width);
-          width = maxSize;
-        } else {
-          width = Math.round((width * maxSize) / height);
-          height = maxSize;
-        }
-        
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          reject(new Error('Failed to get canvas context'));
-          return;
-        }
-        
-        ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.7));
-      };
-      
-      img.onerror = () => {
-        URL.revokeObjectURL(url);
-        reject(new Error('Failed to load image'));
-      };
-      
-      img.src = url;
-    });
   };
 
   const clearFiles = () => {
@@ -591,9 +531,17 @@ export default function VideoGenerationPage() {
     return match ? match[0] : url;
   };
 
-  // 构建files数组
-  const buildFiles = (): { mimeType: string; data: string }[] => {
-    return files.map((f) => ({ mimeType: f.mimeType, data: f.data }));
+  // 构建files数组 (lazy convert to base64 at submit time)
+  const buildFiles = async (): Promise<{ mimeType: string; data: string }[]> => {
+    const result: { mimeType: string; data: string }[] = [];
+    for (const f of files) {
+      let data = f.data;
+      if (!data && f.file) {
+        data = await fileToBase64(f.file);
+      }
+      result.push({ mimeType: f.mimeType, data });
+    }
+    return result;
   };
 
   // 检查是否达到每日限制
@@ -678,7 +626,7 @@ export default function VideoGenerationPage() {
 
     const taskPrompt = buildPrompt();
     const taskModel = buildModelId(aspectRatio, duration);
-    const taskFiles = buildFiles();
+    const taskFiles = await buildFiles();
 
     const remixTargetId = extractRemixTargetId();
     // 仅普通模式可用风格
@@ -730,7 +678,7 @@ export default function VideoGenerationPage() {
 
     const taskPrompt = buildPrompt();
     const taskModel = buildModelId(aspectRatio, duration);
-    const taskFiles = buildFiles();
+    const taskFiles = await buildFiles();
     const remixTargetId = extractRemixTargetId();
     const styleId = creationMode === 'normal' ? selectedStyle || undefined : undefined;
 
@@ -995,7 +943,7 @@ export default function VideoGenerationPage() {
                         </div>
                       ) : (
                         <div className="grid grid-cols-4 gap-2">
-                          {files.map((f: { data: string; mimeType: string; preview: string }, i) => (
+                          {files.map((f, i) => (
                             <div key={i} className="aspect-square rounded-lg overflow-hidden border border-border/70">
                               {f.mimeType.startsWith('video') ? (
                                 <video src={f.preview} className="w-full h-full object-cover" />
