@@ -150,8 +150,29 @@ export default function ImageGenerationPage() {
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(e.target.files || []);
+    const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB limit
+    
     for (const file of selectedFiles) {
-      if (!file.type.startsWith('image/')) continue;
+      // Only allow images
+      if (!file.type.startsWith('image/')) {
+        toast({
+          title: '文件类型错误',
+          description: '只支持图片文件',
+          variant: 'destructive',
+        });
+        continue;
+      }
+      
+      // Check file size
+      if (file.size > MAX_FILE_SIZE) {
+        toast({
+          title: '文件过大',
+          description: `${file.name} 超过 50MB 限制，请压缩后上传`,
+          variant: 'destructive',
+        });
+        continue;
+      }
+      
       const data = await fileToBase64(file);
       setImages((prev) => [
         ...prev,

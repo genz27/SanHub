@@ -12,7 +12,7 @@ import { fetchExternalBuffer } from '@/lib/safe-fetch';
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
-const MAX_REFERENCE_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_REFERENCE_IMAGE_BYTES = 50 * 1024 * 1024;
 const RATE_LIMIT_RETRIES = 3;
 const RATE_LIMIT_BASE_DELAY_MS = 1500;
 const RATE_LIMIT_MAX_DELAY_MS = 10000;
