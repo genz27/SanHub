@@ -578,6 +578,7 @@ async function generateWithOpenAIChat(
 
   const decoder = new TextDecoder();
   let fullContent = '';
+  let reasoningContent = '';
   let buffer = '';
 
   while (true) {
@@ -597,9 +598,12 @@ async function generateWithOpenAIChat(
 
       try {
         const parsed = JSON.parse(data);
-        const delta = parsed.choices?.[0]?.delta?.content;
-        if (delta) {
-          fullContent += delta;
+        const delta = parsed.choices?.[0]?.delta;
+        if (delta?.content) {
+          fullContent += delta.content;
+        }
+        if (delta?.reasoning_content) {
+          reasoningContent += delta.reasoning_content;
         }
       } catch {
         // Ignore parse errors for individual chunks
@@ -607,32 +611,60 @@ async function generateWithOpenAIChat(
     }
   }
 
-  if (!fullContent) {
+  // Use content first, fallback to reasoning_content
+  const responseText = fullContent || reasoningContent;
+
+  if (!responseText) {
     throw new Error('API returned success but no content');
   }
 
-  // Parse response content - expect JSON with type and url
-  let resultUrl: string;
-  try {
-    const parsed = JSON.parse(fullContent);
-    if (parsed.url) {
-      resultUrl = parsed.url;
-    } else {
-      throw new Error('No image URL in response');
+  // Parse response content - extract URL from various formats
+  let resultUrl: string | undefined;
+
+  // 1. HTML video/img tags: <video src='...'> or <img src='...'>
+  const htmlSrcMatch = responseText.match(/<(?:video|img)[^>]*\ssrc=['"]([^'"]+)['"]/i);
+  if (htmlSrcMatch) {
+    resultUrl = htmlSrcMatch[1];
+  }
+
+  // 2. Markdown image: ![...](URL) or ![...](data:image/...)
+  if (!resultUrl) {
+    const mdImageMatch = responseText.match(/!\[[^\]]*\]\(([^)]+)\)/);
+    if (mdImageMatch) {
+      resultUrl = mdImageMatch[1];
     }
-  } catch {
-    // Try to extract URL from content directly
-    const urlMatch = fullContent.match(/https?:\/\/[^\s"'<>]+/);
+  }
+
+  // 3. JSON format: { "url": "..." }
+  if (!resultUrl) {
+    try {
+      const parsed = JSON.parse(responseText);
+      if (parsed.url) {
+        resultUrl = parsed.url;
+      }
+    } catch {
+      // Not JSON, continue
+    }
+  }
+
+  // 4. Direct URL in text
+  if (!resultUrl) {
+    const urlMatch = responseText.match(/https?:\/\/[^\s"'<>\])`]+/);
     if (urlMatch) {
       resultUrl = urlMatch[0];
-    } else {
-      // Check if content itself is a data URL
-      if (fullContent.startsWith('data:image/')) {
-        resultUrl = fullContent;
-      } else {
-        throw new Error(`Cannot parse response: ${fullContent.substring(0, 200)}`);
-      }
     }
+  }
+
+  // 5. Direct data URL
+  if (!resultUrl && responseText.includes('data:image/')) {
+    const dataUrlMatch = responseText.match(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/);
+    if (dataUrlMatch) {
+      resultUrl = dataUrlMatch[0];
+    }
+  }
+
+  if (!resultUrl) {
+    throw new Error(`Cannot parse response: ${responseText.substring(0, 200)}`);
   }
 
   return {
