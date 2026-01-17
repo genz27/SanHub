@@ -487,6 +487,129 @@ async function generateWithGiteeMatting(
 // Sora API
 // ========================================
 
+// ========================================
+// OpenAI Chat Completions API (for image generation)
+// ========================================
+
+async function generateWithOpenAIChat(
+  request: ImageGenerateRequest,
+  baseUrl: string,
+  apiKey: string,
+  apiModel: string,
+  channelId: string,
+  resolutions?: Record<string, string | Record<string, string>>
+): Promise<GenerateResult> {
+  const key = getNextApiKey(apiKey, channelId);
+  const url = `${baseUrl.replace(/\/$/, '')}/v1/chat/completions`;
+
+  // Resolve actual model from resolutions if available
+  let actualModel = apiModel;
+  if (resolutions && request.aspectRatio) {
+    const ratioConfig = resolutions[request.aspectRatio];
+    if (ratioConfig) {
+      if (typeof ratioConfig === 'string') {
+        // Simple mapping: ratio -> model name (not size)
+        // Check if it looks like a model name (contains letters) vs size (like "1024x1024")
+        if (!/^\d+x\d+$/.test(ratioConfig)) {
+          actualModel = ratioConfig;
+        }
+      } else if (typeof ratioConfig === 'object' && request.imageSize) {
+        // Nested mapping: ratio -> { size -> model }
+        const sizeModel = ratioConfig[request.imageSize];
+        if (sizeModel && !/^\d+x\d+$/.test(sizeModel)) {
+          actualModel = sizeModel;
+        }
+      }
+    }
+  }
+
+  // Build message content
+  const contentParts: Array<{ type: string; text?: string; image_url?: { url: string } }> = [];
+
+  // Add reference images first
+  if (request.images && request.images.length > 0) {
+    for (const img of request.images) {
+      contentParts.push({
+        type: 'image_url',
+        image_url: { url: img.data },
+      });
+    }
+  }
+
+  // Add prompt text
+  if (request.prompt) {
+    contentParts.push({ type: 'text', text: request.prompt });
+  }
+
+  const payload = {
+    model: actualModel,
+    messages: [
+      {
+        role: 'user',
+        content: contentParts.length === 1 && contentParts[0].type === 'text'
+          ? request.prompt
+          : contentParts,
+      },
+    ],
+    stream: false,
+  };
+
+  const response = await fetchWithRetry(fetch, url, () => ({
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${key}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  }));
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OpenAI Chat API error (${response.status}): ${errorText}`);
+  }
+
+  const data = await response.json();
+  const content = data.choices?.[0]?.message?.content;
+
+  if (!content) {
+    throw new Error('API returned success but no content');
+  }
+
+  // Parse response content - expect JSON with type and url
+  let resultUrl: string;
+  try {
+    const parsed = JSON.parse(content);
+    if (parsed.url) {
+      resultUrl = parsed.url;
+    } else {
+      throw new Error('No image URL in response');
+    }
+  } catch {
+    // Try to extract URL from content directly
+    const urlMatch = content.match(/https?:\/\/[^\s"'<>]+/);
+    if (urlMatch) {
+      resultUrl = urlMatch[0];
+    } else {
+      // Check if content itself is a data URL
+      if (content.startsWith('data:image/')) {
+        resultUrl = content;
+      } else {
+        throw new Error(`Cannot parse response: ${content.substring(0, 200)}`);
+      }
+    }
+  }
+
+  return {
+    type: 'gemini-image',
+    url: resultUrl,
+    cost: 0,
+  };
+}
+
+// ========================================
+// Sora API
+// ========================================
+
 async function generateWithSora(
   request: ImageGenerateRequest,
   baseUrl: string,
@@ -610,6 +733,17 @@ export async function generateImage(request: ImageGenerateRequest): Promise<Gene
         effectiveApiKey,
         model.apiModel,
         channel.id
+      );
+      break;
+
+    case 'openai-chat':
+      result = await generateWithOpenAIChat(
+        request,
+        effectiveBaseUrl,
+        effectiveApiKey,
+        model.apiModel,
+        channel.id,
+        model.resolutions
       );
       break;
 

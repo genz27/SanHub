@@ -22,6 +22,7 @@ export const dynamic = 'force-dynamic';
 const MAX_REFERENCE_IMAGE_BYTES = 10 * 1024 * 1024;
 const IMAGE_TYPE_BY_CHANNEL: Record<ChannelType, GenerationType> = {
   'openai-compatible': 'gemini-image',
+  'openai-chat': 'gemini-image',
   gemini: 'gemini-image',
   modelscope: 'zimage-image',
   gitee: 'gitee-image',

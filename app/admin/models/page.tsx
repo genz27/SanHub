@@ -14,6 +14,7 @@ export default function ModelsPage() {
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [form, setForm] = useState({
     name: '',
     apiUrl: '',
@@ -54,6 +55,7 @@ export default function ModelsPage() {
       costPerMessage: 1,
       enabled: true,
     });
+    setShowAdvanced(false);
     setEditingId(null);
   };
 
@@ -69,6 +71,7 @@ export default function ModelsPage() {
       enabled: model.enabled,
     });
     setEditingId(model.id);
+    setShowAdvanced(true);
   };
 
 
@@ -200,24 +203,6 @@ export default function ModelsPage() {
               </button>
             </div>
           </div>
-          <div className="space-y-2">
-            <label className="text-sm text-foreground/70">最大 Tokens</label>
-            <input
-              type="number"
-              value={form.maxTokens}
-              onChange={(e) => setForm({ ...form, maxTokens: parseInt(e.target.value) || 4096 })}
-              className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border"
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm text-foreground/70">每次消耗积分</label>
-            <input
-              type="number"
-              value={form.costPerMessage}
-              onChange={(e) => setForm({ ...form, costPerMessage: parseInt(e.target.value) || 1 })}
-              className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border"
-            />
-          </div>
         </div>
 
         <div className="flex items-center gap-6 pt-2">
@@ -239,7 +224,37 @@ export default function ModelsPage() {
             />
             <span className="text-sm text-foreground/70">启用</span>
           </label>
+          <button
+            type="button"
+            onClick={() => setShowAdvanced((prev) => !prev)}
+            className="text-sm text-foreground/50 hover:text-foreground/80 transition-colors"
+          >
+            {showAdvanced ? '收起高级设置' : '高级设置'}
+          </button>
         </div>
+
+        {showAdvanced && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+            <div className="space-y-2">
+              <label className="text-sm text-foreground/70">最大 Tokens</label>
+              <input
+                type="number"
+                value={form.maxTokens}
+                onChange={(e) => setForm({ ...form, maxTokens: parseInt(e.target.value) || 4096 })}
+                className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm text-foreground/70">每次消耗积分</label>
+              <input
+                type="number"
+                value={form.costPerMessage}
+                onChange={(e) => setForm({ ...form, costPerMessage: parseInt(e.target.value) || 1 })}
+                className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border"
+              />
+            </div>
+          </div>
+        )}
 
         <div className="flex items-center gap-3 pt-4">
           <button

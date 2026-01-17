@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react';
 import { User, Ban, Check, Search, Edit2, Key, Coins, Loader2, ShieldAlert } from 'lucide-react';
 import type { SafeUser } from '@/types';
 import { formatBalance, formatDate, cn } from '@/lib/utils';
+import { PaginationControls } from '@/components/admin/pagination';
 
 const USERS_PAGE_SIZE = 50;
 
@@ -12,9 +13,9 @@ export default function UsersPage() {
   const { data: session } = useSession();
   const [users, setUsers] = useState<SafeUser[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const [fetching, setFetching] = useState(false);
   const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(false);
+  const [total, setTotal] = useState(0);
   const [selectedUser, setSelectedUser] = useState<SafeUser | null>(null);
   const [editMode, setEditMode] = useState<'password' | 'balance' | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -35,12 +36,12 @@ export default function UsersPage() {
     return false;
   };
 
-  const loadUsers = useCallback(async (nextPage = 1, append = false) => {
+  const loadUsers = useCallback(async (nextPage = 1, reset = false) => {
     try {
-      if (append) {
-        setLoadingMore(true);
-      } else {
+      if (reset) {
         setLoading(true);
+      } else {
+        setFetching(true);
       }
 
       const params = new URLSearchParams();
@@ -55,10 +56,10 @@ export default function UsersPage() {
       if (res.ok) {
         const data = await res.json();
         const nextUsers = data.data || [];
-        setUsers((prev) => (append ? [...prev, ...nextUsers] : nextUsers));
+        setUsers(nextUsers);
         setPage(data.page || nextPage);
-        setHasMore(Boolean(data.hasMore));
-        if (!append) {
+        setTotal(data.total || 0);
+        if (reset) {
           setSelectedUser(null);
         }
       }
@@ -66,13 +67,13 @@ export default function UsersPage() {
       console.error('加载用户失败:', err);
     } finally {
       setLoading(false);
-      setLoadingMore(false);
+      setFetching(false);
     }
   }, [search]);
 
   useEffect(() => {
     const handle = setTimeout(() => {
-      loadUsers(1, false);
+      loadUsers(1, true);
     }, 300);
     return () => clearTimeout(handle);
   }, [loadUsers]);
@@ -140,7 +141,7 @@ export default function UsersPage() {
       {/* Header */}
       <div>
         <h1 className="text-3xl font-light text-foreground">用户管理</h1>
-        <p className="text-foreground/50 mt-1">管理用户账号、余额和权限</p>
+        <p className="text-foreground/50 mt-1">管理用户账号、余额和权限 · 共 {total} 条</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0">
@@ -188,19 +189,14 @@ export default function UsersPage() {
             ))}
           </div>
           
-          {hasMore && (
-            <button
-              onClick={() => loadUsers(page + 1, true)}
-              disabled={loadingMore}
-              className="w-full py-3 bg-card/60 border border-border/70 text-foreground/60 rounded-xl text-sm font-medium hover:bg-card/70 hover:text-foreground disabled:opacity-50 transition-all"
-            >
-              {loadingMore ? (
-                <span className="flex items-center justify-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  加载中...
-                </span>
-              ) : '加载更多'}
-            </button>
+          {total > 0 && (
+            <PaginationControls
+              page={page}
+              pageSize={USERS_PAGE_SIZE}
+              total={total}
+              onPageChange={(nextPage) => loadUsers(nextPage, false)}
+              loading={fetching}
+            />
           )}
         </div>
 

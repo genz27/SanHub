@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { BarChart3, Users, Zap, TrendingUp, Loader2 } from 'lucide-react';
+import { BarChart3, Users, Zap, TrendingUp, Loader2, MessageSquare } from 'lucide-react';
 import type { StatsOverview } from '@/types';
 import { formatBalance } from '@/lib/utils';
 
@@ -58,6 +58,23 @@ export default function StatsPage() {
   const userTicks = calcYAxisTicks(maxUsers);
   const genCeil = genTicks[genTicks.length - 1] || 1;
   const userCeil = userTicks[userTicks.length - 1] || 1;
+  const totalTypeCount = stats.generationTypes.reduce((sum, item) => sum + item.count, 0);
+  const typeMeta: Record<string, { label: string; color: string }> = {
+    'sora-video': { label: '视频', color: 'from-sky-500 to-emerald-500' },
+    'sora-image': { label: 'Sora 图像', color: 'from-blue-500 to-cyan-500' },
+    'gemini-image': { label: 'Gemini 图像', color: 'from-emerald-500 to-lime-500' },
+    'zimage-image': { label: 'Z-Image 图像', color: 'from-amber-500 to-orange-500' },
+    'gitee-image': { label: 'Gitee 图像', color: 'from-pink-500 to-rose-500' },
+    chat: { label: 'Chat', color: 'from-violet-500 to-fuchsia-500' },
+    'character-card': { label: '角色卡', color: 'from-indigo-500 to-blue-500' },
+  };
+  const typeItems = stats.generationTypes
+    .map((item) => {
+      const meta = typeMeta[item.type] || { label: item.type, color: 'from-slate-500 to-slate-400' };
+      const percent = totalTypeCount > 0 ? Math.round((item.count / totalTypeCount) * 100) : 0;
+      return { ...item, label: meta.label, color: meta.color, percent };
+    })
+    .sort((a, b) => b.count - a.count);
 
   return (
     <div className="space-y-6">
@@ -78,16 +95,20 @@ export default function StatsPage() {
       </div>
 
       {/* Overview Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         <StatCard icon={Users} label="总用户" value={stats.totalUsers} color="blue" />
         <StatCard icon={Zap} label="总生成" value={stats.totalGenerations} color="green" />
-        <StatCard icon={TrendingUp} label="今日新增用户" value={stats.todayUsers} color="sky" />
+        <StatCard icon={MessageSquare} label="聊天模型" value={stats.totalChatModels} color="violet" />
+        <StatCard icon={Users} label="今日新增用户" value={stats.todayUsers} color="sky" />
         <StatCard icon={BarChart3} label="今日生成" value={stats.todayGenerations} color="orange" />
+        <StatCard icon={MessageSquare} label="启用模型" value={stats.enabledChatModels} color="emerald" />
       </div>
 
       {/* Generation Chart */}
-      <div className="bg-card/60 border border-border/70 rounded-2xl p-6">
-        <h2 className="text-lg font-semibold text-foreground mb-4">生成量趋势</h2>
+      <div className="bg-card/60 border border-border/70 rounded-2xl p-6 relative overflow-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.12),transparent_55%)] pointer-events-none" />
+        <div className="relative">
+          <h2 className="text-lg font-semibold text-foreground mb-4">生成量趋势</h2>
         {stats.dailyStats.length === 0 ? (
           <div className="h-48 flex items-center justify-center text-foreground/40">暂无数据</div>
         ) : (
@@ -100,7 +121,8 @@ export default function StatsPage() {
             </div>
             {/* Chart */}
             <div className="flex-1 flex flex-col">
-              <div className="h-48 flex items-end gap-[2px] border-l border-b border-border/70 pl-1">
+              <div className="h-48 flex items-end gap-[2px] border-l border-b border-border/70 pl-1 relative">
+                <div className="absolute inset-0 bg-[linear-gradient(to_top,rgba(148,163,184,0.2)_1px,transparent_1px)] bg-[length:100%_24px] pointer-events-none" />
                 {stats.dailyStats.map((day, i) => (
                   <div key={day.date || i} className="flex-1 h-full flex items-end justify-center group relative min-w-[6px]">
                     <div 
@@ -120,11 +142,14 @@ export default function StatsPage() {
             </div>
           </div>
         )}
+        </div>
       </div>
 
       {/* User Growth Chart */}
-      <div className="bg-card/60 border border-border/70 rounded-2xl p-6">
-        <h2 className="text-lg font-semibold text-foreground mb-4">用户增长</h2>
+      <div className="bg-card/60 border border-border/70 rounded-2xl p-6 relative overflow-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.12),transparent_55%)] pointer-events-none" />
+        <div className="relative">
+          <h2 className="text-lg font-semibold text-foreground mb-4">用户增长</h2>
         {stats.dailyStats.length === 0 ? (
           <div className="h-48 flex items-center justify-center text-foreground/40">暂无数据</div>
         ) : (
@@ -137,7 +162,8 @@ export default function StatsPage() {
             </div>
             {/* Chart */}
             <div className="flex-1 flex flex-col">
-              <div className="h-48 flex items-end gap-[2px] border-l border-b border-border/70 pl-1">
+              <div className="h-48 flex items-end gap-[2px] border-l border-b border-border/70 pl-1 relative">
+                <div className="absolute inset-0 bg-[linear-gradient(to_top,rgba(148,163,184,0.2)_1px,transparent_1px)] bg-[length:100%_24px] pointer-events-none" />
                 {stats.dailyStats.map((day, i) => (
                   <div key={day.date || i} className="flex-1 h-full flex items-end justify-center group relative min-w-[6px]">
                     <div 
@@ -155,6 +181,34 @@ export default function StatsPage() {
                 ))}
               </div>
             </div>
+          </div>
+        )}
+        </div>
+      </div>
+
+      {/* Generation Type Distribution */}
+      <div className="bg-card/60 border border-border/70 rounded-2xl p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-foreground">生成类型分布</h2>
+          <span className="text-xs text-foreground/40">最近 {days} 天</span>
+        </div>
+        {typeItems.length === 0 ? (
+          <div className="h-40 flex items-center justify-center text-foreground/40">暂无数据</div>
+        ) : (
+          <div className="space-y-3">
+            {typeItems.map((item) => (
+              <div key={item.type} className="flex items-center gap-3">
+                <div className="w-28 text-xs text-foreground/60">{item.label}</div>
+                <div className="flex-1 h-2.5 rounded-full bg-card/70 border border-border/70 overflow-hidden">
+                  <div
+                    className={`h-full bg-gradient-to-r ${item.color}`}
+                    style={{ width: `${item.percent}%` }}
+                  />
+                </div>
+                <div className="w-12 text-right text-xs text-foreground/60">{item.count}</div>
+                <div className="w-10 text-right text-xs text-foreground/40">{item.percent}%</div>
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -195,18 +249,21 @@ function StatCard({ icon: Icon, label, value, color }: {
   icon: typeof Users; 
   label: string; 
   value: number; 
-  color: 'blue' | 'green' | 'sky' | 'orange' 
+  color: 'blue' | 'green' | 'sky' | 'orange' | 'violet' | 'emerald'
 }) {
   const colors = {
     blue: { bg: 'bg-blue-500/20', text: 'text-blue-400' },
     green: { bg: 'bg-green-500/20', text: 'text-green-400' },
     sky: { bg: 'bg-sky-500/20', text: 'text-sky-400' },
     orange: { bg: 'bg-orange-500/20', text: 'text-orange-400' },
+    violet: { bg: 'bg-violet-500/20', text: 'text-violet-400' },
+    emerald: { bg: 'bg-emerald-500/20', text: 'text-emerald-400' },
   };
   const { bg, text } = colors[color];
 
   return (
-    <div className="bg-card/60 border border-border/70 rounded-2xl p-5">
+    <div className="bg-card/60 border border-border/70 rounded-2xl p-5 relative overflow-hidden">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.05),transparent_55%)] pointer-events-none" />
       <div className="flex items-center gap-3">
         <div className={`w-10 h-10 ${bg} rounded-xl flex items-center justify-center`}>
           <Icon className={`w-5 h-5 ${text}`} />

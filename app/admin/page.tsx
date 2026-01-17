@@ -36,11 +36,14 @@ export default function AdminPage() {
         setStats({
           totalUsers: 0,
           activeUsers: 0,
+          totalChatModels: 0,
+          enabledChatModels: 0,
           totalGenerations: 0,
           totalPoints: 0,
           todayUsers: 0,
           todayGenerations: 0,
           dailyStats: [],
+          generationTypes: [],
         });
       }
 
@@ -57,11 +60,14 @@ export default function AdminPage() {
       setStats({
         totalUsers: 0,
         activeUsers: 0,
+        totalChatModels: 0,
+        enabledChatModels: 0,
         totalGenerations: 0,
         totalPoints: 0,
         todayUsers: 0,
         todayGenerations: 0,
         dailyStats: [],
+        generationTypes: [],
       });
       setUsers([]);
     } finally {

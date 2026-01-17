@@ -52,6 +52,7 @@ function getImageResolution(
 export default function ImageGenerationPage() {
   const { update } = useSession();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const modelDropdownRef = useRef<HTMLDivElement>(null);
   const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
 
   // 模型列表（从 API 获取）
@@ -70,13 +71,15 @@ export default function ImageGenerationPage() {
   const [aspectRatio, setAspectRatio] = useState<string>('1:1');
   const [imageSize, setImageSize] = useState<string>('1K');
   const [prompt, setPrompt] = useState('');
-  const [images, setImages] = useState<{ data: string; mimeType: string; preview: string }[]>([]);
+  const [images, setImages] = useState<Array<{ data: string; mimeType: string; preview: string; file?: File }>>([]);
 
   // 任务状态
   const [generations, setGenerations] = useState<Generation[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [keepPrompt, setKeepPrompt] = useState(false);
+  const [keepImages, setKeepImages] = useState(false);
 
   // 获取当前选中的模型配置
   const currentModel = useMemo(() => {
@@ -112,6 +115,18 @@ export default function ImageGenerationPage() {
     };
     loadModels();
   }, []);
+
+  useEffect(() => {
+    if (!showModelDropdown) return;
+    const handleClick = (event: MouseEvent) => {
+      if (!modelDropdownRef.current) return;
+      if (!modelDropdownRef.current.contains(event.target as Node)) {
+        setShowModelDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showModelDropdown]);
 
   // 加载每日使用量
   useEffect(() => {
@@ -173,10 +188,10 @@ export default function ImageGenerationPage() {
         continue;
       }
       
-      const data = await fileToBase64(file);
+      const preview = URL.createObjectURL(file);
       setImages((prev) => [
         ...prev,
-        { data, mimeType: file.type, preview: URL.createObjectURL(file) },
+        { data: '', mimeType: file.type, preview, file },
       ]);
     }
     e.target.value = '';
@@ -185,6 +200,20 @@ export default function ImageGenerationPage() {
   const clearImages = () => {
     images.forEach((img) => URL.revokeObjectURL(img.preview));
     setImages([]);
+  };
+
+  const buildImages = async (): Promise<{ mimeType: string; data: string }[]> => {
+    const result: { mimeType: string; data: string }[] = [];
+    for (const img of images) {
+      let data = img.data;
+      if (!data && img.file) {
+        data = await fileToBase64(img.file);
+      }
+      if (data) {
+        result.push({ mimeType: img.mimeType, data });
+      }
+    }
+    return result;
   };
 
   // 轮询任务状态

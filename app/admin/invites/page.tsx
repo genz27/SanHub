@@ -200,10 +200,12 @@ export default function InvitesPage() {
 
       <div className="bg-card/60 border border-border/70 rounded-2xl overflow-hidden">
         <div className="overflow-x-auto no-scrollbar">
-          <table className="w-full min-w-[760px]">
+          <table className="w-full min-w-[980px]">
             <thead>
               <tr className="border-b border-border/70">
                 <th className="text-left text-sm font-medium text-foreground/50 px-5 py-4">邀请码</th>
+                <th className="text-left text-sm font-medium text-foreground/50 px-5 py-4">创建者</th>
+                <th className="text-left text-sm font-medium text-foreground/50 px-5 py-4">使用者</th>
                 <th className="text-right text-sm font-medium text-foreground/50 px-5 py-4">被邀请人奖励</th>
                 <th className="text-right text-sm font-medium text-foreground/50 px-5 py-4">邀请人奖励</th>
                 <th className="text-center text-sm font-medium text-foreground/50 px-5 py-4">状态</th>
@@ -218,6 +220,22 @@ export default function InvitesPage() {
                     <code className="font-mono text-foreground bg-card/60 px-2 py-1 rounded">
                       {code.code}
                     </code>
+                  </td>
+                  <td className="px-5 py-4">
+                    <div>
+                      <p className="text-foreground/80 text-sm">{code.creatorName || '-'}</p>
+                      <p className="text-xs text-foreground/40">{code.creatorEmail || ''}</p>
+                    </div>
+                  </td>
+                  <td className="px-5 py-4">
+                    {code.usedBy ? (
+                      <div>
+                        <p className="text-foreground/80 text-sm">{code.usedByName || '-'}</p>
+                        <p className="text-xs text-foreground/40">{code.usedByEmail || ''}</p>
+                      </div>
+                    ) : (
+                      <span className="text-sm text-foreground/40">未使用</span>
+                    )}
                   </td>
                   <td className="px-5 py-4 text-right text-green-400">+{code.bonusPoints}</td>
                   <td className="px-5 py-4 text-right text-blue-400">+{code.creatorBonus}</td>

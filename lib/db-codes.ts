@@ -276,7 +276,15 @@ export async function getInviteCodes(options: {
   const limit = Math.max(Number(options.limit) || 50, 1);
   const offset = Math.max(Number(options.offset) || 0, 0);
 
-  let sql = 'SELECT * FROM invite_codes WHERE 1=1';
+  let sql = `
+    SELECT i.*, 
+           u.email as creator_email, u.name as creator_name,
+           used.email as used_email, used.name as used_name
+    FROM invite_codes i
+    LEFT JOIN users u ON i.creator_id = u.id
+    LEFT JOIN users used ON i.used_by = used.id
+    WHERE 1=1
+  `;
   const params: unknown[] = [];
 
   if (options.creatorId) {
@@ -301,6 +309,10 @@ export async function getInviteCodes(options: {
     creatorBonus: row.creator_bonus || 0,
     expiresAt: row.expires_at ? Number(row.expires_at) : undefined,
     createdAt: Number(row.created_at),
+    creatorEmail: row.creator_email || undefined,
+    creatorName: row.creator_name || undefined,
+    usedByEmail: row.used_email || undefined,
+    usedByName: row.used_name || undefined,
   }));
 }
 
@@ -545,6 +557,12 @@ export async function getStatsOverview(days = 30): Promise<StatsOverview> {
   const [activeRows] = await db.execute('SELECT COUNT(1) as count FROM users WHERE disabled = 0');
   const activeUsers = Number((activeRows as any[])[0]?.count || 0);
 
+  const [chatModelRows] = await db.execute('SELECT COUNT(1) as count FROM chat_models');
+  const totalChatModels = Number((chatModelRows as any[])[0]?.count || 0);
+
+  const [chatEnabledRows] = await db.execute('SELECT COUNT(1) as count FROM chat_models WHERE enabled = 1');
+  const enabledChatModels = Number((chatEnabledRows as any[])[0]?.count || 0);
+
   const [genRows] = await db.execute('SELECT COUNT(1) as count FROM generations');
   const totalGenerations = Number((genRows as any[])[0]?.count || 0);
 
@@ -626,14 +644,30 @@ export async function getStatsOverview(days = 30): Promise<StatsOverview> {
     if (stat) dailyStats.push(stat);
   }
 
+  const [typeRows] = await db.execute(
+    `SELECT type, COUNT(1) as count
+     FROM generations
+     WHERE created_at >= ?
+     GROUP BY type`,
+    [startDate]
+  );
+
+  const generationTypes = (typeRows as any[]).map((row) => ({
+    type: row.type,
+    count: Number(row.count || 0),
+  }));
+
   return {
     totalUsers,
     activeUsers,
+    totalChatModels,
+    enabledChatModels,
     totalGenerations,
     totalPoints,
     todayUsers,
     todayGenerations,
     dailyStats,
+    generationTypes,
   };
 }
 

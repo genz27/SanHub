@@ -1,15 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Loader2, Save, Plus, Trash2, Edit2, Eye, EyeOff,
-  Layers, ChevronDown, ChevronUp, Image as ImageIcon, RefreshCw
+  Layers, ChevronDown, ChevronUp, Image as ImageIcon, RefreshCw, Download, Check
 } from 'lucide-react';
 import { toast } from '@/components/ui/toaster';
 import type { ImageChannel, ImageModel, ChannelType, ImageModelFeatures } from '@/types';
 
 const CHANNEL_TYPES: { value: ChannelType; label: string; description: string }[] = [
-  { value: 'openai-compatible', label: 'OpenAI Streaming', description: 'OpenAI Images API / Chat streaming' },
+  { value: 'openai-compatible', label: 'OpenAI Images', description: 'OpenAI /v1/images/generations API' },
+  { value: 'openai-chat', label: 'OpenAI Chat', description: 'OpenAI /v1/chat/completions API' },
   { value: 'gemini', label: 'Gemini', description: 'Google Gemini Native API' },
   { value: 'modelscope', label: 'ModelScope', description: 'ModelScope API' },
   { value: 'gitee', label: 'Gitee AI', description: 'Gitee AI API' },
@@ -24,6 +25,22 @@ const DEFAULT_FEATURES: ImageModelFeatures = {
   multipleImages: false,
   imageSize: false,
 };
+
+type RatioResolutionRow = {
+  ratio: string;
+  resolution: string;
+};
+
+type SizeResolutionGroup = {
+  size: string;
+  rows: RatioResolutionRow[];
+};
+
+const DEFAULT_RATIO_ROWS: RatioResolutionRow[] = [
+  { ratio: '1:1', resolution: '1024x1024' },
+  { ratio: '16:9', resolution: '1792x1024' },
+  { ratio: '9:16', resolution: '1024x1792' },
+];
 
 export default function ImageChannelsPage() {
   const [channels, setChannels] = useState<ImageChannel[]>([]);
@@ -47,6 +64,24 @@ export default function ImageChannelsPage() {
   // Model form
   const [editingModel, setEditingModel] = useState<string | null>(null);
   const [modelChannelId, setModelChannelId] = useState<string | null>(null);
+
+  // Remote models
+  const [remoteModels, setRemoteModels] = useState<{ id: string; owned_by: string }[]>([]);
+  const [groupedModels, setGroupedModels] = useState<Array<{
+    baseName: string;
+    displayName: string;
+    apiModel: string;
+    aspectRatios: string[];
+    imageSizes: string[];
+    resolutions: Record<string, string | Record<string, string>>;
+    features: { textToImage: boolean; imageToImage: boolean; imageSize: boolean };
+  }>>([]);
+  const [remoteModelsChannelId, setRemoteModelsChannelId] = useState<string | null>(null);
+  const [fetchingRemoteModels, setFetchingRemoteModels] = useState(false);
+  const [selectedRemoteModels, setSelectedRemoteModels] = useState<Set<string>>(new Set());
+  const [selectedGroupedModels, setSelectedGroupedModels] = useState<Set<string>>(new Set());
+  const [addingRemoteModels, setAddingRemoteModels] = useState(false);
+
   const [modelForm, setModelForm] = useState({
     name: '',
     description: '',
@@ -54,9 +89,6 @@ export default function ImageChannelsPage() {
     baseUrl: '',
     apiKey: '',
     features: { ...DEFAULT_FEATURES },
-    aspectRatios: '1:1,16:9,9:16',
-    resolutions: '{"1:1":"1024x1024","16:9":"1792x1024","9:16":"1024x1792"}',
-    imageSizes: '',
     defaultAspectRatio: '1:1',
     defaultImageSize: '',
     requiresReferenceImage: false,
@@ -66,6 +98,41 @@ export default function ImageChannelsPage() {
     costPerGeneration: 10,
     sortOrder: 0,
   });
+  const [ratioRows, setRatioRows] = useState<RatioResolutionRow[]>([...DEFAULT_RATIO_ROWS]);
+  const [sizeGroups, setSizeGroups] = useState<SizeResolutionGroup[]>([
+    { size: '1K', rows: [...DEFAULT_RATIO_ROWS] },
+  ]);
+  const availableRatios = useMemo(() => {
+    const rows = modelForm.features.imageSize
+      ? sizeGroups.flatMap((group) => group.rows)
+      : ratioRows;
+    const unique = new Set(rows.map((row) => row.ratio.trim()).filter(Boolean));
+    return Array.from(unique);
+  }, [modelForm.features.imageSize, ratioRows, sizeGroups]);
+
+  const availableSizes = useMemo(() => {
+    return sizeGroups.map((group) => group.size.trim()).filter(Boolean);
+  }, [sizeGroups]);
+
+  useEffect(() => {
+    if (availableRatios.length === 0) return;
+    if (!availableRatios.includes(modelForm.defaultAspectRatio)) {
+      setModelForm((prev) => ({
+        ...prev,
+        defaultAspectRatio: availableRatios[0],
+      }));
+    }
+  }, [availableRatios, modelForm.defaultAspectRatio]);
+
+  useEffect(() => {
+    if (!modelForm.features.imageSize || availableSizes.length === 0) return;
+    if (!availableSizes.includes(modelForm.defaultImageSize)) {
+      setModelForm((prev) => ({
+        ...prev,
+        defaultImageSize: availableSizes[0],
+      }));
+    }
+  }, [availableSizes, modelForm.defaultImageSize, modelForm.features.imageSize]);
 
   useEffect(() => {
     loadData();
@@ -119,14 +186,38 @@ export default function ImageChannelsPage() {
     setModelForm({
       name: '', description: '', apiModel: '', baseUrl: '', apiKey: '',
       features: { ...DEFAULT_FEATURES },
-      aspectRatios: '1:1,16:9,9:16',
-      resolutions: '{"1:1":"1024x1024","16:9":"1792x1024","9:16":"1024x1792"}',
-      imageSizes: '', defaultAspectRatio: '1:1', defaultImageSize: '',
+      defaultAspectRatio: '1:1',
+      defaultImageSize: '',
       requiresReferenceImage: false, allowEmptyPrompt: false, highlight: false,
       enabled: true, costPerGeneration: 10, sortOrder: 0,
     });
+    setRatioRows([...DEFAULT_RATIO_ROWS]);
+    setSizeGroups([{ size: '1K', rows: [...DEFAULT_RATIO_ROWS] }]);
     setEditingModel(null);
     setModelChannelId(null);
+  };
+
+  const buildRatioRows = (resolutions: Record<string, string> | undefined) => {
+    const entries = Object.entries(resolutions || {});
+    if (entries.length === 0) {
+      return [{ ratio: '', resolution: '' }];
+    }
+    return entries.map(([ratio, resolution]) => ({ ratio, resolution }));
+  };
+
+  const buildSizeGroups = (
+    resolutions: Record<string, Record<string, string>> | undefined,
+    sizes: string[] | undefined
+  ) => {
+    const sizeList = (sizes || []).filter(Boolean);
+    const keys = sizeList.length > 0 ? sizeList : Object.keys(resolutions || {});
+    if (keys.length === 0) {
+      return [{ size: '1K', rows: [{ ratio: '', resolution: '' }] }];
+    }
+    return keys.map((size) => ({
+      size,
+      rows: buildRatioRows(resolutions?.[size]),
+    }));
   };
 
   const startEditChannel = (channel: ImageChannel) => {
@@ -148,9 +239,6 @@ export default function ImageChannelsPage() {
       baseUrl: model.baseUrl || '',
       apiKey: model.apiKey || '',
       features: model.features,
-      aspectRatios: model.aspectRatios.join(','),
-      resolutions: JSON.stringify(model.resolutions),
-      imageSizes: model.imageSizes?.join(',') || '',
       defaultAspectRatio: model.defaultAspectRatio,
       defaultImageSize: model.defaultImageSize || '',
       requiresReferenceImage: model.requiresReferenceImage || false,
@@ -160,6 +248,17 @@ export default function ImageChannelsPage() {
       costPerGeneration: model.costPerGeneration,
       sortOrder: model.sortOrder,
     });
+    if (model.features.imageSize) {
+      const groups = buildSizeGroups(
+        model.resolutions as Record<string, Record<string, string>>,
+        model.imageSizes
+      );
+      setSizeGroups(groups);
+      setRatioRows(groups[0]?.rows || [{ ratio: '', resolution: '' }]);
+    } else {
+      setRatioRows(buildRatioRows(model.resolutions as Record<string, string>));
+      setSizeGroups([{ size: '1K', rows: [...DEFAULT_RATIO_ROWS] }]);
+    }
     setEditingModel(model.id);
     setModelChannelId(model.channelId);
   };
@@ -226,17 +325,70 @@ export default function ImageChannelsPage() {
       toast({ title: '请填写名称和模型 ID', variant: 'destructive' });
       return;
     }
-    setSaving(true);
-    try {
-      let resolutions: Record<string, string | Record<string, string>> = {};
-      try {
-        resolutions = JSON.parse(modelForm.resolutions);
-      } catch {
-        toast({ title: '分辨率 JSON 格式错误', variant: 'destructive' });
-        setSaving(false);
+
+    const normalizeRows = (rows: RatioResolutionRow[]) =>
+      rows
+        .map((row) => ({ ratio: row.ratio.trim(), resolution: row.resolution.trim() }))
+        .filter((row) => row.ratio && row.resolution);
+
+    let aspectRatios: string[] = [];
+    let resolutions: Record<string, string | Record<string, string>> = {};
+    let imageSizes: string[] | undefined;
+
+    if (modelForm.features.imageSize) {
+      const normalizedGroups = sizeGroups
+        .map((group) => ({
+          size: group.size.trim(),
+          rows: normalizeRows(group.rows),
+        }))
+        .filter((group) => group.size && group.rows.length > 0);
+
+      if (normalizedGroups.length === 0) {
+        toast({ title: '请至少配置一个分辨率档位', variant: 'destructive' });
         return;
       }
 
+      const ratioSet = new Set<string>();
+      const sizeMap: Record<string, Record<string, string>> = {};
+
+      normalizedGroups.forEach((group) => {
+        const ratioMap: Record<string, string> = {};
+        group.rows.forEach((row) => {
+          ratioSet.add(row.ratio);
+          ratioMap[row.ratio] = row.resolution;
+        });
+        sizeMap[group.size] = ratioMap;
+      });
+
+      aspectRatios = Array.from(ratioSet);
+      resolutions = sizeMap;
+      imageSizes = normalizedGroups.map((group) => group.size);
+    } else {
+      const normalizedRows = normalizeRows(ratioRows);
+      if (normalizedRows.length === 0) {
+        toast({ title: '请至少配置一个画面比例', variant: 'destructive' });
+        return;
+      }
+      const ratioMap: Record<string, string> = {};
+      normalizedRows.forEach((row) => {
+        ratioMap[row.ratio] = row.resolution;
+      });
+      aspectRatios = normalizedRows.map((row) => row.ratio);
+      resolutions = ratioMap;
+    }
+
+    const defaultAspectRatio = aspectRatios.includes(modelForm.defaultAspectRatio)
+      ? modelForm.defaultAspectRatio
+      : aspectRatios[0];
+    const defaultImageSize =
+      modelForm.features.imageSize && imageSizes && imageSizes.length > 0
+        ? imageSizes.includes(modelForm.defaultImageSize)
+          ? modelForm.defaultImageSize
+          : imageSizes[0]
+        : undefined;
+
+    setSaving(true);
+    try {
       const payload = {
         ...(editingModel ? { id: editingModel } : {}),
         channelId: modelChannelId,
@@ -246,11 +398,11 @@ export default function ImageChannelsPage() {
         baseUrl: modelForm.baseUrl || undefined,
         apiKey: modelForm.apiKey || undefined,
         features: modelForm.features,
-        aspectRatios: modelForm.aspectRatios.split(',').map(s => s.trim()).filter(Boolean),
+        aspectRatios,
         resolutions,
-        imageSizes: modelForm.imageSizes ? modelForm.imageSizes.split(',').map(s => s.trim()).filter(Boolean) : undefined,
-        defaultAspectRatio: modelForm.defaultAspectRatio,
-        defaultImageSize: modelForm.defaultImageSize || undefined,
+        imageSizes: modelForm.features.imageSize ? imageSizes : undefined,
+        defaultAspectRatio,
+        defaultImageSize,
         requiresReferenceImage: modelForm.requiresReferenceImage,
         allowEmptyPrompt: modelForm.allowEmptyPrompt,
         highlight: modelForm.highlight,
@@ -304,6 +456,24 @@ export default function ImageChannelsPage() {
     }
   };
 
+  const handleFeatureToggle = (key: keyof ImageModelFeatures, value: boolean) => {
+    if (key === 'imageSize') {
+      if (value) {
+        if (sizeGroups.length === 0) {
+          setSizeGroups([{ size: modelForm.defaultImageSize || '1K', rows: [...ratioRows] }]);
+        }
+      } else {
+        if (ratioRows.length === 0 && sizeGroups.length > 0) {
+          setRatioRows(sizeGroups[0].rows);
+        }
+      }
+    }
+    setModelForm((prev) => ({
+      ...prev,
+      features: { ...prev.features, [key]: value },
+    }));
+  };
+
   const toggleExpand = (id: string) => {
     setExpandedChannels(prev => {
       const next = new Set(prev);
@@ -314,6 +484,145 @@ export default function ImageChannelsPage() {
   };
 
   const getChannelModels = (channelId: string) => models.filter(m => m.channelId === channelId);
+
+  // Fetch remote models from /v1/models
+  const fetchRemoteModels = async (channelId: string) => {
+    setFetchingRemoteModels(true);
+    setRemoteModelsChannelId(channelId);
+    setRemoteModels([]);
+    setGroupedModels([]);
+    setSelectedRemoteModels(new Set());
+    setSelectedGroupedModels(new Set());
+    try {
+      const res = await fetch(`/api/admin/image-channels/models?channelId=${channelId}&group=true`);
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to fetch models');
+      }
+      setGroupedModels(data.data?.grouped || []);
+      setRemoteModels(data.data?.ungrouped || []);
+    } catch (err) {
+      toast({ title: 'Failed to fetch remote models', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
+      setRemoteModelsChannelId(null);
+    } finally {
+      setFetchingRemoteModels(false);
+    }
+  };
+
+  const closeRemoteModels = () => {
+    setRemoteModelsChannelId(null);
+    setRemoteModels([]);
+    setGroupedModels([]);
+    setSelectedRemoteModels(new Set());
+    setSelectedGroupedModels(new Set());
+  };
+
+  const toggleRemoteModelSelection = (modelId: string) => {
+    setSelectedRemoteModels(prev => {
+      const next = new Set(prev);
+      if (next.has(modelId)) next.delete(modelId);
+      else next.add(modelId);
+      return next;
+    });
+  };
+
+  const toggleGroupedModelSelection = (baseName: string) => {
+    setSelectedGroupedModels(prev => {
+      const next = new Set(prev);
+      if (next.has(baseName)) next.delete(baseName);
+      else next.add(baseName);
+      return next;
+    });
+  };
+
+  const selectAllRemoteModels = () => {
+    const existingApiModels = new Set(models.filter(m => m.channelId === remoteModelsChannelId).map(m => m.apiModel));
+    const available = remoteModels.filter(m => !existingApiModels.has(m.id));
+    setSelectedRemoteModels(new Set(available.map(m => m.id)));
+  };
+
+  const selectAllGroupedModels = () => {
+    const existingApiModels = new Set(models.filter(m => m.channelId === remoteModelsChannelId).map(m => m.apiModel));
+    const available = groupedModels.filter(g => !existingApiModels.has(g.apiModel));
+    setSelectedGroupedModels(new Set(available.map(g => g.baseName)));
+  };
+
+  const deselectAllRemoteModels = () => {
+    setSelectedRemoteModels(new Set());
+    setSelectedGroupedModels(new Set());
+  };
+
+  const addSelectedRemoteModels = async () => {
+    if (!remoteModelsChannelId || (selectedRemoteModels.size === 0 && selectedGroupedModels.size === 0)) return;
+    setAddingRemoteModels(true);
+    try {
+      let added = 0;
+
+      // Add grouped models
+      for (const baseName of Array.from(selectedGroupedModels)) {
+        const group = groupedModels.find(g => g.baseName === baseName);
+        if (!group) continue;
+
+        const res = await fetch('/api/admin/image-models', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            channelId: remoteModelsChannelId,
+            name: group.displayName,
+            apiModel: group.apiModel,
+            description: '',
+            features: {
+              textToImage: group.features.textToImage,
+              imageToImage: group.features.imageToImage,
+              upscale: false,
+              matting: false,
+              multipleImages: false,
+              imageSize: group.features.imageSize,
+            },
+            aspectRatios: group.aspectRatios,
+            imageSizes: group.features.imageSize ? group.imageSizes : undefined,
+            resolutions: group.resolutions,
+            defaultAspectRatio: group.aspectRatios.includes('1:1') ? '1:1' : group.aspectRatios[0],
+            defaultImageSize: group.features.imageSize ? (group.imageSizes.includes('1K') ? '1K' : group.imageSizes[0]) : undefined,
+            enabled: true,
+            costPerGeneration: 10,
+            sortOrder: 0,
+          }),
+        });
+        if (res.ok) added++;
+      }
+
+      // Add ungrouped models
+      for (const modelId of Array.from(selectedRemoteModels)) {
+        const res = await fetch('/api/admin/image-models', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            channelId: remoteModelsChannelId,
+            name: modelId,
+            apiModel: modelId,
+            description: '',
+            features: { textToImage: true, imageToImage: true, upscale: false, matting: false, multipleImages: false, imageSize: false },
+            aspectRatios: ['1:1', '16:9', '9:16'],
+            resolutions: { '1:1': '1024x1024', '16:9': '1792x1024', '9:16': '1024x1792' },
+            defaultAspectRatio: '1:1',
+            enabled: true,
+            costPerGeneration: 10,
+            sortOrder: 0,
+          }),
+        });
+        if (res.ok) added++;
+      }
+
+      toast({ title: `Added ${added} model(s)` });
+      closeRemoteModels();
+      loadData();
+    } catch (err) {
+      toast({ title: 'Failed to add models', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
+    } finally {
+      setAddingRemoteModels(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -519,50 +828,197 @@ export default function ImageChannelsPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm text-foreground/70">画面比例（逗号分隔）</label>
-              <input
-                type="text"
-                value={modelForm.aspectRatios}
-                onChange={(e) => setModelForm({ ...modelForm, aspectRatios: e.target.value })}
-                placeholder="1:1,16:9,9:16"
-                className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
-              />
+          {!modelForm.features.imageSize && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-sm text-foreground/70">画面比例与分辨率</label>
+                <button
+                  type="button"
+                  onClick={() => setRatioRows((prev) => [...prev, { ratio: '', resolution: '' }])}
+                  className="text-xs text-foreground/60 hover:text-foreground"
+                >
+                  添加比例
+                </button>
+              </div>
+              <div className="space-y-2">
+                {ratioRows.map((row, index) => (
+                  <div key={`${row.ratio}-${index}`} className="grid grid-cols-[140px_1fr_auto] gap-2">
+                    <input
+                      type="text"
+                      value={row.ratio}
+                      onChange={(e) => {
+                        const next = [...ratioRows];
+                        next[index] = { ...next[index], ratio: e.target.value };
+                        setRatioRows(next);
+                      }}
+                      placeholder="1:1"
+                      className="w-full px-3 py-2.5 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
+                    />
+                    <input
+                      type="text"
+                      value={row.resolution}
+                      onChange={(e) => {
+                        const next = [...ratioRows];
+                        next[index] = { ...next[index], resolution: e.target.value };
+                        setRatioRows(next);
+                      }}
+                      placeholder="1024x1024"
+                      className="w-full px-3 py-2.5 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setRatioRows((prev) => prev.filter((_, i) => i !== index))}
+                      className="px-3 py-2.5 text-foreground/40 hover:text-red-400 hover:bg-red-500/10 rounded-xl"
+                    >
+                      删除
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
+          )}
+
+          {modelForm.features.imageSize && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-sm text-foreground/70">分辨率档位</label>
+                <button
+                  type="button"
+                  onClick={() => setSizeGroups((prev) => [...prev, { size: '', rows: [{ ratio: '', resolution: '' }] }])}
+                  className="text-xs text-foreground/60 hover:text-foreground"
+                >
+                  添加档位
+                </button>
+              </div>
+              <div className="space-y-3">
+                {sizeGroups.map((group, groupIndex) => (
+                  <div key={`${group.size}-${groupIndex}`} className="border border-border/70 rounded-xl p-3 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={group.size}
+                        onChange={(e) => {
+                          const next = [...sizeGroups];
+                          next[groupIndex] = { ...next[groupIndex], size: e.target.value };
+                          setSizeGroups(next);
+                        }}
+                        placeholder="1K"
+                        className="w-28 px-3 py-2 bg-card/60 border border-border/70 rounded-lg text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
+                      />
+                      <span className="text-xs text-foreground/40">如 1K / 2K / 4K</span>
+                      <button
+                        type="button"
+                        onClick={() => setSizeGroups((prev) => prev.filter((_, i) => i !== groupIndex))}
+                        className="ml-auto px-3 py-2 text-foreground/40 hover:text-red-400 hover:bg-red-500/10 rounded-lg"
+                      >
+                        删除档位
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      {group.rows.map((row, rowIndex) => (
+                        <div key={`${row.ratio}-${rowIndex}`} className="grid grid-cols-[140px_1fr_auto] gap-2">
+                          <input
+                            type="text"
+                            value={row.ratio}
+                            onChange={(e) => {
+                              const next = [...sizeGroups];
+                              const rows = [...next[groupIndex].rows];
+                              rows[rowIndex] = { ...rows[rowIndex], ratio: e.target.value };
+                              next[groupIndex] = { ...next[groupIndex], rows };
+                              setSizeGroups(next);
+                            }}
+                            placeholder="1:1"
+                            className="w-full px-3 py-2.5 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
+                          />
+                          <input
+                            type="text"
+                            value={row.resolution}
+                            onChange={(e) => {
+                              const next = [...sizeGroups];
+                              const rows = [...next[groupIndex].rows];
+                              rows[rowIndex] = { ...rows[rowIndex], resolution: e.target.value };
+                              next[groupIndex] = { ...next[groupIndex], rows };
+                              setSizeGroups(next);
+                            }}
+                            placeholder="1024x1024"
+                            className="w-full px-3 py-2.5 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = [...sizeGroups];
+                              next[groupIndex] = {
+                                ...next[groupIndex],
+                                rows: next[groupIndex].rows.filter((_, i) => i !== rowIndex),
+                              };
+                              setSizeGroups(next);
+                            }}
+                            className="px-3 py-2.5 text-foreground/40 hover:text-red-400 hover:bg-red-500/10 rounded-xl"
+                          >
+                            删除
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = [...sizeGroups];
+                        next[groupIndex] = {
+                          ...next[groupIndex],
+                          rows: [...next[groupIndex].rows, { ratio: '', resolution: '' }],
+                        };
+                        setSizeGroups(next);
+                      }}
+                      className="text-xs text-foreground/60 hover:text-foreground"
+                    >
+                      添加比例
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2">
               <label className="text-sm text-foreground/70">默认比例</label>
-              <input
-                type="text"
+              <select
                 value={modelForm.defaultAspectRatio}
                 onChange={(e) => setModelForm({ ...modelForm, defaultAspectRatio: e.target.value })}
-                placeholder="1:1"
-                className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
-              />
+                className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border"
+              >
+                {availableRatios.length === 0 ? (
+                  <option value="" className="bg-card/95">请先添加比例</option>
+                ) : (
+                  availableRatios.map((ratio) => (
+                    <option key={ratio} value={ratio} className="bg-card/95">
+                      {ratio}
+                    </option>
+                  ))
+                )}
+              </select>
             </div>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm text-foreground/70">分辨率映射（JSON）</label>
-            <textarea
-              value={modelForm.resolutions}
-              onChange={(e) => setModelForm({ ...modelForm, resolutions: e.target.value })}
-              placeholder='{"1:1":"1024x1024","16:9":"1792x1024"}'
-              className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border h-20 font-mono text-sm"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm text-foreground/70">分辨率档位（逗号分隔，如 1K,2K,4K）</label>
-              <input
-                type="text"
-                value={modelForm.imageSizes}
-                onChange={(e) => setModelForm({ ...modelForm, imageSizes: e.target.value })}
-                placeholder="留空表示不支持"
-                className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
-              />
-            </div>
+            {modelForm.features.imageSize && (
+              <div className="space-y-2">
+                <label className="text-sm text-foreground/70">默认分辨率档位</label>
+                <select
+                  value={modelForm.defaultImageSize}
+                  onChange={(e) => setModelForm({ ...modelForm, defaultImageSize: e.target.value })}
+                  className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border"
+                >
+                  {availableSizes.length === 0 ? (
+                    <option value="" className="bg-card/95">请先添加档位</option>
+                  ) : (
+                    availableSizes.map((size) => (
+                      <option key={size} value={size} className="bg-card/95">
+                        {size}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
+            )}
             <div className="space-y-2">
               <label className="text-sm text-foreground/70">排序（数字越小越靠前）</label>
               <input
@@ -589,10 +1045,7 @@ export default function ImageChannelsPage() {
                   <input
                     type="checkbox"
                     checked={modelForm.features[f.key as keyof ImageModelFeatures]}
-                    onChange={(e) => setModelForm({
-                      ...modelForm,
-                      features: { ...modelForm.features, [f.key]: e.target.checked }
-                    })}
+                    onChange={(e) => handleFeatureToggle(f.key as keyof ImageModelFeatures, e.target.checked)}
                     className="w-4 h-4 rounded border-border/70 bg-card/60 text-sky-500 focus:ring-sky-500"
                   />
                   <span className="text-sm text-foreground/70">{f.label}</span>
@@ -704,9 +1157,19 @@ export default function ImageChannelsPage() {
                       >
                         {channel.enabled ? '启用' : '禁用'}
                       </button>
-                      <button onClick={() => startAddModel(channel.id)} className="p-2 text-foreground/40 hover:text-green-400 hover:bg-green-500/10 rounded-lg">
+                      <button onClick={() => startAddModel(channel.id)} className="p-2 text-foreground/40 hover:text-green-400 hover:bg-green-500/10 rounded-lg" title="Add model manually">
                         <Plus className="w-4 h-4" />
                       </button>
+                      {(channel.type === 'openai-chat' || channel.type === 'openai-compatible') && (
+                        <button
+                          onClick={() => fetchRemoteModels(channel.id)}
+                          disabled={fetchingRemoteModels}
+                          className="p-2 text-foreground/40 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg"
+                          title="Fetch models from /v1/models"
+                        >
+                          <Download className="w-4 h-4" />
+                        </button>
+                      )}
                       <button onClick={() => startEditChannel(channel)} className="p-2 text-foreground/40 hover:text-foreground hover:bg-card/70 rounded-lg">
                         <Edit2 className="w-4 h-4" />
                       </button>
@@ -721,7 +1184,132 @@ export default function ImageChannelsPage() {
 
                   {/* Models List */}
                   {isExpanded && (
-                    <div className="border-t border-border/70 p-4 space-y-2 bg-card/60">
+                    <div className="border-t border-border/70 p-4 space-y-3 bg-card/60">
+                      {/* Remote Models Selection UI */}
+                      {remoteModelsChannelId === channel.id && (
+                        <div className="bg-card/80 border border-blue-500/30 rounded-xl p-4 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Download className="w-4 h-4 text-blue-400" />
+                              <span className="text-sm font-medium text-foreground">Remote Models</span>
+                              {fetchingRemoteModels && <Loader2 className="w-4 h-4 animate-spin text-foreground/40" />}
+                            </div>
+                            <button onClick={closeRemoteModels} className="text-xs text-foreground/40 hover:text-foreground">
+                              Close
+                            </button>
+                          </div>
+
+                          {/* Grouped Models Section */}
+                          {groupedModels.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs text-foreground/60 font-medium">Smart Grouped ({groupedModels.length})</span>
+                                <button onClick={selectAllGroupedModels} className="text-xs text-blue-400 hover:text-blue-300">Select all</button>
+                              </div>
+                              <div className="max-h-40 overflow-y-auto space-y-1">
+                                {groupedModels.map(group => {
+                                  const existingApiModels = new Set(channelModels.map(m => m.apiModel));
+                                  const alreadyExists = existingApiModels.has(group.apiModel);
+                                  const isSelected = selectedGroupedModels.has(group.baseName);
+                                  return (
+                                    <div
+                                      key={group.baseName}
+                                      onClick={() => !alreadyExists && toggleGroupedModelSelection(group.baseName)}
+                                      className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors ${
+                                        alreadyExists
+                                          ? 'opacity-40 cursor-not-allowed bg-card/40'
+                                          : isSelected
+                                          ? 'bg-blue-500/20 border border-blue-500/40'
+                                          : 'hover:bg-card/70'
+                                      }`}
+                                    >
+                                      <div className={`w-4 h-4 rounded border flex items-center justify-center ${
+                                        alreadyExists
+                                          ? 'border-foreground/20 bg-foreground/10'
+                                          : isSelected
+                                          ? 'border-blue-500 bg-blue-500'
+                                          : 'border-foreground/30'
+                                      }`}>
+                                        {(isSelected || alreadyExists) && <Check className="w-3 h-3 text-white" />}
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <span className="text-sm text-foreground truncate block">{group.displayName}</span>
+                                        <span className="text-xs text-foreground/40">
+                                          {group.aspectRatios.join(', ')}
+                                          {group.features.imageSize && ` · ${group.imageSizes.join('/')}`}
+                                        </span>
+                                      </div>
+                                      {alreadyExists && <span className="text-xs text-foreground/40">Added</span>}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Ungrouped Models Section */}
+                          {remoteModels.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs text-foreground/60 font-medium">Other Models ({remoteModels.length})</span>
+                                <button onClick={selectAllRemoteModels} className="text-xs text-blue-400 hover:text-blue-300">Select all</button>
+                              </div>
+                              <div className="max-h-40 overflow-y-auto space-y-1">
+                                {remoteModels.map(rm => {
+                                  const existingApiModels = new Set(channelModels.map(m => m.apiModel));
+                                  const alreadyExists = existingApiModels.has(rm.id);
+                                  const isSelected = selectedRemoteModels.has(rm.id);
+                                  return (
+                                    <div
+                                      key={rm.id}
+                                      onClick={() => !alreadyExists && toggleRemoteModelSelection(rm.id)}
+                                      className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors ${
+                                        alreadyExists
+                                          ? 'opacity-40 cursor-not-allowed bg-card/40'
+                                          : isSelected
+                                          ? 'bg-blue-500/20 border border-blue-500/40'
+                                          : 'hover:bg-card/70'
+                                      }`}
+                                    >
+                                      <div className={`w-4 h-4 rounded border flex items-center justify-center ${
+                                        alreadyExists
+                                          ? 'border-foreground/20 bg-foreground/10'
+                                          : isSelected
+                                          ? 'border-blue-500 bg-blue-500'
+                                          : 'border-foreground/30'
+                                      }`}>
+                                        {(isSelected || alreadyExists) && <Check className="w-3 h-3 text-white" />}
+                                      </div>
+                                      <span className="text-sm text-foreground truncate">{rm.id}</span>
+                                      {alreadyExists && <span className="text-xs text-foreground/40 ml-auto">Added</span>}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {(groupedModels.length > 0 || remoteModels.length > 0) && (
+                            <>
+                              <div className="flex items-center gap-2 text-xs pt-2 border-t border-border/50">
+                                <button onClick={deselectAllRemoteModels} className="text-foreground/50 hover:text-foreground">Deselect all</button>
+                                <span className="text-foreground/30 ml-auto">{selectedGroupedModels.size + selectedRemoteModels.size} selected</span>
+                              </div>
+                              <button
+                                onClick={addSelectedRemoteModels}
+                                disabled={selectedRemoteModels.size === 0 && selectedGroupedModels.size === 0 || addingRemoteModels}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-cyan-500 text-foreground rounded-lg font-medium hover:opacity-90 disabled:opacity-50"
+                              >
+                                {addingRemoteModels ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                                Add {selectedGroupedModels.size + selectedRemoteModels.size} model(s)
+                              </button>
+                            </>
+                          )}
+                          {!fetchingRemoteModels && groupedModels.length === 0 && remoteModels.length === 0 && (
+                            <p className="text-sm text-foreground/40 text-center py-2">No models found</p>
+                          )}
+                        </div>
+                      )}
                       {channelModels.length === 0 ? (
                         <p className="text-center text-foreground/30 py-4">暂无模型</p>
                       ) : (

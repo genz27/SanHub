@@ -20,6 +20,14 @@ const DEFAULT_FEATURES: VideoModelFeatures = {
   supportStyles: false,
 };
 
+type AspectRatioRow = { value: string; label: string };
+type DurationRow = { value: string; label: string; cost: number };
+
+const DEFAULT_ASPECT_RATIOS: AspectRatioRow[] = [
+  { value: 'landscape', label: '16:9' },
+  { value: 'portrait', label: '9:16' },
+];
+
 const DEFAULT_DURATIONS: VideoDuration[] = [
   { value: '10s', label: '10 秒', cost: 100 },
   { value: '15s', label: '15 秒', cost: 150 },
@@ -55,17 +63,14 @@ export default function VideoChannelsPage() {
     baseUrl: '',
     apiKey: '',
     features: { ...DEFAULT_FEATURES },
-    aspectRatios: JSON.stringify([
-      { value: 'landscape', label: '16:9' },
-      { value: 'portrait', label: '9:16' },
-    ]),
-    durations: JSON.stringify(DEFAULT_DURATIONS),
     defaultAspectRatio: 'landscape',
     defaultDuration: '10s',
     highlight: false,
     enabled: true,
     sortOrder: 0,
   });
+  const [aspectRatioRows, setAspectRatioRows] = useState<AspectRatioRow[]>([...DEFAULT_ASPECT_RATIOS]);
+  const [durationRows, setDurationRows] = useState<DurationRow[]>([...DEFAULT_DURATIONS]);
 
   useEffect(() => {
     loadData();
@@ -117,11 +122,11 @@ export default function VideoChannelsPage() {
     setModelForm({
       name: '', description: '', apiModel: '', baseUrl: '', apiKey: '',
       features: { ...DEFAULT_FEATURES },
-      aspectRatios: JSON.stringify([{ value: 'landscape', label: '16:9' }, { value: 'portrait', label: '9:16' }]),
-      durations: JSON.stringify(DEFAULT_DURATIONS),
       defaultAspectRatio: 'landscape', defaultDuration: '10s',
       highlight: false, enabled: true, sortOrder: 0,
     });
+    setAspectRatioRows([...DEFAULT_ASPECT_RATIOS]);
+    setDurationRows([...DEFAULT_DURATIONS]);
     setEditingModel(null);
     setModelChannelId(null);
   };
@@ -145,14 +150,14 @@ export default function VideoChannelsPage() {
       baseUrl: model.baseUrl || '',
       apiKey: model.apiKey || '',
       features: model.features,
-      aspectRatios: JSON.stringify(model.aspectRatios),
-      durations: JSON.stringify(model.durations),
       defaultAspectRatio: model.defaultAspectRatio,
       defaultDuration: model.defaultDuration,
       highlight: model.highlight || false,
       enabled: model.enabled,
       sortOrder: model.sortOrder,
     });
+    setAspectRatioRows(model.aspectRatios);
+    setDurationRows(model.durations);
     setEditingModel(model.id);
     setModelChannelId(model.channelId);
   };
@@ -221,15 +226,36 @@ export default function VideoChannelsPage() {
     }
     setSaving(true);
     try {
-      let aspectRatios, durations;
-      try {
-        aspectRatios = JSON.parse(modelForm.aspectRatios);
-        durations = JSON.parse(modelForm.durations);
-      } catch {
-        toast({ title: 'JSON 格式错误', variant: 'destructive' });
+      const normalizedAspectRatios = aspectRatioRows
+        .map((row) => ({ value: row.value.trim(), label: row.label.trim() || row.value.trim() }))
+        .filter((row) => row.value);
+
+      const normalizedDurations = durationRows
+        .map((row) => ({
+          value: row.value.trim(),
+          label: row.label.trim() || row.value.trim(),
+          cost: Number(row.cost) || 0,
+        }))
+        .filter((row) => row.value);
+
+      if (normalizedAspectRatios.length === 0) {
+        toast({ title: '请至少配置一个画面比例', variant: 'destructive' });
         setSaving(false);
         return;
       }
+
+      if (normalizedDurations.length === 0) {
+        toast({ title: '请至少配置一个时长', variant: 'destructive' });
+        setSaving(false);
+        return;
+      }
+
+      const defaultAspectRatio = normalizedAspectRatios.some((row) => row.value === modelForm.defaultAspectRatio)
+        ? modelForm.defaultAspectRatio
+        : normalizedAspectRatios[0].value;
+      const defaultDuration = normalizedDurations.some((row) => row.value === modelForm.defaultDuration)
+        ? modelForm.defaultDuration
+        : normalizedDurations[0].value;
 
       const payload = {
         ...(editingModel ? { id: editingModel } : {}),
@@ -240,10 +266,10 @@ export default function VideoChannelsPage() {
         baseUrl: modelForm.baseUrl || undefined,
         apiKey: modelForm.apiKey || undefined,
         features: modelForm.features,
-        aspectRatios,
-        durations,
-        defaultAspectRatio: modelForm.defaultAspectRatio,
-        defaultDuration: modelForm.defaultDuration,
+        aspectRatios: normalizedAspectRatios,
+        durations: normalizedDurations,
+        defaultAspectRatio,
+        defaultDuration,
         highlight: modelForm.highlight,
         enabled: modelForm.enabled,
         sortOrder: modelForm.sortOrder,
@@ -478,45 +504,140 @@ export default function VideoChannelsPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <label className="text-sm text-foreground/70">画面比例（JSON）</label>
-              <textarea
-                value={modelForm.aspectRatios}
-                onChange={(e) => setModelForm({ ...modelForm, aspectRatios: e.target.value })}
-                placeholder='[{"value":"landscape","label":"16:9"}]'
-                className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border h-20 font-mono text-sm"
-              />
+              <div className="flex items-center justify-between">
+                <label className="text-sm text-foreground/70">画面比例</label>
+                <button
+                  type="button"
+                  onClick={() => setAspectRatioRows((prev) => [...prev, { value: '', label: '' }])}
+                  className="text-xs text-foreground/60 hover:text-foreground"
+                >
+                  添加比例
+                </button>
+              </div>
+              <div className="space-y-2">
+                {aspectRatioRows.map((row, index) => (
+                  <div key={`${row.value}-${index}`} className="grid grid-cols-[120px_1fr_auto] gap-2">
+                    <input
+                      type="text"
+                      value={row.value}
+                      onChange={(e) => {
+                        const next = [...aspectRatioRows];
+                        next[index] = { ...next[index], value: e.target.value };
+                        setAspectRatioRows(next);
+                      }}
+                      placeholder="landscape"
+                      className="w-full px-3 py-2.5 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
+                    />
+                    <input
+                      type="text"
+                      value={row.label}
+                      onChange={(e) => {
+                        const next = [...aspectRatioRows];
+                        next[index] = { ...next[index], label: e.target.value };
+                        setAspectRatioRows(next);
+                      }}
+                      placeholder="16:9"
+                      className="w-full px-3 py-2.5 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setAspectRatioRows((prev) => prev.filter((_, i) => i !== index))}
+                      className="px-3 py-2.5 text-foreground/40 hover:text-red-400 hover:bg-red-500/10 rounded-xl"
+                    >
+                      删除
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
             <div className="space-y-2">
-              <label className="text-sm text-foreground/70">时长与价格（JSON）</label>
-              <textarea
-                value={modelForm.durations}
-                onChange={(e) => setModelForm({ ...modelForm, durations: e.target.value })}
-                placeholder='[{"value":"10s","label":"10 秒","cost":100}]'
-                className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border h-20 font-mono text-sm"
-              />
+              <div className="flex items-center justify-between">
+                <label className="text-sm text-foreground/70">时长与价格</label>
+                <button
+                  type="button"
+                  onClick={() => setDurationRows((prev) => [...prev, { value: '', label: '', cost: 0 }])}
+                  className="text-xs text-foreground/60 hover:text-foreground"
+                >
+                  添加时长
+                </button>
+              </div>
+              <div className="space-y-2">
+                {durationRows.map((row, index) => (
+                  <div key={`${row.value}-${index}`} className="grid grid-cols-[120px_1fr_120px_auto] gap-2">
+                    <input
+                      type="text"
+                      value={row.value}
+                      onChange={(e) => {
+                        const next = [...durationRows];
+                        next[index] = { ...next[index], value: e.target.value };
+                        setDurationRows(next);
+                      }}
+                      placeholder="10s"
+                      className="w-full px-3 py-2.5 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
+                    />
+                    <input
+                      type="text"
+                      value={row.label}
+                      onChange={(e) => {
+                        const next = [...durationRows];
+                        next[index] = { ...next[index], label: e.target.value };
+                        setDurationRows(next);
+                      }}
+                      placeholder="10 秒"
+                      className="w-full px-3 py-2.5 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
+                    />
+                    <input
+                      type="number"
+                      value={row.cost}
+                      onChange={(e) => {
+                        const next = [...durationRows];
+                        next[index] = { ...next[index], cost: parseInt(e.target.value) || 0 };
+                        setDurationRows(next);
+                      }}
+                      placeholder="100"
+                      className="w-full px-3 py-2.5 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setDurationRows((prev) => prev.filter((_, i) => i !== index))}
+                      className="px-3 py-2.5 text-foreground/40 hover:text-red-400 hover:bg-red-500/10 rounded-xl"
+                    >
+                      删除
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2">
               <label className="text-sm text-foreground/70">默认比例</label>
-              <input
-                type="text"
+              <select
                 value={modelForm.defaultAspectRatio}
                 onChange={(e) => setModelForm({ ...modelForm, defaultAspectRatio: e.target.value })}
-                placeholder="landscape"
-                className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
-              />
+                className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border"
+              >
+                {aspectRatioRows.filter((row) => row.value.trim()).map((row) => (
+                  <option key={row.value} value={row.value} className="bg-card/95">
+                    {row.label || row.value}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="space-y-2">
               <label className="text-sm text-foreground/70">默认时长</label>
-              <input
-                type="text"
+              <select
                 value={modelForm.defaultDuration}
                 onChange={(e) => setModelForm({ ...modelForm, defaultDuration: e.target.value })}
-                placeholder="10s"
-                className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
-              />
+                className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border"
+              >
+                {durationRows.filter((row) => row.value.trim()).map((row) => (
+                  <option key={row.value} value={row.value} className="bg-card/95">
+                    {row.label || row.value}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="space-y-2">
               <label className="text-sm text-foreground/70">排序</label>

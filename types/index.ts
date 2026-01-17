@@ -159,7 +159,7 @@ export interface ModelDisabledConfig {
 // ========================================
 
 // 渠道类型 - 决定请求方式
-export type ChannelType = 'openai-compatible' | 'modelscope' | 'gitee' | 'gemini' | 'sora';
+export type ChannelType = 'openai-compatible' | 'openai-chat' | 'modelscope' | 'gitee' | 'gemini' | 'sora';
 
 // 模型功能特性
 export interface ImageModelFeatures {
@@ -439,6 +439,10 @@ export interface InviteCode {
   creatorBonus: number;   // 邀请人获得的积分奖励
   expiresAt?: number;
   createdAt: number;
+  creatorEmail?: string;
+  creatorName?: string;
+  usedByEmail?: string;
+  usedByName?: string;
 }
 
 // ========================================
@@ -468,14 +472,22 @@ export interface DailyStats {
   points: number;
 }
 
+export interface GenerationTypeStat {
+  type: string;
+  count: number;
+}
+
 export interface StatsOverview {
   totalUsers: number;
   activeUsers: number;
+  totalChatModels: number;
+  enabledChatModels: number;
   totalGenerations: number;
   totalPoints: number;
   todayUsers: number;
   todayGenerations: number;
   dailyStats: DailyStats[];
+  generationTypes: GenerationTypeStat[];
 }
 
 // ========================================
