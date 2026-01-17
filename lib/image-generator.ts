@@ -664,6 +664,19 @@ async function generateWithOpenAIChat(
   }
 
   if (!resultUrl) {
+    // Check if response contains error message from upstream
+    const errorPatterns = [
+      /生成失败[：:]\s*(.+)/,
+      /❌\s*(.+)/,
+      /error[：:]\s*(.+)/i,
+      /failed[：:]\s*(.+)/i,
+    ];
+    for (const pattern of errorPatterns) {
+      const match = responseText.match(pattern);
+      if (match) {
+        throw new Error(match[1].trim());
+      }
+    }
     throw new Error(`Cannot parse response: ${responseText.substring(0, 200)}`);
   }
 
