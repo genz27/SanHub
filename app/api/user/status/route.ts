@@ -10,8 +10,6 @@ import {
 
 export const dynamic = 'force-dynamic';
 
-startVideoStatusPoller();
-
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
@@ -19,6 +17,8 @@ export async function GET() {
     if (!session?.user?.id) {
       return NextResponse.json({ error: '未登录' }, { status: 401 });
     }
+
+    startVideoStatusPoller();
 
     const cached = getCachedVideoStatus(session.user.id);
     if (cached) {

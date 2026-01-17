@@ -10,8 +10,6 @@ import {
 
 export const dynamic = 'force-dynamic';
 
-startVideoStatusPoller();
-
 const SITE_STATUS_MAX_AGE_MS = 5_000;
 
 export async function GET() {
@@ -21,6 +19,8 @@ export async function GET() {
     if (!session?.user?.id) {
       return NextResponse.json({ error: '未登录' }, { status: 401 });
     }
+
+    startVideoStatusPoller();
 
     const now = Date.now();
     const cached = getCachedSiteVideoStatus();

@@ -4,12 +4,14 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import { Users, Coins, Loader2, Settings, ChevronRight, TrendingUp, Activity, Zap, BarChart3, Ticket, History } from 'lucide-react';
-import type { SafeUser } from '@/types';
+import type { SafeUser, StatsOverview } from '@/types';
 import { formatBalance } from '@/lib/utils';
+import { toast } from '@/components/ui/toaster';
 
 export default function AdminPage() {
   const { data: session } = useSession();
   const [users, setUsers] = useState<SafeUser[]>([]);
+  const [stats, setStats] = useState<StatsOverview | null>(null);
   const [loading, setLoading] = useState(true);
 
   const isAdmin = session?.user?.role === 'admin';
@@ -20,13 +22,48 @@ export default function AdminPage() {
 
   const loadData = async () => {
     try {
-      const res = await fetch('/api/admin/users');
-      if (res.ok) {
-        const data = await res.json();
+      const [statsRes, usersRes] = await Promise.all([
+        fetch('/api/admin/stats?days=7'),
+        fetch('/api/admin/users?page=1&limit=5'),
+      ]);
+
+      if (statsRes.ok) {
+        const data = await statsRes.json();
+        setStats(data.data || null);
+      } else {
+        const data = await statsRes.json().catch(() => ({}));
+        toast({ title: '统计加载失败', description: data.error || '无法获取统计数据', variant: 'destructive' });
+        setStats({
+          totalUsers: 0,
+          activeUsers: 0,
+          totalGenerations: 0,
+          totalPoints: 0,
+          todayUsers: 0,
+          todayGenerations: 0,
+          dailyStats: [],
+        });
+      }
+
+      if (usersRes.ok) {
+        const data = await usersRes.json();
         setUsers(data.data || []);
+      } else {
+        const data = await usersRes.json().catch(() => ({}));
+        toast({ title: '用户加载失败', description: data.error || '无法获取用户列表', variant: 'destructive' });
+        setUsers([]);
       }
     } catch (err) {
-      console.error('Failed to load data:', err);
+      toast({ title: '加载失败', description: err instanceof Error ? err.message : '无法加载数据', variant: 'destructive' });
+      setStats({
+        totalUsers: 0,
+        activeUsers: 0,
+        totalGenerations: 0,
+        totalPoints: 0,
+        todayUsers: 0,
+        todayGenerations: 0,
+        dailyStats: [],
+      });
+      setUsers([]);
     } finally {
       setLoading(false);
     }
@@ -43,14 +80,14 @@ export default function AdminPage() {
     );
   }
 
-  const totalBalance = users.reduce((sum, u) => sum + u.balance, 0);
-  const activeUsers = users.filter(u => !u.disabled).length;
-  const avgBalance = users.length > 0 ? Math.round(totalBalance / users.length) : 0;
+  const totalBalance = stats?.totalPoints || 0;
+  const activeUsers = stats?.activeUsers || 0;
+  const avgBalance = stats && stats.totalUsers > 0 ? Math.round(totalBalance / stats.totalUsers) : 0;
 
-  const stats = [
+  const statCards = [
     { 
       label: '注册用户', 
-      value: users.length, 
+      value: stats?.totalUsers || 0, 
       icon: Users, 
       color: 'from-blue-500 to-cyan-500',
       bgColor: 'bg-blue-500/20',
@@ -105,7 +142,7 @@ export default function AdminPage() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {stats.map((stat, index) => (
+      {statCards.map((stat, index) => (
           <div 
             key={index}
             className="bg-card/60 backdrop-blur-sm border border-border/70 rounded-2xl p-5 hover:border-border/70 transition-all duration-300"

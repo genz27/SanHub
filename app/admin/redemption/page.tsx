@@ -3,11 +3,18 @@
 import { useState, useEffect } from 'react';
 import { Ticket, Plus, Trash2, Copy, Loader2, Check } from 'lucide-react';
 import type { RedemptionCode } from '@/types';
-import { formatDate, cn } from '@/lib/utils';
+import { formatDate } from '@/lib/utils';
+import { toast } from '@/components/ui/toaster';
+import { PaginationControls } from '@/components/admin/pagination';
+
+const REDEMPTION_PAGE_SIZE = 50;
 
 export default function RedemptionPage() {
   const [codes, setCodes] = useState<RedemptionCode[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetching, setFetching] = useState(false);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [showUsed, setShowUsed] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -19,22 +26,38 @@ export default function RedemptionPage() {
   const [note, setNote] = useState('');
 
   useEffect(() => {
-    loadCodes();
+    loadCodes(1, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showUsed]);
 
-  const loadCodes = async () => {
+  const loadCodes = async (nextPage = 1, reset = false) => {
     try {
-      setLoading(true);
-      const res = await fetch(`/api/admin/redemption?showUsed=${showUsed}`);
+      if (reset) {
+        setLoading(true);
+      } else {
+        setFetching(true);
+      }
+
+      const params = new URLSearchParams();
+      params.set('page', String(nextPage));
+      params.set('limit', String(REDEMPTION_PAGE_SIZE));
+      params.set('showUsed', String(showUsed));
+
+      const res = await fetch(`/api/admin/redemption?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
         setCodes(data.data || []);
+        setPage(data.page || nextPage);
+        setTotal(data.total || 0);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast({ title: '加载失败', description: data.error || '无法获取卡密列表', variant: 'destructive' });
       }
     } catch (err) {
-      console.error('Load codes failed:', err);
+      toast({ title: '加载失败', description: err instanceof Error ? err.message : '无法获取卡密列表', variant: 'destructive' });
     } finally {
       setLoading(false);
+      setFetching(false);
     }
   };
 
@@ -49,13 +72,18 @@ export default function RedemptionPage() {
         body: JSON.stringify({ count, points, note: note || undefined }),
       });
       if (res.ok) {
-        const data = await res.json();
-        setCodes(prev => [...data.data, ...prev]);
+        await res.json();
+        toast({ title: '卡密已生成' });
+        setPage(1);
+        loadCodes(1, true);
         setShowCreate(false);
         setNote('');
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast({ title: '生成失败', description: data.error || '无法生成卡密', variant: 'destructive' });
       }
     } catch (err) {
-      console.error('Create failed:', err);
+      toast({ title: '生成失败', description: err instanceof Error ? err.message : '无法生成卡密', variant: 'destructive' });
     } finally {
       setCreating(false);
     }
@@ -71,23 +99,42 @@ export default function RedemptionPage() {
         body: JSON.stringify({ id }),
       });
       if (res.ok) {
-        setCodes(prev => prev.filter(c => c.id !== id));
+        toast({ title: '卡密已删除' });
+        const nextPage = codes.length === 1 && page > 1 ? page - 1 : page;
+        loadCodes(nextPage, false);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast({ title: '删除失败', description: data.error || '无法删除卡密', variant: 'destructive' });
       }
     } catch (err) {
-      console.error('Delete failed:', err);
+      toast({ title: '删除失败', description: err instanceof Error ? err.message : '无法删除卡密', variant: 'destructive' });
     }
   };
 
   const copyCode = async (code: string, id: string) => {
-    await navigator.clipboard.writeText(code);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+      toast({ title: '已复制卡密' });
+    } catch (err) {
+      toast({ title: '复制失败', description: err instanceof Error ? err.message : '无法复制卡密', variant: 'destructive' });
+    }
   };
 
   const copyAllCodes = async () => {
-    const unusedCodes = codes.filter(c => !c.usedBy).map(c => c.code).join('\n');
-    await navigator.clipboard.writeText(unusedCodes);
-    alert(`已复制 ${codes.filter(c => !c.usedBy).length} 个未使用的卡密`);
+    const unused = codes.filter(c => !c.usedBy);
+    const unusedCodes = unused.map(c => c.code).join('\n');
+    if (!unusedCodes) {
+      toast({ title: '没有可复制的卡密', variant: 'destructive' });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(unusedCodes);
+      toast({ title: `已复制 ${unused.length} 个未使用卡密` });
+    } catch (err) {
+      toast({ title: '复制失败', description: err instanceof Error ? err.message : '无法复制卡密', variant: 'destructive' });
+    }
   };
 
   if (loading) {
@@ -103,7 +150,7 @@ export default function RedemptionPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-light text-foreground">卡密管理</h1>
-          <p className="text-foreground/50 mt-1">生成和管理积分兑换卡密</p>
+          <p className="text-foreground/50 mt-1">生成和管理积分兑换卡密 · 共 {total} 条</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-2 text-sm text-foreground/60">
@@ -119,7 +166,7 @@ export default function RedemptionPage() {
             onClick={copyAllCodes}
             className="px-4 py-2 bg-card/60 border border-border/70 text-foreground rounded-xl hover:bg-card/70 transition-all"
           >
-            复制全部
+            复制本页
           </button>
           <button
             onClick={() => setShowCreate(true)}
@@ -265,6 +312,16 @@ export default function RedemptionPage() {
           </div>
         )}
       </div>
+
+      {total > 0 && (
+        <PaginationControls
+          page={page}
+          pageSize={REDEMPTION_PAGE_SIZE}
+          total={total}
+          onPageChange={(nextPage) => loadCodes(nextPage, false)}
+          loading={fetching}
+        />
+      )}
     </div>
   );
 }

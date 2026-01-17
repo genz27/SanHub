@@ -470,6 +470,7 @@ export interface DailyStats {
 
 export interface StatsOverview {
   totalUsers: number;
+  activeUsers: number;
   totalGenerations: number;
   totalPoints: number;
   todayUsers: number;

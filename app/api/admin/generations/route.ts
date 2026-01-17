@@ -18,8 +18,9 @@ export async function GET(request: Request) {
     const userId = searchParams.get('userId') || undefined;
     const type = searchParams.get('type') || undefined;
     const status = searchParams.get('status') || undefined;
+    const search = searchParams.get('q')?.trim() || undefined;
 
-    const { generations, total } = await getAllGenerations({ limit, offset, userId, type, status });
+    const { generations, total } = await getAllGenerations({ limit, offset, userId, type, status, search });
 
     return NextResponse.json({
       success: true,

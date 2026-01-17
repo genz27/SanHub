@@ -4,10 +4,17 @@ import { useState, useEffect } from 'react';
 import { UserPlus, Plus, Trash2, Copy, Loader2, Check } from 'lucide-react';
 import type { InviteCode } from '@/types';
 import { formatDate } from '@/lib/utils';
+import { toast } from '@/components/ui/toaster';
+import { PaginationControls } from '@/components/admin/pagination';
+
+const INVITE_PAGE_SIZE = 50;
 
 export default function InvitesPage() {
   const [codes, setCodes] = useState<InviteCode[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetching, setFetching] = useState(false);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [showUsed, setShowUsed] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -17,22 +24,38 @@ export default function InvitesPage() {
   const [creatorBonus, setCreatorBonus] = useState(20);
 
   useEffect(() => {
-    loadCodes();
+    loadCodes(1, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showUsed]);
 
-  const loadCodes = async () => {
+  const loadCodes = async (nextPage = 1, reset = false) => {
     try {
-      setLoading(true);
-      const res = await fetch(`/api/admin/invites?showUsed=${showUsed}`);
+      if (reset) {
+        setLoading(true);
+      } else {
+        setFetching(true);
+      }
+
+      const params = new URLSearchParams();
+      params.set('page', String(nextPage));
+      params.set('limit', String(INVITE_PAGE_SIZE));
+      params.set('showUsed', String(showUsed));
+
+      const res = await fetch(`/api/admin/invites?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
         setCodes(data.data || []);
+        setPage(data.page || nextPage);
+        setTotal(data.total || 0);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast({ title: '加载失败', description: data.error || '无法获取邀请码列表', variant: 'destructive' });
       }
     } catch (err) {
-      console.error('Load codes failed:', err);
+      toast({ title: '加载失败', description: err instanceof Error ? err.message : '无法获取邀请码列表', variant: 'destructive' });
     } finally {
       setLoading(false);
+      setFetching(false);
     }
   };
 
@@ -45,12 +68,16 @@ export default function InvitesPage() {
         body: JSON.stringify({ bonusPoints, creatorBonus }),
       });
       if (res.ok) {
-        const data = await res.json();
-        setCodes(prev => [data.data, ...prev]);
+        await res.json();
+        toast({ title: '邀请码已创建' });
         setShowCreate(false);
+        loadCodes(1, true);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast({ title: '创建失败', description: data.error || '无法创建邀请码', variant: 'destructive' });
       }
     } catch (err) {
-      console.error('Create failed:', err);
+      toast({ title: '创建失败', description: err instanceof Error ? err.message : '无法创建邀请码', variant: 'destructive' });
     } finally {
       setCreating(false);
     }
@@ -66,17 +93,27 @@ export default function InvitesPage() {
         body: JSON.stringify({ id }),
       });
       if (res.ok) {
-        setCodes(prev => prev.filter(c => c.id !== id));
+        toast({ title: '邀请码已删除' });
+        const nextPage = codes.length === 1 && page > 1 ? page - 1 : page;
+        loadCodes(nextPage, false);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast({ title: '删除失败', description: data.error || '无法删除邀请码', variant: 'destructive' });
       }
     } catch (err) {
-      console.error('Delete failed:', err);
+      toast({ title: '删除失败', description: err instanceof Error ? err.message : '无法删除邀请码', variant: 'destructive' });
     }
   };
 
   const copyCode = async (code: string, id: string) => {
-    await navigator.clipboard.writeText(code);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+      toast({ title: '已复制邀请码' });
+    } catch (err) {
+      toast({ title: '复制失败', description: err instanceof Error ? err.message : '无法复制邀请码', variant: 'destructive' });
+    }
   };
 
   if (loading) {
@@ -92,7 +129,7 @@ export default function InvitesPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-light text-foreground">邀请码管理</h1>
-          <p className="text-foreground/50 mt-1">创建和管理用户邀请码</p>
+          <p className="text-foreground/50 mt-1">创建和管理用户邀请码 · 共 {total} 条</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-2 text-sm text-foreground/60">
@@ -233,6 +270,16 @@ export default function InvitesPage() {
           </div>
         )}
       </div>
+
+      {total > 0 && (
+        <PaginationControls
+          page={page}
+          pageSize={INVITE_PAGE_SIZE}
+          total={total}
+          onPageChange={(nextPage) => loadCodes(nextPage, false)}
+          loading={fetching}
+        />
+      )}
     </div>
   );
 }

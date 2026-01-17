@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { createInviteCode, getInviteCodes, deleteInviteCode } from '@/lib/db-codes';
+import { createInviteCode, getInviteCodes, getInviteCodesCount, deleteInviteCode } from '@/lib/db-codes';
 
 export async function GET(request: Request) {
   try {
@@ -16,12 +16,17 @@ export async function GET(request: Request) {
     const offset = (page - 1) * limit;
     const showUsed = searchParams.get('showUsed') === 'true';
 
-    const codes = await getInviteCodes({ limit, offset, showUsed });
+    const [codes, total] = await Promise.all([
+      getInviteCodes({ limit, offset, showUsed }),
+      getInviteCodesCount({ showUsed }),
+    ]);
 
     return NextResponse.json({
       success: true,
       data: codes,
       page,
+      total,
+      hasMore: offset + codes.length < total,
     });
   } catch (error) {
     console.error('Get invite codes error:', error);

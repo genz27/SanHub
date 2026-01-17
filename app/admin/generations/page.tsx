@@ -4,6 +4,10 @@ import { useState, useEffect, useCallback } from 'react';
 import { History, Trash2, Search, Loader2, Eye } from 'lucide-react';
 import { formatDate, cn } from '@/lib/utils';
 import { IMAGE_MODELS } from '@/lib/model-config';
+import { toast } from '@/components/ui/toaster';
+import { PaginationControls } from '@/components/admin/pagination';
+
+const GENERATIONS_PAGE_SIZE = 50;
 
 interface GenerationRecord {
   id: string;
@@ -34,6 +38,7 @@ const STATUS_OPTIONS = [
   { value: 'pending', label: '等待中' },
   { value: 'processing', label: '处理中' },
   { value: 'failed', label: '失败' },
+  { value: 'cancelled', label: '已取消' },
 ];
 
 const IMAGE_MODEL_LABELS = new Map(
@@ -66,41 +71,52 @@ function getRecordTypeLabel(record: GenerationRecord): string {
 export default function GenerationsPage() {
   const [records, setRecords] = useState<GenerationRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetching, setFetching] = useState(false);
   const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(false);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
 
-  const loadRecords = useCallback(async (nextPage = 1, append = false) => {
+  const loadRecords = useCallback(async (nextPage = 1, reset = false) => {
     try {
-      if (!append) setLoading(true);
+      if (reset) {
+        setLoading(true);
+      } else {
+        setFetching(true);
+      }
 
       const params = new URLSearchParams();
       params.set('page', String(nextPage));
-      params.set('limit', '50');
+      params.set('limit', String(GENERATIONS_PAGE_SIZE));
       if (typeFilter) params.set('type', typeFilter);
       if (statusFilter) params.set('status', statusFilter);
+      if (search.trim()) params.set('q', search.trim());
 
       const res = await fetch(`/api/admin/generations?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
-        setRecords(prev => append ? [...prev, ...data.data] : data.data);
-        setPage(data.page);
-        setHasMore(data.hasMore);
-        setTotal(data.total);
+        setRecords(data.data || []);
+        setPage(data.page || nextPage);
+        setTotal(data.total || 0);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast({ title: '加载失败', description: data.error || '无法获取生成记录', variant: 'destructive' });
       }
     } catch (err) {
-      console.error('Load generations failed:', err);
+      toast({ title: '加载失败', description: err instanceof Error ? err.message : '无法获取生成记录', variant: 'destructive' });
     } finally {
       setLoading(false);
+      setFetching(false);
     }
-  }, [typeFilter, statusFilter]);
+  }, [search, statusFilter, typeFilter]);
 
   useEffect(() => {
-    loadRecords(1, false);
-  }, [loadRecords]);
+    const handle = setTimeout(() => {
+      loadRecords(1, true);
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [loadRecords, search, statusFilter, typeFilter]);
 
   const handleDelete = async (id: string) => {
     if (!confirm('确定删除此记录？')) return;
@@ -112,21 +128,17 @@ export default function GenerationsPage() {
         body: JSON.stringify({ id }),
       });
       if (res.ok) {
-        setRecords(prev => prev.filter(r => r.id !== id));
-        setTotal(prev => prev - 1);
+        toast({ title: '记录已删除' });
+        const nextPage = records.length === 1 && page > 1 ? page - 1 : page;
+        loadRecords(nextPage, false);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast({ title: '删除失败', description: data.error || '无法删除记录', variant: 'destructive' });
       }
     } catch (err) {
-      console.error('Delete failed:', err);
+      toast({ title: '删除失败', description: err instanceof Error ? err.message : '无法删除记录', variant: 'destructive' });
     }
   };
-
-  const filteredRecords = search
-    ? records.filter(r => 
-        r.userEmail?.toLowerCase().includes(search.toLowerCase()) ||
-        r.userName?.toLowerCase().includes(search.toLowerCase()) ||
-        r.prompt?.toLowerCase().includes(search.toLowerCase())
-      )
-    : records;
 
   if (loading) {
     return (
@@ -190,7 +202,7 @@ export default function GenerationsPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredRecords.map((record) => (
+              {records.map((record) => (
                 <tr key={record.id} className="border-b border-border/70 hover:bg-card/60">
                   <td className="px-5 py-4">
                     <div>
@@ -241,7 +253,7 @@ export default function GenerationsPage() {
           </table>
         </div>
 
-        {filteredRecords.length === 0 && (
+        {records.length === 0 && (
           <div className="text-center py-12 text-foreground/40">
             <History className="w-10 h-10 mx-auto mb-3 opacity-30" />
             <p>暂无记录</p>
@@ -249,13 +261,14 @@ export default function GenerationsPage() {
         )}
       </div>
 
-      {hasMore && (
-        <button
-          onClick={() => loadRecords(page + 1, true)}
-          className="w-full py-3 bg-card/60 border border-border/70 text-foreground/60 rounded-xl hover:bg-card/70 transition-all"
-        >
-          加载更多
-        </button>
+      {total > 0 && (
+        <PaginationControls
+          page={page}
+          pageSize={GENERATIONS_PAGE_SIZE}
+          total={total}
+          onPageChange={(nextPage) => loadRecords(nextPage, false)}
+          loading={fetching}
+        />
       )}
     </div>
   );
@@ -267,12 +280,14 @@ function StatusBadge({ status }: { status: string }) {
     pending: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
     processing: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
     failed: 'bg-red-500/20 text-red-400 border-red-500/30',
+    cancelled: 'bg-card/70 text-foreground/50 border-border/70',
   };
   const labels: Record<string, string> = {
     completed: '完成',
     pending: '等待',
     processing: '处理中',
     failed: '失败',
+    cancelled: '取消',
   };
 
   return (

@@ -159,19 +159,29 @@ async function loadImageSource(input: string, origin: string): Promise<{ mimeTyp
   };
 }
 
-async function resolveSoraChatConfig(channelId?: string): Promise<{ apiKey: string; baseUrl: string }> {
+async function resolveVideoChatConfig(channelId?: string): Promise<{ apiKey: string; baseUrl: string }> {
   if (channelId) {
     const channel = await getVideoChannel(channelId);
-    if (channel && channel.type === 'sora' && channel.apiKey) {
+    if (
+      channel &&
+      (channel.type === 'sora' || channel.type === 'openai-compatible') &&
+      channel.apiKey &&
+      channel.baseUrl
+    ) {
       return { apiKey: channel.apiKey, baseUrl: channel.baseUrl };
     }
   }
 
   const channels = await getVideoChannels(true);
-  const soraChannels = channels.filter((channel) => channel.type === 'sora' && channel.apiKey);
-  if (soraChannels.length > 0) {
-    const selected = soraChannels[0];
-    return { apiKey: selected.apiKey, baseUrl: selected.baseUrl };
+  const candidates = channels.filter(
+    (channel) =>
+      (channel.type === 'sora' || channel.type === 'openai-compatible') &&
+      channel.apiKey &&
+      channel.baseUrl
+  );
+  if (candidates.length > 0) {
+    const preferred = candidates.find((channel) => channel.type === 'openai-compatible') || candidates[0];
+    return { apiKey: preferred.apiKey, baseUrl: preferred.baseUrl };
   }
 
   const config = await getSystemConfig();
@@ -278,7 +288,7 @@ export async function POST(request: NextRequest) {
 
   if (openAiStream) {
     const requestedChannelId = typeof payload?.channel_id === 'string' ? payload.channel_id : undefined;
-    const { apiKey, baseUrl } = await resolveSoraChatConfig(requestedChannelId);
+    const { apiKey, baseUrl } = await resolveVideoChatConfig(requestedChannelId);
     if (!apiKey || !baseUrl) {
       return buildErrorResponse('Sora API Key or Base URL is not configured', 500, 'server_error');
     }

@@ -22,13 +22,6 @@ const nextConfig = {
     },
   },
   
-  // API Routes body size limit (50MB raw → ~67MB base64)
-  api: {
-    bodyParser: {
-      sizeLimit: '70mb',
-    },
-  },
-  
   // 压缩
   compress: true,
   

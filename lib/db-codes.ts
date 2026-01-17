@@ -304,6 +304,25 @@ export async function getInviteCodes(options: {
   }));
 }
 
+export async function getInviteCodesCount(options: { creatorId?: string; showUsed?: boolean } = {}): Promise<number> {
+  await initializeCodesTables();
+  const db = getAdapter();
+
+  let sql = 'SELECT COUNT(1) as count FROM invite_codes WHERE 1=1';
+  const params: unknown[] = [];
+
+  if (options.creatorId) {
+    sql += ' AND creator_id = ?';
+    params.push(options.creatorId);
+  }
+  if (!options.showUsed) {
+    sql += ' AND used_by IS NULL';
+  }
+
+  const [rows] = await db.execute(sql, params);
+  return Number((rows as any[])[0]?.count || 0);
+}
+
 export async function deleteInviteCode(id: string): Promise<boolean> {
   await initializeCodesTables();
   const db = getAdapter();
@@ -523,6 +542,9 @@ export async function getStatsOverview(days = 30): Promise<StatsOverview> {
   const [userRows] = await db.execute('SELECT COUNT(1) as count FROM users');
   const totalUsers = Number((userRows as any[])[0]?.count || 0);
 
+  const [activeRows] = await db.execute('SELECT COUNT(1) as count FROM users WHERE disabled = 0');
+  const activeUsers = Number((activeRows as any[])[0]?.count || 0);
+
   const [genRows] = await db.execute('SELECT COUNT(1) as count FROM generations');
   const totalGenerations = Number((genRows as any[])[0]?.count || 0);
 
@@ -606,6 +628,7 @@ export async function getStatsOverview(days = 30): Promise<StatsOverview> {
 
   return {
     totalUsers,
+    activeUsers,
     totalGenerations,
     totalPoints,
     todayUsers,
@@ -624,6 +647,7 @@ export async function getAllGenerations(options: {
   userId?: string;
   type?: string;
   status?: string;
+  search?: string;
 } = {}): Promise<{ generations: any[]; total: number }> {
   await initializeCodesTables();
   const db = getAdapter();
@@ -646,12 +670,18 @@ export async function getAllGenerations(options: {
     whereClauses.push('g.status = ?');
     params.push(options.status);
   }
+  if (options.search) {
+    const pattern = `%${options.search}%`;
+    whereClauses.push('(u.email LIKE ? OR u.name LIKE ? OR g.prompt LIKE ?)');
+    params.push(pattern, pattern, pattern);
+  }
 
   const whereStr = whereClauses.length > 0 ? 'WHERE ' + whereClauses.join(' AND ') : '';
+  const countJoin = options.search ? 'LEFT JOIN users u ON g.user_id = u.id' : '';
 
   // Get total count
   const [countRows] = await db.execute(
-    `SELECT COUNT(1) as count FROM generations g ${whereStr}`,
+    `SELECT COUNT(1) as count FROM generations g ${countJoin} ${whereStr}`,
     params
   );
   const total = Number((countRows as any[])[0]?.count || 0);
