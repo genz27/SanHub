@@ -398,7 +398,7 @@ export async function POST(request: NextRequest) {
 
   if (isLikelyVideoModel(model)) {
     const referenceImage = imageUrls[0];
-    const fileList = [];
+    const fileList: { mimeType: string; data: string }[] = [];
     if (referenceImage) {
       const imageSource = await loadImageSource(referenceImage, origin);
       fileList.push({ mimeType: imageSource.mimeType, data: imageSource.data });
