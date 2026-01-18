@@ -17,6 +17,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [captchaId, setCaptchaId] = useState('');
   const [captchaCode, setCaptchaCode] = useState('');
+  const [captchaKey, setCaptchaKey] = useState(0);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -73,8 +74,8 @@ export default function LoginPage() {
       const captchaData = await captchaRes.json();
       if (!captchaData.success) {
         setError('验证码错误');
-        // 刷新验证码
-        handleCaptchaChange('', '');
+        setCaptchaKey(k => k + 1);
+        setLoading(false);
         return;
       }
 
@@ -86,12 +87,13 @@ export default function LoginPage() {
 
       if (result?.error) {
         setError(result.error);
-      } else {
-        router.push('/image');
-        router.refresh();
+        setCaptchaKey(k => k + 1);
+      } else if (result?.ok) {
+        router.replace('/image');
       }
     } catch {
       setError('登录失败，请重试');
+      setCaptchaKey(k => k + 1);
     } finally {
       setLoading(false);
     }
@@ -142,7 +144,7 @@ export default function LoginPage() {
               />
             </div>
 
-            <Captcha onCaptchaChange={handleCaptchaChange} />
+            <Captcha key={captchaKey} onCaptchaChange={handleCaptchaChange} />
 
             {error && (
               <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
