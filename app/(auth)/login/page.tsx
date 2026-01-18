@@ -89,7 +89,8 @@ export default function LoginPage() {
         setError(result.error);
         setCaptchaKey(k => k + 1);
       } else if (result?.ok) {
-        router.replace('/image');
+        // Use window.location for full page navigation to ensure cookies are sent
+        window.location.href = '/image';
       }
     } catch {
       setError('登录失败，请重试');
