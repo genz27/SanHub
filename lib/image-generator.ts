@@ -60,6 +60,59 @@ async function uploadImageForApi(
   return url;
 }
 
+export type ResolutionMap = Record<string, string | Record<string, string>>;
+
+export type ResolvedImageTarget = {
+  model: string;
+  size?: string;
+  usedModelFromMapping: boolean;
+};
+
+const SIZE_PATTERN = /^\d+x\d+$/i;
+
+const isSizeValue = (value: string): boolean => SIZE_PATTERN.test(value);
+
+export function resolveImageTarget(
+  apiModel: string,
+  resolutions: ResolutionMap | undefined,
+  aspectRatio?: string,
+  imageSize?: string
+): ResolvedImageTarget {
+  let resolvedModel = apiModel;
+  let resolvedSize: string | undefined;
+  let usedModelFromMapping = false;
+
+  const applyValue = (value: string | undefined) => {
+    if (!value) return;
+    if (isSizeValue(value)) {
+      resolvedSize = value;
+    } else {
+      resolvedModel = value;
+      usedModelFromMapping = true;
+    }
+  };
+
+  if (resolutions && aspectRatio) {
+    const ratioConfig = resolutions[aspectRatio];
+    if (typeof ratioConfig === 'string') {
+      applyValue(ratioConfig);
+    } else if (ratioConfig && typeof ratioConfig === 'object' && imageSize) {
+      applyValue((ratioConfig as Record<string, string>)[imageSize]);
+    }
+  }
+
+  if (resolutions && imageSize) {
+    const sizeConfig = resolutions[imageSize];
+    if (typeof sizeConfig === 'string') {
+      applyValue(sizeConfig);
+    } else if (sizeConfig && typeof sizeConfig === 'object' && aspectRatio) {
+      applyValue((sizeConfig as Record<string, string>)[aspectRatio]);
+    }
+  }
+
+  return { model: resolvedModel, size: resolvedSize, usedModelFromMapping };
+}
+
 // ========================================
 // OpenAI Compatible API
 // ========================================
@@ -68,21 +121,23 @@ async function generateWithOpenAI(
   request: ImageGenerateRequest,
   baseUrl: string,
   apiKey: string,
-  apiModel: string,
+  target: ResolvedImageTarget,
   channelId: string
 ): Promise<GenerateResult> {
   const key = getNextApiKey(apiKey, channelId);
   const url = `${baseUrl.replace(/\/$/, '')}/v1/images/generations`;
 
   const payload: Record<string, unknown> = {
-    model: apiModel,
+    model: target.model,
     prompt: request.prompt,
     n: 1,
     response_format: 'b64_json',
   };
 
   // 添加尺寸参数
-  if (request.aspectRatio) {
+  if (target.size) {
+    payload.size = target.size;
+  } else if (!target.usedModelFromMapping && request.aspectRatio) {
     // 尝试从 model config 获取对应分辨率，这里简化处理
     const sizeMap: Record<string, string> = {
       '1:1': '1024x1024',
@@ -498,32 +553,10 @@ async function generateWithOpenAIChat(
   baseUrl: string,
   apiKey: string,
   apiModel: string,
-  channelId: string,
-  resolutions?: Record<string, string | Record<string, string>>
+  channelId: string
 ): Promise<GenerateResult> {
   const key = getNextApiKey(apiKey, channelId);
   const url = `${baseUrl.replace(/\/$/, '')}/v1/chat/completions`;
-
-  // Resolve actual model from resolutions if available
-  let actualModel = apiModel;
-  if (resolutions && request.aspectRatio) {
-    const ratioConfig = resolutions[request.aspectRatio];
-    if (ratioConfig) {
-      if (typeof ratioConfig === 'string') {
-        // Simple mapping: ratio -> model name (not size)
-        // Check if it looks like a model name (contains letters) vs size (like "1024x1024")
-        if (!/^\d+x\d+$/.test(ratioConfig)) {
-          actualModel = ratioConfig;
-        }
-      } else if (typeof ratioConfig === 'object' && request.imageSize) {
-        // Nested mapping: ratio -> { size -> model }
-        const sizeModel = ratioConfig[request.imageSize];
-        if (sizeModel && !/^\d+x\d+$/.test(sizeModel)) {
-          actualModel = sizeModel;
-        }
-      }
-    }
-  }
 
   // Build message content
   const contentParts: Array<{ type: string; text?: string; image_url?: { url: string } }> = [];
@@ -544,7 +577,7 @@ async function generateWithOpenAIChat(
   }
 
   const payload = {
-    model: actualModel,
+    model: apiModel,
     messages: [
       {
         role: 'user',
@@ -794,15 +827,12 @@ export async function generateImage(request: ImageGenerateRequest): Promise<Gene
     throw new Error('未配置 API Key');
   }
 
-  // 计算分辨率
-  let size: string | undefined;
-  if (request.aspectRatio && model.resolutions) {
-    if (request.imageSize && typeof model.resolutions[request.imageSize] === 'object') {
-      size = (model.resolutions[request.imageSize] as Record<string, string>)[request.aspectRatio];
-    } else if (typeof model.resolutions[request.aspectRatio] === 'string') {
-      size = model.resolutions[request.aspectRatio] as string;
-    }
-  }
+  const resolvedTarget = resolveImageTarget(
+    model.apiModel,
+    model.resolutions as ResolutionMap | undefined,
+    request.aspectRatio,
+    request.imageSize
+  );
 
   let result: GenerateResult;
 
@@ -812,7 +842,7 @@ export async function generateImage(request: ImageGenerateRequest): Promise<Gene
         request,
         effectiveBaseUrl,
         effectiveApiKey,
-        model.apiModel,
+        resolvedTarget,
         channel.id
       );
       break;
@@ -822,9 +852,8 @@ export async function generateImage(request: ImageGenerateRequest): Promise<Gene
         request,
         effectiveBaseUrl,
         effectiveApiKey,
-        model.apiModel,
-        channel.id,
-        model.resolutions
+        resolvedTarget.model,
+        channel.id
       );
       break;
 
@@ -833,7 +862,7 @@ export async function generateImage(request: ImageGenerateRequest): Promise<Gene
         request,
         effectiveBaseUrl,
         effectiveApiKey,
-        model.apiModel,
+        resolvedTarget.model,
         channel.id
       );
       break;
@@ -845,7 +874,7 @@ export async function generateImage(request: ImageGenerateRequest): Promise<Gene
         effectiveApiKey,
         model.apiModel,
         channel.id,
-        size
+        resolvedTarget.size
       );
       break;
 
@@ -856,7 +885,7 @@ export async function generateImage(request: ImageGenerateRequest): Promise<Gene
         effectiveApiKey,
         model.apiModel,
         channel.id,
-        size
+        resolvedTarget.size
       );
       break;
 

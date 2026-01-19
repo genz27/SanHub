@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { generateImage, type ImageGenerateRequest } from '@/lib/image-generator';
+import { generateImage, resolveImageTarget, type ImageGenerateRequest } from '@/lib/image-generator';
 import {
   saveGeneration,
   updateUserBalance,
@@ -130,6 +130,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '模型已禁用' }, { status: 400 });
     }
 
+    const resolvedTarget = resolveImageTarget(
+      model.apiModel,
+      model.resolutions,
+      aspectRatio,
+      imageSize
+    );
+
     // 检查用户
     const user = await getUserById(session.user.id);
     if (!user) {
@@ -236,6 +243,8 @@ export async function POST(request: NextRequest) {
       id: generation.id,
       modelId,
       model: model.apiModel,
+      resolvedModel: resolvedTarget.model,
+      resolvedSize: resolvedTarget.size,
     });
 
     // 后台处理

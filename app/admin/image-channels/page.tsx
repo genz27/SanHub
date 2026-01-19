@@ -1270,7 +1270,7 @@ export default function ImageChannelsPage() {
                                                 },
                                               }));
                                             }}
-                                            placeholder="Display name"
+                                            placeholder="显示名称"
                                             className="w-full px-3 py-2 bg-card/60 border border-border/70 rounded-lg text-foreground placeholder:text-foreground/30 text-sm focus:outline-none focus:border-border"
                                           />
                                           <input
@@ -1286,7 +1286,7 @@ export default function ImageChannelsPage() {
                                                 },
                                               }));
                                             }}
-                                            placeholder="Description"
+                                            placeholder="模型介绍"
                                             className="w-full px-3 py-2 bg-card/60 border border-border/70 rounded-lg text-foreground placeholder:text-foreground/30 text-sm focus:outline-none focus:border-border"
                                           />
                                         </div>
