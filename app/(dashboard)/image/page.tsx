@@ -559,8 +559,8 @@ export default function ImageGenerationPage() {
       }
 
       toast({
-        title: '抽卡模式已启动',
-        description: '已提交 3 个相同任务，等待结果中...',
+        title: '已提交 3 个任务',
+        description: '抽卡模式启动，等待结果中...',
       });
 
       // 更新今日使用量

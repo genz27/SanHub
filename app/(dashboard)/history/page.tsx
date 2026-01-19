@@ -276,8 +276,8 @@ export default function HistoryPage() {
   const pageSize = 50;
   const [visibleCount, setVisibleCount] = useState(RENDER_INITIAL);
 
-  const loadHistory = useCallback(async (pageNum: number, append = false) => {
-    if (loadingRef.current) return;
+  const loadHistory = useCallback(async (pageNum: number, append = false, force = false) => {
+    if (loadingRef.current && !force) return;
     loadingRef.current = true;
     
     if (append) {
@@ -357,8 +357,8 @@ export default function HistoryPage() {
           abortControllersRef.current.delete(taskId);
           if (status === 'completed') {
             await update();
-            // 使用 ref 调用避免闭包问题
-            loadHistoryRef.current(1);
+            // 强制刷新列表，忽略 loading 状态
+            loadHistoryRef.current(1, false, true);
           }
         } else {
           // 更新任务状态和进度

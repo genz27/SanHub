@@ -6,7 +6,7 @@
 import { getImageModelWithChannel, getSystemConfig } from './db';
 import { uploadToPicUI } from './picui';
 import { fetchWithRetry } from './http-retry';
-import type { ChannelType, GenerateResult } from '@/types';
+import type { GenerateResult } from '@/types';
 
 export interface ImageGenerateRequest {
   modelId: string;
