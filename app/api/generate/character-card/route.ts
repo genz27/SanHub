@@ -90,8 +90,12 @@ async function processCharacterCardTask(
   } catch (error) {
     console.error(`[Task ${cardId}] 角色卡生成失败:`, error);
 
-    // 失败时直接删除记录
-    await deleteCharacterCard(cardId, userId);
+    // 失败时更新为 failed 状态，而不是删除
+    const errorMessage = error instanceof Error ? error.message : '生成失败';
+    await updateCharacterCard(cardId, {
+      status: 'failed',
+      errorMessage,
+    });
   }
 }
 

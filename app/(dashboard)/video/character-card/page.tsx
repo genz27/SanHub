@@ -342,7 +342,10 @@ export default function CharacterCardPage() {
       }
 
       // 添加到进行中任务列表
-      const avatarPreview = createMode === 'video' ? videoFile?.firstFrame : imageFile?.preview;
+      // 视频模式使用 firstFrame (data URL)，图片模式使用 base64 data URL
+      const avatarPreview = createMode === 'video' 
+        ? videoFile?.firstFrame 
+        : (imageFile?.data ? `data:image/jpeg;base64,${imageFile.data}` : '');
       const newTask: PendingTask = {
         id: data.data.id,
         avatarUrl: avatarPreview || '',
