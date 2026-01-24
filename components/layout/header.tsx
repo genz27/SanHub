@@ -44,43 +44,53 @@ export function Header({ user }: HeaderProps) {
 
   return (
     <>
-      <header className="fixed top-0 left-0 right-0 h-14 bg-card/70 backdrop-blur-xl border-b border-border/70 shadow-[0_1px_0_rgba(255,255,255,0.04)] z-50">
+      <header className="fixed top-0 left-0 right-0 h-14 bg-card/80 backdrop-blur-xl border-b border-border/50 z-50">
         <div className="h-full px-4 lg:px-6 flex items-center justify-between">
-          {/* Mobile Menu Button */}
-          <button 
-            className="lg:hidden p-2 hover:bg-foreground/5 rounded-lg transition-colors"
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          >
-            {mobileMenuOpen ? <X className="w-5 h-5 text-foreground/80" /> : <Menu className="w-5 h-5 text-foreground/80" />}
-          </button>
-
-          {/* Logo */}
-          <Link href="/" className="flex items-center gap-3">
-            <div className="w-8 h-8 border border-border/70 bg-card/70 rounded-lg flex items-center justify-center">
-              <span className="text-sm font-light text-foreground/80">{siteConfig.siteName.charAt(0)}</span>
-            </div>
-            <span className="font-light text-lg tracking-wider text-foreground/90 hidden sm:block">{siteConfig.siteName}</span>
-          </Link>
-
-          {/* User Info */}
+          {/* Left: Menu Button + Logo */}
           <div className="flex items-center gap-3">
-            {/* User Menu */}
-            <div className="flex items-center gap-1">
-              {(user.role === 'admin' || user.role === 'moderator') && (
-                <Link 
-                  href="/admin"
-                  className="p-2 hover:bg-foreground/5 rounded-lg transition-colors"
-                >
-                  <Shield className="w-4 h-4 text-foreground/60" />
-                </Link>
-              )}
-              <button
-                className="p-2 hover:bg-foreground/5 rounded-lg transition-colors"
-                onClick={() => signOut({ callbackUrl: '/login' })}
+            {/* Mobile Menu Button */}
+            <button 
+              className="lg:hidden p-2 -ml-2 hover:bg-foreground/5 rounded-lg transition-colors active:scale-95"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            >
+              {mobileMenuOpen ? <X className="w-5 h-5 text-foreground/70" /> : <Menu className="w-5 h-5 text-foreground/70" />}
+            </button>
+
+            {/* Logo */}
+            <Link href="/" className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-sky-500/20">
+                <Sparkles className="w-4 h-4 text-white" />
+              </div>
+              <span className="font-semibold text-foreground tracking-tight">{siteConfig.siteName}</span>
+            </Link>
+          </div>
+
+          {/* Right: Admin Badge + Actions */}
+          <div className="flex items-center gap-2">
+            {/* Admin Badge - Mobile Only */}
+            {(user.role === 'admin' || user.role === 'moderator') && (
+              <span className="lg:hidden text-[10px] font-bold px-2 py-0.5 rounded bg-sky-500/20 text-sky-400 border border-sky-500/30">
+                ADMIN
+              </span>
+            )}
+            
+            {/* Desktop Admin Link */}
+            {(user.role === 'admin' || user.role === 'moderator') && (
+              <Link 
+                href="/admin"
+                className="hidden lg:flex p-2 hover:bg-foreground/5 rounded-lg transition-colors"
               >
-                <LogOut className="w-4 h-4 text-foreground/60" />
-              </button>
-            </div>
+                <Shield className="w-4 h-4 text-foreground/60" />
+              </Link>
+            )}
+            
+            {/* Logout - Desktop Only */}
+            <button
+              className="hidden lg:flex p-2 hover:bg-foreground/5 rounded-lg transition-colors"
+              onClick={() => signOut({ callbackUrl: '/login' })}
+            >
+              <LogOut className="w-4 h-4 text-foreground/60" />
+            </button>
           </div>
         </div>
       </header>
@@ -173,7 +183,7 @@ export function Header({ user }: HeaderProps) {
       )}
 
       {/* Mobile Bottom Navigation */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-2xl border-t border-border/70 pb-[env(safe-area-inset-bottom)]">
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-2xl border-t border-border/50 pb-[env(safe-area-inset-bottom)]">
         <div className="flex justify-around items-center h-16">
           {mobileNavItems.map((item) => {
             const isActive = pathname === item.href || 
@@ -183,15 +193,15 @@ export function Header({ user }: HeaderProps) {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  'relative flex flex-col items-center justify-center w-full h-full space-y-1 transition-colors',
+                  'relative flex flex-col items-center justify-center w-full h-full space-y-0.5 transition-colors',
                   isActive ? 'text-sky-400' : 'text-foreground/40'
                 )}
               >
                 <div className={cn(
-                  'p-1 rounded-full transition-all',
+                  'p-1.5 rounded-full transition-all',
                   isActive ? 'bg-sky-500/10' : ''
                 )}>
-                  <item.icon className={cn('w-5 h-5', isActive ? 'fill-current' : '')} />
+                  <item.icon className="w-5 h-5" strokeWidth={isActive ? 2 : 1.5} />
                 </div>
                 <span className="text-[10px] font-medium">{item.label}</span>
               </Link>
