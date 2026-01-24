@@ -600,59 +600,78 @@ export default function CharacterCardPage() {
             )}
 
             {/* 右侧：角色信息输入 */}
-            <div className="flex-1 space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-xs text-foreground/50">角色信息（可选）</label>
-                {createMode === 'video' && videoFile && (
-                  <span className="text-[10px] text-foreground/40 font-mono">
-                    区间: {timestampStart.toFixed(1)}s - {timestampEnd.toFixed(1)}s
-                  </span>
-                )}
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <input
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, ''))}
-                  placeholder="my_character"
-                  className="w-full px-3 py-1.5 bg-card/60 border border-border/70 text-foreground rounded-lg focus:outline-none focus:border-emerald-500/30 placeholder:text-foreground/30 text-sm"
-                  maxLength={32}
-                />
-                <input
-                  type="text"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="My Character"
-                  className="w-full px-3 py-1.5 bg-card/60 border border-border/70 text-foreground rounded-lg focus:outline-none focus:border-emerald-500/30 placeholder:text-foreground/30 text-sm"
-                  maxLength={64}
-                />
-              </div>
+            <div className="flex-1 min-w-0">
               {createMode === 'image' ? (
-                /* 图生角色卡特有参数 */
-                <div className="grid grid-cols-2 gap-2">
-                  <input
-                    type="text"
+                /* 图生角色卡 */
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="text"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, ''))}
+                      placeholder="my_character"
+                      className="w-32 px-2.5 py-1.5 bg-card/60 border border-border/70 text-foreground rounded-lg focus:outline-none focus:border-sky-500/30 placeholder:text-foreground/30 text-sm"
+                      maxLength={32}
+                    />
+                    <input
+                      type="text"
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                      placeholder="显示名称"
+                      className="w-28 px-2.5 py-1.5 bg-card/60 border border-border/70 text-foreground rounded-lg focus:outline-none focus:border-sky-500/30 placeholder:text-foreground/30 text-sm"
+                      maxLength={64}
+                    />
+                    <input
+                      type="text"
+                      value={styleId}
+                      onChange={(e) => setStyleId(e.target.value)}
+                      placeholder="风格 ID"
+                      className="w-28 px-2.5 py-1.5 bg-card/60 border border-border/70 text-foreground rounded-lg focus:outline-none focus:border-sky-500/30 placeholder:text-foreground/30 text-sm"
+                    />
+                  </div>
+                  <textarea
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
                     placeholder="提示词（可选）"
-                    className="w-full px-3 py-1.5 bg-card/60 border border-border/70 text-foreground rounded-lg focus:outline-none focus:border-sky-500/30 placeholder:text-foreground/30 text-sm"
-                  />
-                  <input
-                    type="text"
-                    value={styleId}
-                    onChange={(e) => setStyleId(e.target.value)}
-                    placeholder="风格 ID（可选）"
-                    className="w-full px-3 py-1.5 bg-card/60 border border-border/70 text-foreground rounded-lg focus:outline-none focus:border-sky-500/30 placeholder:text-foreground/30 text-sm"
+                    className="w-full h-12 px-3 py-1.5 bg-card/60 border border-border/70 text-foreground rounded-lg resize-none focus:outline-none focus:border-sky-500/30 placeholder:text-foreground/30 text-sm"
                   />
                 </div>
               ) : (
-                /* 视频模式的角色指令 */
-                <textarea
-                  value={instructionSet}
-                  onChange={(e) => setInstructionSet(e.target.value)}
-                  placeholder="描述角色的性格、特点等..."
-                  className="w-full h-12 px-3 py-1.5 bg-card/60 border border-border/70 text-foreground rounded-lg resize-none focus:outline-none focus:border-emerald-500/30 placeholder:text-foreground/30 text-sm"
-                />
+                /* 视频模式 */
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs text-foreground/50">角色信息（可选）</label>
+                    {videoFile && (
+                      <span className="text-[10px] text-foreground/40 font-mono">
+                        区间: {timestampStart.toFixed(1)}s - {timestampEnd.toFixed(1)}s
+                      </span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, ''))}
+                      placeholder="my_character"
+                      className="w-full px-3 py-1.5 bg-card/60 border border-border/70 text-foreground rounded-lg focus:outline-none focus:border-emerald-500/30 placeholder:text-foreground/30 text-sm"
+                      maxLength={32}
+                    />
+                    <input
+                      type="text"
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                      placeholder="My Character"
+                      className="w-full px-3 py-1.5 bg-card/60 border border-border/70 text-foreground rounded-lg focus:outline-none focus:border-emerald-500/30 placeholder:text-foreground/30 text-sm"
+                      maxLength={64}
+                    />
+                  </div>
+                  <textarea
+                    value={instructionSet}
+                    onChange={(e) => setInstructionSet(e.target.value)}
+                    placeholder="描述角色的性格、特点等..."
+                    className="w-full h-12 px-3 py-1.5 bg-card/60 border border-border/70 text-foreground rounded-lg resize-none focus:outline-none focus:border-emerald-500/30 placeholder:text-foreground/30 text-sm"
+                  />
+                </div>
               )}
             </div>
           </div>

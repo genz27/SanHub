@@ -987,15 +987,15 @@ export default function HistoryPage() {
       {/* Lightbox */}
       {selected && (
         <div
-          className="fixed inset-0 z-50 bg-background/95 backdrop-blur-xl flex items-center justify-center p-4 md:p-8"
+          className="fixed inset-0 z-[60] bg-background/95 backdrop-blur-xl flex flex-col overflow-y-auto"
           onClick={() => setSelected(null)}
         >
-          <div className="w-full h-full flex flex-col items-center justify-center" onClick={(e) => e.stopPropagation()}>
-            <div className="w-full max-w-[90vw] max-h-[70vh] md:max-h-[75vh] flex items-center justify-center">
+          <div className="flex-1 min-h-0 flex flex-col items-center justify-center p-4 md:p-8" onClick={(e) => e.stopPropagation()}>
+            <div className="w-full flex-1 min-h-0 flex items-center justify-center">
               {isVideoType(selected) ? (
                 <video
                   src={selected.resultUrl}
-                  className="max-w-full max-h-[70vh] md:max-h-[75vh] w-auto h-auto rounded-xl border border-border/70"
+                  className="max-w-[90vw] max-h-[calc(100vh-220px)] md:max-h-[calc(100vh-200px)] w-auto h-auto rounded-xl border border-border/70"
                   controls
                   autoPlay
                   loop
@@ -1004,18 +1004,21 @@ export default function HistoryPage() {
                 <img
                   src={selected.resultUrl}
                   alt={selected.prompt}
-                  className="max-w-full max-h-[70vh] md:max-h-[75vh] w-auto h-auto rounded-xl border border-border/70 object-contain"
+                  className="max-w-[90vw] max-h-[calc(100vh-220px)] md:max-h-[calc(100vh-200px)] w-auto h-auto rounded-xl border border-border/70 object-contain"
                 />
               )}
             </div>
+          </div>
 
-            <div className="w-full max-w-3xl mt-4 md:mt-6 px-2">
+          {/* Info panel - fixed at bottom */}
+          <div className="shrink-0 w-full bg-background/80 backdrop-blur-sm border-t border-border/30 p-4 md:px-8 md:py-4" onClick={(e) => e.stopPropagation()}>
+            <div className="max-w-3xl mx-auto">
               <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start gap-2">
                     <div className="flex-1 min-w-0">
                       {selected.prompt ? (
-                        <CollapsibleText text={selected.prompt} collapsedLines={3} />
+                        <CollapsibleText text={selected.prompt} collapsedLines={2} />
                       ) : (
                         <p className="text-foreground text-sm leading-relaxed">无提示词</p>
                       )}
@@ -1023,62 +1026,23 @@ export default function HistoryPage() {
                   </div>
                   <div className="flex flex-wrap items-center gap-2 md:gap-3 mt-2">
                     <span className="text-foreground/40 text-xs">{formatDate(selected.createdAt)}</span>
-                    <span className="text-foreground/30 hidden md:inline">·</span>
+                    <span className="text-foreground/30">·</span>
                     <span className="text-foreground/40 text-xs">{selected.cost} 积分</span>
-                    <span className="text-foreground/30 hidden md:inline">·</span>
+                    <span className="text-foreground/30">·</span>
                     <span className="px-2 py-0.5 bg-card/70 text-foreground/60 text-xs rounded">
                       {getGenerationBadge(selected).label}
                     </span>
-                  </div>
-                  <div className="mt-3 space-y-2">
-                    <div className="flex items-start gap-2">
-                      <span className="text-foreground/40 text-xs shrink-0 w-14">URL</span>
-                      <span className="text-foreground/70 text-xs break-all flex-1">{selected.resultUrl || '-'}</span>
-                      {selected.resultUrl && (
-                        <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(selected.resultUrl);
-                            toast({ title: '已复制 URL' });
-                          }}
-                          className="shrink-0 p-1.5 text-foreground/40 hover:text-foreground/80 hover:bg-card/70 rounded-lg transition-colors"
-                          title="复制 URL"
-                        >
-                          <Copy className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-
-                    {typeof selected.params?.permalink === 'string' && selected.params.permalink && (
-                      <div className="flex items-start gap-2">
-                        <span className="text-foreground/40 text-xs shrink-0 w-14">详情</span>
-                        <a
-                          href={selected.params.permalink}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-foreground/70 text-xs break-all flex-1 hover:text-foreground underline underline-offset-2"
-                        >
-                          {selected.params.permalink}
-                        </a>
-                        <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(selected.params.permalink as string);
-                            toast({ title: '已复制 Permalink' });
-                          }}
-                          className="shrink-0 p-1.5 text-foreground/40 hover:text-foreground/80 hover:bg-card/70 rounded-lg transition-colors"
-                          title="复制 Permalink"
-                        >
-                          <Copy className="w-4 h-4" />
-                        </button>
-                        <a
-                          href={selected.params.permalink}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="shrink-0 p-1.5 text-foreground/40 hover:text-foreground/80 hover:bg-card/70 rounded-lg transition-colors"
-                          title="打开链接"
-                        >
-                          <ExternalLink className="w-4 h-4" />
-                        </a>
-                      </div>
+                    {selected.resultUrl && (
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(selected.resultUrl);
+                          toast({ title: '已复制 URL' });
+                        }}
+                        className="p-1 text-foreground/40 hover:text-foreground/80 rounded transition-colors"
+                        title="复制 URL"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
                     )}
                   </div>
                 </div>
