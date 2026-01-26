@@ -379,6 +379,15 @@ export async function POST(request: NextRequest) {
               if (typeof content === 'string') {
                 const extracted = extractMediaFromContent(content);
                 if (extracted) {
+                  // 对视频链接应用视频加速代理
+                  if (extracted.type === 'video') {
+                    try {
+                      const { applyVideoProxy } = await import('@/lib/sora-api');
+                      extracted.url = await applyVideoProxy(extracted.url);
+                    } catch (e) {
+                      // 忽略代理失败，使用原始 URL
+                    }
+                  }
                   parsed.choices[0].delta.content = JSON.stringify(extracted);
                 }
               }

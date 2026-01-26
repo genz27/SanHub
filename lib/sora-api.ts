@@ -128,7 +128,7 @@ function normalizeUrlString(value: string): string {
 }
 
 // 视频代理 URL 替换（将 videos.openai.com 替换为配置的加速域名）
-async function applyVideoProxy(url: string): Promise<string> {
+export async function applyVideoProxy(url: string): Promise<string> {
   if (!url) return url;
   
   try {
@@ -452,7 +452,8 @@ export async function getVideoContentUrl(videoId: string, channelId?: string): P
     const location = response.headers.get('location');
     logDebug('[Sora API v5] /content redirect location:', location?.substring(0, 100));
     if (location) {
-      return parseVideoUrl(location);
+      const rawUrl = parseVideoUrl(location);
+      return await applyVideoProxy(rawUrl);
     }
   }
   
@@ -464,7 +465,8 @@ export async function getVideoContentUrl(videoId: string, channelId?: string): P
       const data = await response.json() as any;
       logDebug('[Sora API v5] /content JSON response:', JSON.stringify(data).substring(0, 200));
       if (data?.url) {
-        return parseVideoUrl(data.url);
+        const rawUrl = parseVideoUrl(data.url);
+        return await applyVideoProxy(rawUrl);
       }
     }
   }
