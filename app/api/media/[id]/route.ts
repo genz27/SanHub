@@ -94,9 +94,15 @@ export async function GET(
         console.error('[Media API] Blocked external URL:', error);
         return new NextResponse('Invalid media URL', { status: 400 });
       }
-      // 对于视频，直接重定向到外部 URL（避免代理大文件）
+      // 对于视频，优先应用视频加速域名，再重定向（避免代理大文件）
       if (generation.type.includes('video')) {
-        return NextResponse.redirect(safeUrl.toString(), 302);
+        try {
+          const { applyVideoProxy } = await import('@/lib/sora-api');
+          const proxied = await applyVideoProxy(safeUrl.toString());
+          return NextResponse.redirect(proxied, 302);
+        } catch {
+          return NextResponse.redirect(safeUrl.toString(), 302);
+        }
       }
       // 对于图片，代理请求
       return await proxyExternalUrl(safeUrl.toString(), generation.type, origin);
