@@ -465,6 +465,18 @@ export async function initializeDatabase(): Promise<void> {
     // 字段已存在，忽略错误
   }
 
+  // 添加视频加速配置字段
+  try {
+    await db.execute("ALTER TABLE system_config ADD COLUMN video_proxy_enabled TINYINT(1) DEFAULT 0");
+  } catch {
+    // 字段已存在，忽略错误
+  }
+  try {
+    await db.execute("ALTER TABLE system_config ADD COLUMN video_proxy_base_url VARCHAR(500) DEFAULT 'https://video.lmmllm.com/'");
+  } catch {
+    // 字段已存在，忽略错误
+  }
+
   // 更新 generations 表的 type 字段以支持 gitee-image（MySQL 需要修改 ENUM）
   if (dbType === 'mysql') {
     try {
@@ -1183,6 +1195,8 @@ export async function getSystemConfig(): Promise<SystemConfig> {
       giteeBaseUrl: process.env.GITEE_BASE_URL || 'https://ai.gitee.com/',
         picuiApiKey: process.env.PICUI_API_KEY || '',
         picuiBaseUrl: process.env.PICUI_BASE_URL || 'https://picui.cn/api/v1',
+        videoProxyEnabled: false,
+        videoProxyBaseUrl: 'https://video.lmmllm.com/',
         pricing: {
           soraVideo10s: 100,
           soraVideo15s: 150,
@@ -1225,6 +1239,8 @@ export async function getSystemConfig(): Promise<SystemConfig> {
           imageModels: [],
           videoModels: [],
         },
+        videoProxyEnabled: false,
+        videoProxyBaseUrl: 'https://video.lmmllm.com/',
       };
     }
 
@@ -1287,6 +1303,8 @@ export async function getSystemConfig(): Promise<SystemConfig> {
         imageModels: row.disabled_image_models ? JSON.parse(row.disabled_image_models) : [],
         videoModels: row.disabled_video_models ? JSON.parse(row.disabled_video_models) : [],
       },
+      videoProxyEnabled: Boolean(row.video_proxy_enabled),
+      videoProxyBaseUrl: row.video_proxy_base_url || 'https://video.lmmllm.com/',
     };
   });
 }
@@ -1500,6 +1518,15 @@ export async function updateSystemConfig(
       fields.push('disabled_video_models = ?');
       values.push(JSON.stringify(d.videoModels));
     }
+  }
+  // 视频加速配置
+  if (updates.videoProxyEnabled !== undefined) {
+    fields.push('video_proxy_enabled = ?');
+    values.push(updates.videoProxyEnabled ? 1 : 0);
+  }
+  if (updates.videoProxyBaseUrl !== undefined) {
+    fields.push('video_proxy_base_url = ?');
+    values.push(updates.videoProxyBaseUrl);
   }
 
   if (fields.length > 0) {

@@ -342,6 +342,9 @@ export interface SystemConfig {
   // PicUI 图床配置
   picuiApiKey: string;
   picuiBaseUrl: string;
+  // 视频加速配置
+  videoProxyEnabled: boolean;
+  videoProxyBaseUrl: string;
   pricing: PricingConfig;
   registerEnabled: boolean;
   defaultBalance: number;

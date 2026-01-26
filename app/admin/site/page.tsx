@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Globe, Loader2, Save, Upload, UserPlus, Coins } from 'lucide-react';
+import { Globe, Loader2, Save, Upload, UserPlus, Coins, Zap } from 'lucide-react';
 import { toast } from '@/components/ui/toaster';
 import { useSiteConfigRefresh } from '@/components/providers/site-config-provider';
 import type { SystemConfig } from '@/types';
@@ -42,6 +42,8 @@ export default function SiteConfigPage() {
           siteConfig: config.siteConfig,
           picuiApiKey: config.picuiApiKey,
           picuiBaseUrl: config.picuiBaseUrl,
+          videoProxyEnabled: config.videoProxyEnabled,
+          videoProxyBaseUrl: config.videoProxyBaseUrl,
           registerEnabled: config.registerEnabled,
           defaultBalance: config.defaultBalance,
         }),
@@ -239,6 +241,54 @@ export default function SiteConfigPage() {
             <p className="text-xs text-foreground/30">
               从 <a href="https://picui.cn" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">picui.cn</a> 获取 API Key
             </p>
+          </div>
+        </div>
+      </div>
+
+      {/* 视频加速配置 */}
+      <div className="bg-card/60 border border-border/70 rounded-xl overflow-hidden">
+        <div className="p-4 border-b border-border/70 flex items-center gap-3">
+          <div className="w-8 h-8 bg-purple-500/20 rounded-lg flex items-center justify-center">
+            <Zap className="w-4 h-4 text-purple-400" />
+          </div>
+          <div>
+            <h2 className="font-medium text-foreground">视频加速</h2>
+            <p className="text-xs text-foreground/40">配置视频 CDN 加速代理</p>
+          </div>
+        </div>
+
+        <div className="p-4 space-y-4">
+          {/* 开启视频加速 */}
+          <div className="flex items-center justify-between">
+            <div>
+              <label className="text-sm text-foreground">开启视频加速</label>
+              <p className="text-xs text-foreground/30 mt-1">开启后将 OpenAI 视频 URL 替换为加速域名</p>
+            </div>
+            <button
+              onClick={() => setConfig({ ...config, videoProxyEnabled: !config.videoProxyEnabled })}
+              className={`relative w-12 h-6 rounded-full transition-colors ${
+                config.videoProxyEnabled ? 'bg-purple-500' : 'bg-card/80'
+              }`}
+            >
+              <div
+                className={`absolute top-1 w-4 h-4 rounded-full bg-foreground transition-transform ${
+                  config.videoProxyEnabled ? 'left-7' : 'left-1'
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* 加速域名 */}
+          <div className="space-y-2">
+            <label className="text-sm text-foreground/50">加速域名</label>
+            <input
+              type="text"
+              value={config.videoProxyBaseUrl}
+              onChange={(e) => setConfig({ ...config, videoProxyBaseUrl: e.target.value })}
+              placeholder="https://video.lmmllm.com/"
+              className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-lg text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
+            />
+            <p className="text-xs text-foreground/30">将 videos.openai.com 替换为该域名，需配置反向代理</p>
           </div>
         </div>
       </div>

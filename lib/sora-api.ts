@@ -127,6 +127,33 @@ function normalizeUrlString(value: string): string {
   return trimmed;
 }
 
+// 视频代理 URL 替换（将 videos.openai.com 替换为配置的加速域名）
+async function applyVideoProxy(url: string): Promise<string> {
+  if (!url) return url;
+  
+  try {
+    const config = await getSystemConfig();
+    if (!config.videoProxyEnabled || !config.videoProxyBaseUrl) {
+      return url;
+    }
+    
+    // 检查是否是 OpenAI 视频 URL
+    const openaiVideoPattern = /^https:\/\/videos\.openai\.com\//;
+    if (openaiVideoPattern.test(url)) {
+      // 确保代理 baseUrl 以 / 结尾
+      const proxyBase = config.videoProxyBaseUrl.replace(/\/$/, '') + '/';
+      // 替换域名
+      const proxiedUrl = url.replace(openaiVideoPattern, proxyBase);
+      logDebug('[Video Proxy] URL replaced:', { original: url.substring(0, 80), proxied: proxiedUrl.substring(0, 80) });
+      return proxiedUrl;
+    }
+  } catch (e) {
+    logWarn('[Video Proxy] Failed to apply proxy:', e);
+  }
+  
+  return url;
+}
+
 const DEFAULT_SORA_BASE_URL = 'http://localhost:8000';
 
 type SoraConfig = {
@@ -694,7 +721,7 @@ export async function generateVideo(
     const isCompleted = isCompletedStatus(taskResponse.status);
     if (taskResponse.url || isCompleted) {
       if (taskResponse.url) {
-        const videoUrl = parseVideoUrl(taskResponse.url);
+        const videoUrl = await applyVideoProxy(parseVideoUrl(taskResponse.url));
         logInfo('[Sora API v5] Video generation completed:', videoUrl?.substring(0, 80));
         return {
           id: taskResponse.id,
@@ -734,7 +761,7 @@ export async function generateVideo(
         throw new Error('视频生成完成但未返回 URL');
       }
       
-      const videoUrl = parseVideoUrl(finalStatus.url);
+      const videoUrl = await applyVideoProxy(parseVideoUrl(finalStatus.url));
       return {
         id: finalStatus.id,
         object: finalStatus.object || 'video',
@@ -872,7 +899,7 @@ export async function remixVideo(
 
   // 如果已完成且有 URL
   if (isCompletedStatus(taskResponse.status) && taskResponse.url) {
-    const videoUrl = parseVideoUrl(taskResponse.url);
+    const videoUrl = await applyVideoProxy(parseVideoUrl(taskResponse.url));
     return {
       id: taskResponse.id,
       object: taskResponse.object || 'video',
@@ -900,7 +927,7 @@ export async function remixVideo(
       throw new Error('Remix 完成但未返回 URL');
     }
 
-    const videoUrl = parseVideoUrl(finalStatus.url);
+    const videoUrl = await applyVideoProxy(parseVideoUrl(finalStatus.url));
     return {
       id: finalStatus.id,
       object: finalStatus.object || 'video',
