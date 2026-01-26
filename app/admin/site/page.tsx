@@ -285,7 +285,7 @@ export default function SiteConfigPage() {
               type="text"
               value={config.videoProxyBaseUrl}
               onChange={(e) => setConfig({ ...config, videoProxyBaseUrl: e.target.value })}
-              placeholder="https://video.lmmllm.com/"
+              placeholder="https://your-cdn.example.com/"
               className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-lg text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
             />
             <p className="text-xs text-foreground/30">将 videos.openai.com 替换为该域名，需配置反向代理</p>

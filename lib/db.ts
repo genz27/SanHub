@@ -472,7 +472,7 @@ export async function initializeDatabase(): Promise<void> {
     // 字段已存在，忽略错误
   }
   try {
-    await db.execute("ALTER TABLE system_config ADD COLUMN video_proxy_base_url VARCHAR(500) DEFAULT 'https://video.lmmllm.com/'");
+    await db.execute("ALTER TABLE system_config ADD COLUMN video_proxy_base_url VARCHAR(500) DEFAULT ''");
   } catch {
     // 字段已存在，忽略错误
   }
@@ -1238,7 +1238,7 @@ export async function getSystemConfig(): Promise<SystemConfig> {
           videoModels: [],
         },
         videoProxyEnabled: false,
-        videoProxyBaseUrl: 'https://video.lmmllm.com/',
+        videoProxyBaseUrl: '',
       };
     }
 
@@ -1302,7 +1302,7 @@ export async function getSystemConfig(): Promise<SystemConfig> {
         videoModels: row.disabled_video_models ? JSON.parse(row.disabled_video_models) : [],
       },
       videoProxyEnabled: Boolean(row.video_proxy_enabled),
-      videoProxyBaseUrl: row.video_proxy_base_url || 'https://video.lmmllm.com/',
+      videoProxyBaseUrl: row.video_proxy_base_url || '',
     };
   });
 }
