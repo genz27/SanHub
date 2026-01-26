@@ -1195,8 +1195,6 @@ export async function getSystemConfig(): Promise<SystemConfig> {
       giteeBaseUrl: process.env.GITEE_BASE_URL || 'https://ai.gitee.com/',
         picuiApiKey: process.env.PICUI_API_KEY || '',
         picuiBaseUrl: process.env.PICUI_BASE_URL || 'https://picui.cn/api/v1',
-        videoProxyEnabled: false,
-        videoProxyBaseUrl: 'https://video.lmmllm.com/',
         pricing: {
           soraVideo10s: 100,
           soraVideo15s: 150,
