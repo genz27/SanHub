@@ -42,6 +42,55 @@ const DEFAULT_RATIO_ROWS: RatioResolutionRow[] = [
   { ratio: '9:16', resolution: '1024x1792' },
 ];
 
+// Gemini 3 Pro standard resolutions
+const GEMINI_PRO_SIZE_GROUPS: SizeResolutionGroup[] = [
+  {
+    size: '1K',
+    rows: [
+      { ratio: '1:1', resolution: '1024x1024' },
+      { ratio: '2:3', resolution: '848x1264' },
+      { ratio: '3:2', resolution: '1264x848' },
+      { ratio: '3:4', resolution: '896x1200' },
+      { ratio: '4:3', resolution: '1200x896' },
+      { ratio: '4:5', resolution: '928x1152' },
+      { ratio: '5:4', resolution: '1152x928' },
+      { ratio: '9:16', resolution: '768x1376' },
+      { ratio: '16:9', resolution: '1376x768' },
+      { ratio: '21:9', resolution: '1584x672' },
+    ],
+  },
+  {
+    size: '2K',
+    rows: [
+      { ratio: '1:1', resolution: '2048x2048' },
+      { ratio: '2:3', resolution: '1696x2528' },
+      { ratio: '3:2', resolution: '2528x1696' },
+      { ratio: '3:4', resolution: '1792x2400' },
+      { ratio: '4:3', resolution: '2400x1792' },
+      { ratio: '4:5', resolution: '1856x2304' },
+      { ratio: '5:4', resolution: '2304x1856' },
+      { ratio: '9:16', resolution: '1536x2752' },
+      { ratio: '16:9', resolution: '2752x1536' },
+      { ratio: '21:9', resolution: '3168x1344' },
+    ],
+  },
+  {
+    size: '4K',
+    rows: [
+      { ratio: '1:1', resolution: '4096x4096' },
+      { ratio: '2:3', resolution: '3392x5056' },
+      { ratio: '3:2', resolution: '5056x3392' },
+      { ratio: '3:4', resolution: '3584x4800' },
+      { ratio: '4:3', resolution: '4800x3584' },
+      { ratio: '4:5', resolution: '3712x4608' },
+      { ratio: '5:4', resolution: '4608x3712' },
+      { ratio: '9:16', resolution: '3072x5504' },
+      { ratio: '16:9', resolution: '5504x3072' },
+      { ratio: '21:9', resolution: '6336x2688' },
+    ],
+  },
+];
+
 export default function ImageChannelsPage() {
   const [channels, setChannels] = useState<ImageChannel[]>([]);
   const [models, setModels] = useState<ImageModel[]>([]);
@@ -888,13 +937,22 @@ export default function ImageChannelsPage() {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <label className="text-sm text-foreground/70">分辨率档位</label>
-                <button
-                  type="button"
-                  onClick={() => setSizeGroups((prev) => [...prev, { size: '', rows: [{ ratio: '', resolution: '' }] }])}
-                  className="text-xs text-foreground/60 hover:text-foreground"
-                >
-                  添加档位
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setSizeGroups([...GEMINI_PRO_SIZE_GROUPS])}
+                    className="text-xs text-blue-400 hover:text-blue-300"
+                  >
+                    填充 Gemini Pro 默认
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSizeGroups((prev) => [...prev, { size: '', rows: [{ ratio: '', resolution: '' }] }])}
+                    className="text-xs text-foreground/60 hover:text-foreground"
+                  >
+                    添加档位
+                  </button>
+                </div>
               </div>
               <div className="space-y-3">
                 {sizeGroups.map((group, groupIndex) => (
