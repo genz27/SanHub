@@ -42,8 +42,8 @@ const DEFAULT_RATIO_ROWS: RatioResolutionRow[] = [
   { ratio: '9:16', resolution: '1024x1792' },
 ];
 
-// Gemini 3 Pro standard resolutions
-const GEMINI_PRO_SIZE_GROUPS: SizeResolutionGroup[] = [
+// Gemini 3 Pro standard resolutions (pixel values for display)
+const GEMINI_PRO_SIZE_GROUPS_PIXELS: SizeResolutionGroup[] = [
   {
     size: '1K',
     rows: [
@@ -90,6 +90,32 @@ const GEMINI_PRO_SIZE_GROUPS: SizeResolutionGroup[] = [
     ],
   },
 ];
+
+// Gemini 3 Pro model ID mapping (for dynamic model selection)
+// Format: gemini-3.0-pro-image-{ratio}[-{size}]
+const buildGeminiProModelGroups = (baseModel: string): SizeResolutionGroup[] => {
+  // Extract base name, e.g. "gemini-3.0-pro-image" from "gemini-3.0-pro-image-square"
+  const baseName = baseModel.replace(/-(landscape|portrait|square|four-three|three-four)(-2k|-4k)?$/i, '');
+  
+  const ratioToSuffix: Record<string, string> = {
+    '1:1': 'square',
+    '16:9': 'landscape',
+    '9:16': 'portrait',
+    '4:3': 'four-three',
+    '3:4': 'three-four',
+  };
+  
+  const sizes = ['1K', '2K', '4K'];
+  const sizeSuffixes: Record<string, string> = { '1K': '', '2K': '-2k', '4K': '-4k' };
+  
+  return sizes.map(size => ({
+    size,
+    rows: Object.entries(ratioToSuffix).map(([ratio, suffix]) => ({
+      ratio,
+      resolution: `${baseName}-${suffix}${sizeSuffixes[size]}`,
+    })),
+  }));
+};
 
 export default function ImageChannelsPage() {
   const [channels, setChannels] = useState<ImageChannel[]>([]);
@@ -940,10 +966,19 @@ export default function ImageChannelsPage() {
                 <div className="flex items-center gap-3">
                   <button
                     type="button"
-                    onClick={() => setSizeGroups([...GEMINI_PRO_SIZE_GROUPS])}
+                    onClick={() => setSizeGroups(buildGeminiProModelGroups(modelForm.apiModel))}
                     className="text-xs text-blue-400 hover:text-blue-300"
+                    title="根据模型ID自动生成对应的模型ID映射，如 gemini-3.0-pro-image-square-2k"
                   >
-                    填充 Gemini Pro 默认
+                    填充模型ID映射
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSizeGroups([...GEMINI_PRO_SIZE_GROUPS_PIXELS])}
+                    className="text-xs text-foreground/60 hover:text-foreground"
+                    title="填充像素分辨率值，仅用于显示"
+                  >
+                    填充像素值
                   </button>
                   <button
                     type="button"
