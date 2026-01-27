@@ -31,20 +31,35 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 获取 Sora 后台配置
-    const { getSystemConfig } = await import('@/lib/db');
+    // 获取 Sora 后台配置和视频渠道配置
+    const { getSystemConfig, getVideoChannels } = await import('@/lib/db');
     const config = await getSystemConfig();
-    const { soraBackendUrl, soraBackendToken } = config;
+    const { soraBackendUrl } = config;
 
     if (!soraBackendUrl) {
       return NextResponse.json(
-        { success: false, error: 'Sora 后台未配置' },
+        { success: false, error: 'Sora 后台 URL 未配置' },
         { status: 500 }
       );
     }
+    
+    // 从 Sora 视频渠道获取 API Key 作为 token
+    const channels = await getVideoChannels(true);
+    const soraChannel = channels.find(c => c.type === 'sora');
+    
+    if (!soraChannel?.apiKey) {
+      return NextResponse.json(
+        { success: false, error: 'Sora 视频渠道未配置或缺少 API Key，请在管理后台「视频渠道」中配置' },
+        { status: 500 }
+      );
+    }
+    
+    const soraBackendToken = soraChannel.apiKey;
 
     // 调用 Sora 后台 /get-sora-link 接口
     const backendUrl = `${soraBackendUrl.replace(/\/$/, '')}/get-sora-link`;
+    
+    console.log('[Sora Unwatermark] Request:', { backendUrl, permalink, hasToken: !!soraBackendToken });
     
     const backendResponse = await fetch(backendUrl, {
       method: 'POST',
@@ -53,7 +68,7 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify({
         url: permalink,
-        token: soraBackendToken || undefined,
+        token: soraBackendToken,
       }),
     });
 
