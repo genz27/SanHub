@@ -1090,10 +1090,16 @@ export default function HistoryPage() {
                         <Copy className="w-3.5 h-3.5" />
                       </button>
                     )}
+                    {/* 调试信息: 显示 videoId 和 permalink 状态 */}
+                    {selected.type === 'sora-video' && process.env.NODE_ENV === 'development' && (
+                      <span className="text-[10px] text-foreground/30">
+                        {selected.params?.permalink ? '✓ permalink' : selected.params?.videoId ? '✓ videoId' : '✗ 无ID'}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2 shrink-0 w-full md:w-auto">
-                  {/* 显示 permalink 链接 - 仅 Sora 视频 */}
+                  {/* 显示 permalink 链接 - 仅 Sora 视频且有 permalink */}
                   {selected.type === 'sora-video' && selected.params?.permalink && (
                     <a
                       href={selected.params.permalink}
@@ -1107,13 +1113,26 @@ export default function HistoryPage() {
                     </a>
                   )}
                   
-                  {/* 去水印按钮 - 仅 Sora 视频且有 permalink */}
-                  {selected.type === 'sora-video' && selected.params?.permalink && (
+                  {/* 去水印按钮 - 仅 Sora 视频,优先使用 permalink,否则尝试从 videoId 构建 */}
+                  {selected.type === 'sora-video' && (selected.params?.permalink || selected.params?.videoId) && (
                     <button
-                      onClick={() => handleUnwatermark(selected.params!.permalink!)}
+                      onClick={() => {
+                        // 优先使用 permalink,如果没有则尝试从 videoId 构建
+                        const permalink = selected.params?.permalink || 
+                          (selected.params?.videoId ? `https://sora.com/share/${selected.params.videoId}` : '');
+                        if (permalink) {
+                          handleUnwatermark(permalink);
+                        } else {
+                          toast({
+                            title: '无法去水印',
+                            description: '缺少视频分享链接和视频ID',
+                            variant: 'destructive',
+                          });
+                        }
+                      }}
                       disabled={unwatermarking}
                       className="flex items-center justify-center gap-2 px-4 py-2.5 bg-sky-500/20 text-sky-300 border border-sky-500/30 rounded-xl hover:bg-sky-500/30 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="重新获取无水印下载链接"
+                      title={selected.params?.permalink ? '重新获取无水印下载链接' : '尝试通过视频ID获取无水印链接'}
                     >
                       {unwatermarking ? (
                         <Loader2 className="w-4 h-4 animate-spin" />

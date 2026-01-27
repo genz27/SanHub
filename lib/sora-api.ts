@@ -732,7 +732,7 @@ export async function generateVideo(
           model: taskResponse.model || '',
           data: [{
             url: videoUrl,
-            permalink: taskResponse.permalink,
+            permalink: taskResponse.permalink || (taskResponse.metadata as any)?.permalink,
             revised_prompt: taskResponse.revised_prompt,
           }],
           channelId,
@@ -771,7 +771,7 @@ export async function generateVideo(
         model: finalStatus.model || '',
         data: [{
           url: videoUrl,
-          permalink: finalStatus.permalink,
+          permalink: finalStatus.permalink || (finalStatus.metadata as any)?.permalink,
           revised_prompt: finalStatus.revised_prompt,
         }],
         channelId,
@@ -909,7 +909,7 @@ export async function remixVideo(
       model: taskResponse.model || '',
       data: [{
         url: videoUrl,
-        permalink: taskResponse.permalink,
+        permalink: taskResponse.permalink || (taskResponse.metadata as any)?.permalink,
         revised_prompt: taskResponse.revised_prompt,
       }],
     };
@@ -937,7 +937,7 @@ export async function remixVideo(
       model: finalStatus.model || '',
       data: [{
         url: videoUrl,
-        permalink: finalStatus.permalink,
+        permalink: finalStatus.permalink || (finalStatus.metadata as any)?.permalink,
         revised_prompt: finalStatus.revised_prompt,
       }],
     };
