@@ -58,6 +58,9 @@ export async function POST(request: NextRequest) {
     });
 
     const backendData = await backendResponse.json();
+    
+    // 调试日志：查看后端返回的完整数据
+    console.log('[Sora Unwatermark] Backend response:', JSON.stringify(backendData, null, 2));
 
     if (!backendResponse.ok) {
       return NextResponse.json(
