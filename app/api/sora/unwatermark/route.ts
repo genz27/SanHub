@@ -32,7 +32,8 @@ export async function POST(request: NextRequest) {
     }
 
     // 获取 Sora 后台配置
-    const config = await import('@/lib/config').then((m) => m.getSystemConfig());
+    const { getSystemConfig } = await import('@/lib/db');
+    const config = await getSystemConfig();
     const { soraBackendUrl, soraBackendToken } = config;
 
     if (!soraBackendUrl) {
