@@ -21,6 +21,7 @@ import {
 import { cn } from '@/lib/utils';
 import { compressImageToWebP, fileToBase64 } from '@/lib/image-compression';
 import { toast } from '@/components/ui/toaster';
+import { CustomSelect } from '@/components/ui/select-custom';
 import type { Task } from '@/components/generator/result-gallery';
 import type { Generation, CharacterCard, SafeVideoModel, DailyLimitConfig } from '@/types';
 import { getPollingInterval, shouldContinuePolling, isTransientError, getFriendlyErrorMessage } from '@/lib/polling-utils';
@@ -988,48 +989,47 @@ export default function VideoGenerationPage() {
           {/* 参数行：选择器 + 按钮 */}
           <div className="flex flex-wrap items-center gap-2">
             {/* 模型选择 */}
-            <div className="relative">
-              <select
+            <div className="min-w-[160px]">
+              <CustomSelect
                 value={selectedModelId}
-                onChange={(e) => setSelectedModelId(e.target.value)}
-                className="appearance-none px-3 py-1.5 pr-8 bg-card/60 border border-border/70 rounded-lg text-xs text-foreground cursor-pointer transition-all hover:bg-card/80 hover:border-border focus:outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
-              >
-                {availableModels.map((m) => (
-                  <option key={m.id} value={m.id}>{m.name}</option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-foreground/50 pointer-events-none" />
+                onValueChange={setSelectedModelId}
+                options={availableModels.map((m) => ({
+                  value: m.id,
+                  label: m.name,
+                  description: m.description,
+                  highlight: m.highlight,
+                }))}
+                placeholder="选择模型"
+              />
             </div>
 
             {/* 时长选择 */}
             {currentModel && (
-              <div className="relative">
-                <select
+              <div className="w-[100px]">
+                <CustomSelect
                   value={duration}
-                  onChange={(e) => setDuration(e.target.value)}
-                  className="appearance-none px-3 py-1.5 pr-8 bg-card/60 border border-border/70 rounded-lg text-xs text-foreground cursor-pointer transition-all hover:bg-card/80 hover:border-border focus:outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
-                >
-                  {currentModel.durations.map((d) => (
-                    <option key={d.value} value={d.value}>{d.label}</option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-foreground/50 pointer-events-none" />
+                  onValueChange={setDuration}
+                  options={currentModel.durations.map((d) => ({
+                    value: d.value,
+                    label: d.label,
+                  }))}
+                  placeholder="时长"
+                />
               </div>
             )}
 
             {/* 比例选择 */}
             {currentModel && (
-              <div className="relative">
-                <select
+              <div className="w-[120px]">
+                <CustomSelect
                   value={aspectRatio}
-                  onChange={(e) => setAspectRatio(e.target.value)}
-                  className="appearance-none px-3 py-1.5 pr-8 bg-card/60 border border-border/70 rounded-lg text-xs text-foreground cursor-pointer transition-all hover:bg-card/80 hover:border-border focus:outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
-                >
-                  {currentModel.aspectRatios.map((r) => (
-                    <option key={r.value} value={r.value}>{r.label}</option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-foreground/50 pointer-events-none" />
+                  onValueChange={setAspectRatio}
+                  options={currentModel.aspectRatios.map((r) => ({
+                    value: r.value,
+                    label: r.label,
+                  }))}
+                  placeholder="比例"
+                />
               </div>
             )}
 

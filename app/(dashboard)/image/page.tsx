@@ -20,6 +20,7 @@ import type { Generation, SafeImageModel, DailyLimitConfig } from '@/types';
 import { toast } from '@/components/ui/toaster';
 import type { Task } from '@/components/generator/result-gallery';
 import { getPollingInterval, shouldContinuePolling, isTransientError, getFriendlyErrorMessage } from '@/lib/polling-utils';
+import { CustomSelect } from '@/components/ui/select-custom';
 
 const ResultGallery = dynamic(
   () => import('@/components/generator/result-gallery').then((mod) => mod.ResultGallery),
@@ -687,48 +688,49 @@ export default function ImageGenerationPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="relative">
-              <select
+            <div className="min-w-[160px]">
+              <CustomSelect
                 value={selectedModelId}
-                onChange={(e) => setSelectedModelId(e.target.value)}
-                className="appearance-none px-3 py-1.5 pr-8 bg-card/60 border border-border/70 rounded-lg text-xs text-foreground cursor-pointer transition-all hover:bg-card/80 hover:border-border focus:outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
-              >
-                {availableModels.map((model) => (
-                  <option key={model.id} value={model.id}>{model.name}</option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-foreground/50 pointer-events-none" />
+                onValueChange={setSelectedModelId}
+                options={availableModels.map((model) => ({
+                  value: model.id,
+                  label: model.name,
+                  description: model.description,
+                  highlight: model.highlight,
+                }))}
+                placeholder="选择模型"
+              />
             </div>
 
             {currentModel?.features.imageSize && currentModel.imageSizes && (
-              <div className="relative">
-                <select
+              <div className="w-[100px]">
+                <CustomSelect
                   value={imageSize}
-                  onChange={(e) => setImageSize(e.target.value)}
-                  className="appearance-none px-3 py-1.5 pr-8 bg-card/60 border border-border/70 rounded-lg text-xs text-foreground cursor-pointer transition-all hover:bg-card/80 hover:border-border focus:outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
-                >
-                  {currentModel.imageSizes.map((size) => (
-                    <option key={size} value={size}>{size}</option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-foreground/50 pointer-events-none" />
+                  onValueChange={setImageSize}
+                  options={currentModel.imageSizes.map((size) => ({
+                    value: size,
+                    label: size,
+                  }))}
+                  placeholder="分辨率"
+                />
               </div>
             )}
 
             {currentModel && (
-              <div className="relative">
-                <select
+              <div className="w-[100px]">
+                <CustomSelect
                   value={aspectRatio}
-                  onChange={(e) => setAspectRatio(e.target.value)}
-                  className="appearance-none px-3 py-1.5 pr-8 bg-card/60 border border-border/70 rounded-lg text-xs text-foreground cursor-pointer transition-all hover:bg-card/80 hover:border-border focus:outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
-                >
-                  {currentModel.aspectRatios.map((r) => (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-foreground/50 pointer-events-none" />
+                  onValueChange={setAspectRatio}
+                  options={currentModel.aspectRatios.map((r) => ({
+                    value: r,
+                    label: r,
+                  }))}
+                  placeholder="比例"
+                />
               </div>
             )}
+
+            {currentModel && (
 
             {currentModel && (
               <span className="text-xs text-foreground/40">{getCurrentResolutionDisplay()}</span>
