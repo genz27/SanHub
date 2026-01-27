@@ -992,7 +992,7 @@ export default function VideoGenerationPage() {
               <select
                 value={selectedModelId}
                 onChange={(e) => setSelectedModelId(e.target.value)}
-                className="appearance-none px-3 py-1.5 pr-8 bg-card/60 border border-border/70 rounded-lg text-xs text-foreground cursor-pointer hover:bg-card/80 focus:outline-none focus:ring-2 focus:ring-ring/30"
+                className="appearance-none px-3 py-1.5 pr-8 bg-card/60 border border-border/70 rounded-lg text-xs text-foreground cursor-pointer transition-all hover:bg-card/80 hover:border-border focus:outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
               >
                 {availableModels.map((m) => (
                   <option key={m.id} value={m.id}>{m.name}</option>
@@ -1007,7 +1007,7 @@ export default function VideoGenerationPage() {
                 <select
                   value={duration}
                   onChange={(e) => setDuration(e.target.value)}
-                  className="appearance-none px-3 py-1.5 pr-8 bg-card/60 border border-border/70 rounded-lg text-xs text-foreground cursor-pointer hover:bg-card/80 focus:outline-none focus:ring-2 focus:ring-ring/30"
+                  className="appearance-none px-3 py-1.5 pr-8 bg-card/60 border border-border/70 rounded-lg text-xs text-foreground cursor-pointer transition-all hover:bg-card/80 hover:border-border focus:outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
                 >
                   {currentModel.durations.map((d) => (
                     <option key={d.value} value={d.value}>{d.label}</option>
@@ -1023,7 +1023,7 @@ export default function VideoGenerationPage() {
                 <select
                   value={aspectRatio}
                   onChange={(e) => setAspectRatio(e.target.value)}
-                  className="appearance-none px-3 py-1.5 pr-8 bg-card/60 border border-border/70 rounded-lg text-xs text-foreground cursor-pointer hover:bg-card/80 focus:outline-none focus:ring-2 focus:ring-ring/30"
+                  className="appearance-none px-3 py-1.5 pr-8 bg-card/60 border border-border/70 rounded-lg text-xs text-foreground cursor-pointer transition-all hover:bg-card/80 hover:border-border focus:outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
                 >
                   {currentModel.aspectRatios.map((r) => (
                     <option key={r.value} value={r.value}>{r.label}</option>

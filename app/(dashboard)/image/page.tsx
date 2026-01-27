@@ -691,7 +691,7 @@ export default function ImageGenerationPage() {
               <select
                 value={selectedModelId}
                 onChange={(e) => setSelectedModelId(e.target.value)}
-                className="appearance-none px-3 py-1.5 pr-8 bg-card/60 border border-border/70 rounded-lg text-xs text-foreground cursor-pointer hover:bg-card/80 focus:outline-none focus:ring-2 focus:ring-ring/30"
+                className="appearance-none px-3 py-1.5 pr-8 bg-card/60 border border-border/70 rounded-lg text-xs text-foreground cursor-pointer transition-all hover:bg-card/80 hover:border-border focus:outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
               >
                 {availableModels.map((model) => (
                   <option key={model.id} value={model.id}>{model.name}</option>
@@ -705,7 +705,7 @@ export default function ImageGenerationPage() {
                 <select
                   value={imageSize}
                   onChange={(e) => setImageSize(e.target.value)}
-                  className="appearance-none px-3 py-1.5 pr-8 bg-card/60 border border-border/70 rounded-lg text-xs text-foreground cursor-pointer hover:bg-card/80 focus:outline-none focus:ring-2 focus:ring-ring/30"
+                  className="appearance-none px-3 py-1.5 pr-8 bg-card/60 border border-border/70 rounded-lg text-xs text-foreground cursor-pointer transition-all hover:bg-card/80 hover:border-border focus:outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
                 >
                   {currentModel.imageSizes.map((size) => (
                     <option key={size} value={size}>{size}</option>
@@ -720,7 +720,7 @@ export default function ImageGenerationPage() {
                 <select
                   value={aspectRatio}
                   onChange={(e) => setAspectRatio(e.target.value)}
-                  className="appearance-none px-3 py-1.5 pr-8 bg-card/60 border border-border/70 rounded-lg text-xs text-foreground cursor-pointer hover:bg-card/80 focus:outline-none focus:ring-2 focus:ring-ring/30"
+                  className="appearance-none px-3 py-1.5 pr-8 bg-card/60 border border-border/70 rounded-lg text-xs text-foreground cursor-pointer transition-all hover:bg-card/80 hover:border-border focus:outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
                 >
                   {currentModel.aspectRatios.map((r) => (
                     <option key={r} value={r}>{r}</option>
