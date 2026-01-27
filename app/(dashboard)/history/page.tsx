@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { useSession } from 'next-auth/react';
-import { 
+import {
   Download,
   Trash2,
   Search,
@@ -25,6 +25,7 @@ import {
   AlertCircle,
   Edit3,
   ExternalLink,
+  Droplets,
 } from 'lucide-react';
 import { toast } from '@/components/ui/toaster';
 import type { Generation, CharacterCard } from '@/types';
@@ -268,6 +269,8 @@ export default function HistoryPage() {
   const [deleting, setDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<'single' | 'batch' | 'all-media' | 'all-characters' | null>(null);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [unwatermarking, setUnwatermarking] = useState(false);
+  const [unwatermarkUrl, setUnwatermarkUrl] = useState<string | null>(null);
   const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const renderMoreRef = useRef<HTMLDivElement>(null);
@@ -499,6 +502,50 @@ export default function HistoryPage() {
         description: '请稍后重试',
         variant: 'destructive',
       });
+    }
+  };
+
+  // 去水印功能
+  const handleUnwatermark = async (permalink: string) => {
+    if (!permalink) {
+      toast({
+        title: '无法去水印',
+        description: '缺少视频分享链接',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setUnwatermarking(true);
+    setUnwatermarkUrl(null);
+
+    try {
+      const res = await fetch('/api/sora/unwatermark', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ permalink }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || '获取无水印链接失败');
+      }
+
+      setUnwatermarkUrl(data.data.download_link);
+      toast({
+        title: '去水印成功',
+        description: '已获取无水印下载链接',
+      });
+    } catch (error) {
+      console.error('Unwatermark failed:', error);
+      toast({
+        title: '去水印失败',
+        description: error instanceof Error ? error.message : '请稍后重试',
+        variant: 'destructive',
+      });
+    } finally {
+      setUnwatermarking(false);
     }
   };
 
@@ -1045,7 +1092,50 @@ export default function HistoryPage() {
                     )}
                   </div>
                 </div>
-                <div className="flex gap-2 shrink-0 w-full md:w-auto">
+                <div className="flex flex-wrap gap-2 shrink-0 w-full md:w-auto">
+                  {/* 显示 permalink 链接 - 仅 Sora 视频 */}
+                  {selected.type === 'sora-video' && selected.params?.permalink && (
+                    <a
+                      href={selected.params.permalink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-2 px-4 py-2.5 bg-card/70 text-foreground border border-border/70 rounded-xl hover:bg-card/80 transition-colors text-sm font-medium"
+                      title="查看 Sora 分享页"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      分享页
+                    </a>
+                  )}
+                  
+                  {/* 去水印按钮 - 仅 Sora 视频且有 permalink */}
+                  {selected.type === 'sora-video' && selected.params?.permalink && (
+                    <button
+                      onClick={() => handleUnwatermark(selected.params!.permalink!)}
+                      disabled={unwatermarking}
+                      className="flex items-center justify-center gap-2 px-4 py-2.5 bg-sky-500/20 text-sky-300 border border-sky-500/30 rounded-xl hover:bg-sky-500/30 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="重新获取无水印下载链接"
+                    >
+                      {unwatermarking ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Droplets className="w-4 h-4" />
+                      )}
+                      {unwatermarking ? '处理中...' : '去水印'}
+                    </button>
+                  )}
+                  
+                  {/* 下载无水印链接 */}
+                  {unwatermarkUrl && (
+                    <button
+                      onClick={() => downloadFile(unwatermarkUrl, selected.id, selected.type)}
+                      className="flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded-xl hover:bg-emerald-500/30 transition-colors text-sm font-medium"
+                      title="下载无水印视频"
+                    >
+                      <Download className="w-4 h-4" />
+                      无水印下载
+                    </button>
+                  )}
+                  
                   <button
                     onClick={() => downloadFile(selected.resultUrl, selected.id, selected.type)}
                     className="flex-1 md:flex-initial flex items-center justify-center gap-2 px-5 py-2.5 bg-foreground text-background rounded-xl hover:opacity-90 transition-colors text-sm font-medium"
@@ -1054,7 +1144,10 @@ export default function HistoryPage() {
                     下载
                   </button>
                   <button
-                    onClick={() => setSelected(null)}
+                    onClick={() => {
+                      setSelected(null);
+                      setUnwatermarkUrl(null);
+                    }}
                     className="flex items-center justify-center gap-2 px-5 py-2.5 bg-card/70 text-foreground border border-border/70 rounded-xl hover:bg-card/80 transition-colors text-sm font-medium"
                   >
                     <X className="w-4 h-4" />
