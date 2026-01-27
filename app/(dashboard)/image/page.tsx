@@ -731,8 +731,6 @@ export default function ImageGenerationPage() {
             )}
 
             {currentModel && (
-
-            {currentModel && (
               <span className="text-xs text-foreground/40">{getCurrentResolutionDisplay()}</span>
             )}
 
