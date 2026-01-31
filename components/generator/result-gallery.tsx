@@ -30,22 +30,8 @@ interface ResultGalleryProps {
 
 export function ResultGallery({ generations, tasks = [], onRemoveTask }: ResultGalleryProps) {
   const [selected, setSelected] = useState<Generation | null>(null);
-  const [visibleCount, setVisibleCount] = useState(12);
-  const renderMoreRef = useRef<HTMLDivElement>(null);
   const [selectedFailedTask, setSelectedFailedTask] = useState<Task | null>(null);
-
-  // 当有新的 generation 添加时，确保 visibleCount 足够显示它
-  useEffect(() => {
-    setVisibleCount((prev) => {
-      // 如果没有内容，保持默认值 12
-      if (generations.length === 0) return 12;
-      // 如果当前显示数量小于内容数量且小于 12，则扩展到至少显示所有内容（最多 12）
-      if (prev < generations.length && prev < 12) {
-        return Math.min(12, generations.length);
-      }
-      return prev;
-    });
-  }, [generations.length]);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const downloadFile = async (url: string, id: string, type: string) => {
     if (!url) {
@@ -82,30 +68,6 @@ export function ResultGallery({ generations, tasks = [], onRemoveTask }: ResultG
   const failedTasks = tasks.filter(t => t.status === 'failed' || t.status === 'cancelled');
   
   const totalCount = generations.length + activeTasks.length;
-  const visibleGenerations = useMemo(
-    () => generations.slice(0, visibleCount),
-    [generations, visibleCount]
-  );
-  const hasMoreGenerations = visibleCount < generations.length;
-
-  useEffect(() => {
-    if (!hasMoreGenerations) return;
-    const target = renderMoreRef.current;
-    if (!target) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (!entries[0].isIntersecting) return;
-        setVisibleCount((prev) => Math.min(prev + 12, generations.length));
-      },
-      { rootMargin: '200px' }
-    );
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, [hasMoreGenerations, generations.length]);
-
-  const handleRenderMore = () => {
-    setVisibleCount((prev) => Math.min(prev + 12, generations.length));
-  };
 
   useEffect(() => {
     if (!selectedFailedTask) return;
@@ -118,9 +80,9 @@ export function ResultGallery({ generations, tasks = [], onRemoveTask }: ResultG
 
   return (
     <>
-      <div className="surface overflow-hidden">
+      <div className="surface overflow-hidden flex flex-col h-full">
         {/* Header */}
-        <div className="p-4 sm:p-6 border-b border-border/70">
+        <div className="p-4 sm:p-6 border-b border-border/70 shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-card/60 border border-border/70 rounded-xl flex items-center justify-center">
@@ -137,7 +99,7 @@ export function ResultGallery({ generations, tasks = [], onRemoveTask }: ResultG
           </div>
         </div>
 
-        <div className="p-4 sm:p-6">
+        <div ref={scrollContainerRef} className="p-4 sm:p-6 flex-1 overflow-y-auto min-h-0">
           {totalCount === 0 && failedTasks.length === 0 ? (
             <div className="h-64 flex flex-col items-center justify-center border border-dashed border-border/70 rounded-xl">
               <div className="w-16 h-16 bg-card/60 rounded-2xl flex items-center justify-center mb-4">
@@ -247,7 +209,7 @@ export function ResultGallery({ generations, tasks = [], onRemoveTask }: ResultG
               ))}
 
               {/* 已完成的生成结果 */}
-              {visibleGenerations.map((gen, index) => (
+              {generations.map((gen, index) => (
                 <div
                   key={gen.id}
                   className="group relative aspect-video bg-card/60 rounded-xl overflow-hidden cursor-pointer border border-border/70 hover:border-border transition-all"
@@ -315,18 +277,6 @@ export function ResultGallery({ generations, tasks = [], onRemoveTask }: ResultG
           )}
         </div>
       </div>
-
-      {hasMoreGenerations && (
-        <div ref={renderMoreRef} className="mt-6 flex items-center justify-center">
-          <button
-            type="button"
-            onClick={handleRenderMore}
-            className="px-4 py-2 rounded-lg bg-card/60 border border-border/70 text-foreground/70 text-sm hover:text-foreground hover:border-border transition"
-          >
-            Load more
-          </button>
-        </div>
-      )}
 
       {/* Lightbox */}
       {selected && (

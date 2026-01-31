@@ -71,8 +71,6 @@ const getGenerationBadge = (gen: Generation) => {
   return getTypeBadge(gen.type);
 };
 
-const RENDER_INITIAL = 24;
-const RENDER_BATCH = 24;
 
 // 骨架屏组件
 const SkeletonCard = () => (
@@ -272,12 +270,8 @@ export default function HistoryPage() {
   const [unwatermarking, setUnwatermarking] = useState(false);
   const [unwatermarkUrl, setUnwatermarkUrl] = useState<string | null>(null);
   const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
-  const loadMoreRef = useRef<HTMLDivElement>(null);
-  const renderMoreRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
-  const renderStateRef = useRef({ hasHiddenGenerations: false });
   const pageSize = 50;
-  const [visibleCount, setVisibleCount] = useState(RENDER_INITIAL);
 
   const loadHistory = useCallback(async (pageNum: number, append = false, force = false) => {
     if (loadingRef.current && !force) return;
@@ -448,39 +442,11 @@ export default function HistoryPage() {
     };
   }, [session?.user?.id, loadHistory, loadPendingTasks, loadCharacterCards]);
 
-  // 使用 ref 存储最新状态，避免 observer 回调中的闭包问题
-  const stateRef = useRef({ page, hasMore, loading, loadingMore });
-  useEffect(() => {
-    stateRef.current = { page, hasMore, loading, loadingMore };
-  }, [page, hasMore, loading, loadingMore]);
-
-  // 使用 ref 保存 loadHistory 函数避免 observer 重建
+  // 使用 ref 保存 loadHistory 函数避免闭包问题
   const loadHistoryRef = useRef(loadHistory);
   useEffect(() => {
     loadHistoryRef.current = loadHistory;
   }, [loadHistory]);
-
-  // 无限滚动 - 只创建一次 observer，不依赖 loadHistory
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const { page: currentPage, hasMore: canLoadMore, loading: isLoading, loadingMore: isLoadingMore } = stateRef.current;
-        if (entries[0].isIntersecting && canLoadMore && !isLoading && !isLoadingMore && !renderStateRef.current.hasHiddenGenerations) {
-          const nextPage = currentPage + 1;
-          setPage(nextPage);
-          loadHistoryRef.current(nextPage, true);
-        }
-      },
-      { threshold: 0.1 }
-    );
-
-    if (loadMoreRef.current) {
-      observer.observe(loadMoreRef.current);
-    }
-
-    return () => observer.disconnect();
-  }, []);
-
 
   const downloadFile = async (url: string, id: string, type: string) => {
     if (!url) {
@@ -668,42 +634,6 @@ export default function HistoryPage() {
     return completedGenerations.filter(g => !isVideoType(g));
   }, [completedGenerations, filter]);
 
-  useEffect(() => {
-    setVisibleCount((prev) => {
-      if (filteredGenerations.length === 0) return 0;
-      if (prev === 0) return Math.min(RENDER_INITIAL, filteredGenerations.length);
-      return Math.min(prev, filteredGenerations.length);
-    });
-  }, [filteredGenerations.length, filter]);
-
-  const visibleGenerations = useMemo(
-    () => filteredGenerations.slice(0, visibleCount),
-    [filteredGenerations, visibleCount]
-  );
-  const hasHiddenGenerations = visibleCount < filteredGenerations.length;
-
-  useEffect(() => {
-    renderStateRef.current = { hasHiddenGenerations };
-  }, [hasHiddenGenerations]);
-
-  useEffect(() => {
-    if (!hasHiddenGenerations) return;
-    const target = renderMoreRef.current;
-    if (!target) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (!entries[0].isIntersecting) return;
-        setVisibleCount((prev) => Math.min(prev + RENDER_BATCH, filteredGenerations.length));
-      },
-      { rootMargin: '200px' }
-    );
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, [hasHiddenGenerations, filteredGenerations.length]);
-
-  const handleRenderMore = useCallback(() => {
-    setVisibleCount((prev) => Math.min(prev + RENDER_BATCH, filteredGenerations.length));
-  }, [filteredGenerations.length]);
   
   // 缓存已完成的角色卡
   const completedCharacterCards = useMemo(() => 
@@ -735,9 +665,9 @@ export default function HistoryPage() {
 
   return (
     <>
-      <div className="max-w-7xl mx-auto space-y-4 lg:space-y-8 pb-20 lg:pb-8">
+      <div className="max-w-7xl mx-auto flex flex-col h-[calc(100vh-100px)] pb-20 lg:pb-8">
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3 lg:gap-4">
+        <div className="shrink-0 flex flex-col md:flex-row md:items-end md:justify-between gap-3 lg:gap-4 mb-4">
           <div>
             <h1 className="text-2xl lg:text-3xl font-extralight text-foreground">创作历史</h1>
             <p className="text-foreground/50 text-sm lg:text-base mt-0.5 font-light">查看和管理您的所有作品</p>
@@ -777,7 +707,7 @@ export default function HistoryPage() {
         </div>
 
         {/* Filter Tabs & Actions */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 lg:gap-4">
+        <div className="shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 lg:gap-4 mb-4">
           <div className="flex items-center gap-1.5 lg:gap-2 overflow-x-auto no-scrollbar -mx-2 px-2">
             {(['all', 'video', 'image', 'character'] as const).map((f) => (
               <button
@@ -860,8 +790,8 @@ export default function HistoryPage() {
         </div>
 
         {/* Content */}
-        <div className="bg-card/60 border border-border/70 rounded-2xl overflow-hidden backdrop-blur-sm">
-          <div className={`p-4 sm:p-6 border-b border-border/70 ${filter === 'character' ? 'bg-gradient-to-r from-emerald-500/10 to-sky-500/10' : 'bg-gradient-to-r from-sky-500/10 to-emerald-500/10'}`}>
+        <div className="flex-1 min-h-0 bg-card/60 border border-border/70 rounded-2xl overflow-hidden backdrop-blur-sm flex flex-col">
+          <div className={`shrink-0 p-4 sm:p-6 border-b border-border/70 ${filter === 'character' ? 'bg-gradient-to-r from-emerald-500/10 to-sky-500/10' : 'bg-gradient-to-r from-sky-500/10 to-emerald-500/10'}`}>
             <div className="flex items-center gap-3">
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${filter === 'character' ? 'bg-gradient-to-br from-emerald-500/25 to-sky-500/25' : 'bg-gradient-to-br from-sky-500/25 to-emerald-500/25'}`}>
                 {filter === 'character' ? <User className="w-5 h-5 text-emerald-300" /> : <History className="w-5 h-5 text-sky-300" />}
@@ -873,7 +803,7 @@ export default function HistoryPage() {
             </div>
           </div>
 
-          <div className="p-4 sm:p-6">
+          <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6">
             {loading ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                 {Array.from({ length: 8 }).map((_, i) => (
@@ -993,7 +923,7 @@ export default function HistoryPage() {
                   })}
                   
                   {/* 已完成的作品 - 使用 memo 优化的卡片组件 */}
-                  {visibleGenerations.map((gen) => (
+                  {filteredGenerations.map((gen) => (
                     <GenerationCard
                       key={gen.id}
                       gen={gen}
@@ -1004,30 +934,33 @@ export default function HistoryPage() {
                     />
                   ))}
                 </div>
-                {hasHiddenGenerations && (
-                  <div ref={renderMoreRef} className="mt-6 flex items-center justify-center">
-                    <button
-                      type="button"
-                      onClick={handleRenderMore}
-                      className="px-4 py-2 rounded-lg bg-card/60 border border-border/70 text-foreground/70 text-sm hover:text-foreground hover:border-border transition"
-                    >
-                      Load more
-                    </button>
-                  </div>
-                )}
               </>
             )}
           </div>
           
-          {/* 加载更多触发器 - 始终渲染以确保无限滚动工作 */}
-          <div ref={loadMoreRef} className="h-10 flex items-center justify-center pb-4">
-            {loadingMore && (
-              <Loader2 className="w-5 h-5 animate-spin text-foreground/30" />
-            )}
-            {!hasMore && generations.length > 0 && !loading && !hasHiddenGenerations && (
-              <p className="text-foreground/30 text-sm">已加载全部作品</p>
-            )}
-          </div>
+          {/* 加载更多按钮 */}
+          {hasMore && (
+            <div className="shrink-0 p-4 border-t border-border/70 flex items-center justify-center">
+              <button
+                onClick={() => {
+                  const nextPage = page + 1;
+                  setPage(nextPage);
+                  loadHistory(nextPage, true);
+                }}
+                disabled={loadingMore}
+                className="px-4 py-2 rounded-lg bg-card/60 border border-border/70 text-foreground/70 text-sm hover:text-foreground hover:border-border transition disabled:opacity-50"
+              >
+                {loadingMore ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    加载中...
+                  </span>
+                ) : (
+                  '加载更多'
+                )}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

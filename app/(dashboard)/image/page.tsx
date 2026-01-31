@@ -809,7 +809,7 @@ export default function ImageGenerationPage() {
       </div>
 
       {/* 结果展示区 - 移动端在下面，桌面端在上面 */}
-      <div className="flex-1 overflow-auto min-h-0 lg:order-1 pb-20 lg:pb-4">
+      <div className="flex-1 min-h-0 lg:order-1 pb-20 lg:pb-4">
         <ResultGallery
           generations={generations}
           tasks={tasks}
