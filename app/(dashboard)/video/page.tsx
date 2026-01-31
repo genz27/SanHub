@@ -204,22 +204,23 @@ export default function VideoGenerationPage() {
     loadCharacterCards();
   }, []);
 
-  // 检测是否包含中文字符
-  const containsChinese = (text: string): boolean => {
-    return /[\u4e00-\u9fa5]/.test(text);
-  };
+  // 检测是否包含中文字符（暂时禁用）
+  // const containsChinese = (text: string): boolean => {
+  //   return /[\u4e00-\u9fa5]/.test(text);
+  // };
 
-  // 实时计算是否包含中文（根据当前模式检测对应的提示词）
-  const hasChinese = useMemo(() => {
-    switch (creationMode) {
-      case 'storyboard':
-        return containsChinese(storyboardPrompt);
-      case 'remix':
-        return containsChinese(prompt);
-      default:
-        return containsChinese(prompt);
-    }
-  }, [creationMode, prompt, storyboardPrompt]);
+  // 实时计算是否包含中文（暂时禁用）
+  // const hasChinese = useMemo(() => {
+  //   switch (creationMode) {
+  //     case 'storyboard':
+  //       return containsChinese(storyboardPrompt);
+  //     case 'remix':
+  //       return containsChinese(prompt);
+  //     default:
+  //       return containsChinese(prompt);
+  //   }
+  // }, [creationMode, prompt, storyboardPrompt]);
+  const hasChinese = false; // 暂时禁用中文检测
 
   // 处理提示词输入
   const handlePromptChange = (
@@ -629,21 +630,21 @@ export default function VideoGenerationPage() {
     switch (creationMode) {
       case 'remix':
         if (!remixUrl.trim()) return '请输入视频分享链接或ID';
-        // 检测中文
-        if (containsChinese(prompt)) return '提示词禁止使用中文，请使用英文输入';
+        // 检测中文（暂时禁用）
+        // if (containsChinese(prompt)) return '提示词禁止使用中文，请使用英文输入';
         break;
       case 'storyboard':
         if (!storyboardPrompt.trim()) return '请输入分镜提示词';
         if (!storyboardPrompt.includes('[') || !storyboardPrompt.includes(']')) {
           return '分镜格式错误，请使用 [时长]描述 格式，如 [5.0s]猫猫跳舞';
         }
-        // 检测中文
-        if (containsChinese(storyboardPrompt)) return '提示词禁止使用中文，请使用英文输入';
+        // 检测中文（暂时禁用）
+        // if (containsChinese(storyboardPrompt)) return '提示词禁止使用中文，请使用英文输入';
         break;
       default:
         if (!prompt.trim() && files.length === 0) return '请输入提示词或上传参考素材';
-        // 检测中文
-        if (containsChinese(prompt)) return '提示词禁止使用中文，请使用英文输入';
+        // 检测中文（暂时禁用）
+        // if (containsChinese(prompt)) return '提示词禁止使用中文，请使用英文输入';
     }
     return null;
   };
@@ -1120,13 +1121,13 @@ export default function VideoGenerationPage() {
               <span>保留</span>
             </label>
 
-            {/* 中文警告提示 */}
-            {hasChinese && (
+            {/* 中文警告提示（暂时禁用）*/}
+            {/* {hasChinese && (
               <div className="flex items-center gap-1.5 text-xs text-amber-400">
                 <AlertCircle className="w-3 h-3" />
                 <span>提示词中包含中文字符，请使用英文输入</span>
               </div>
-            )}
+            )} */}
 
             {/* 错误提示 */}
             {error && (
