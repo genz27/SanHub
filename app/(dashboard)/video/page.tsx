@@ -209,23 +209,24 @@ export default function VideoGenerationPage() {
     return /[\u4e00-\u9fa5]/.test(text);
   };
 
-  // 中文提示词警告状态
-  const [chineseWarning, setChineseWarning] = useState<string | null>(null);
+  // 实时计算是否包含中文（根据当前模式检测对应的提示词）
+  const hasChinese = useMemo(() => {
+    switch (creationMode) {
+      case 'storyboard':
+        return containsChinese(storyboardPrompt);
+      case 'remix':
+        return containsChinese(prompt);
+      default:
+        return containsChinese(prompt);
+    }
+  }, [creationMode, prompt, storyboardPrompt]);
 
   // 处理提示词输入
   const handlePromptChange = (
     e: React.ChangeEvent<HTMLTextAreaElement>,
     setter: (value: string) => void
   ) => {
-    const value = e.target.value;
-    setter(value);
-    
-    // 检测中文字符
-    if (containsChinese(value)) {
-      setChineseWarning('提示词中包含中文字符，请使用英文输入');
-    } else {
-      setChineseWarning(null);
-    }
+    setter(e.target.value);
   };
 
   // 提示词增强
@@ -746,7 +747,6 @@ export default function VideoGenerationPage() {
             setPrompt('');
             clearFiles();
         }
-        setChineseWarning(null);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : '生成失败');
@@ -803,7 +803,6 @@ export default function VideoGenerationPage() {
             setPrompt('');
             clearFiles();
         }
-        setChineseWarning(null);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : '生成失败');
@@ -863,16 +862,7 @@ export default function VideoGenerationPage() {
           {CREATION_MODES.map((mode) => (
             <button
               key={mode.id}
-              onClick={() => {
-                setCreationMode(mode.id as CreationMode);
-                // 根据新模式的提示词检测中文
-                const targetPrompt = mode.id === 'storyboard' ? storyboardPrompt : prompt;
-                if (containsChinese(targetPrompt)) {
-                  setChineseWarning('提示词中包含中文字符，请使用英文输入');
-                } else {
-                  setChineseWarning(null);
-                }
-              }}
+              onClick={() => setCreationMode(mode.id as CreationMode)}
               className={cn(
                 'flex items-center gap-2 px-4 py-3 text-sm font-medium transition-all border-b-2 -mb-[1px]',
                 creationMode === mode.id
@@ -1131,10 +1121,10 @@ export default function VideoGenerationPage() {
             </label>
 
             {/* 中文警告提示 */}
-            {chineseWarning && (
+            {hasChinese && (
               <div className="flex items-center gap-1.5 text-xs text-amber-400">
                 <AlertCircle className="w-3 h-3" />
-                <span>{chineseWarning}</span>
+                <span>提示词中包含中文字符，请使用英文输入</span>
               </div>
             )}
 
@@ -1152,10 +1142,10 @@ export default function VideoGenerationPage() {
             <div className="relative group">
               <button
                 onClick={handleGachaMode}
-                disabled={submitting || compressing || !!chineseWarning}
+                disabled={submitting || compressing || hasChinese}
                 className={cn(
                   'w-9 h-9 flex items-center justify-center rounded-lg transition-all',
-                  submitting || compressing || chineseWarning
+                  submitting || compressing || hasChinese
                     ? 'bg-card/60 text-foreground/40 cursor-not-allowed'
                     : 'bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:opacity-90'
                 )}
@@ -1177,10 +1167,10 @@ export default function VideoGenerationPage() {
             {/* 生成按钮 */}
             <button
               onClick={handleGenerate}
-              disabled={submitting || compressing || !!chineseWarning}
+              disabled={submitting || compressing || hasChinese}
               className={cn(
                 'flex items-center gap-2 px-5 py-2 rounded-lg font-medium text-sm transition-all',
-                submitting || compressing || chineseWarning
+                submitting || compressing || hasChinese
                   ? 'bg-card/60 text-foreground/40 cursor-not-allowed'
                   : 'bg-gradient-to-r from-sky-500 to-emerald-500 text-white hover:opacity-90'
               )}
