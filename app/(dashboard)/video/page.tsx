@@ -474,7 +474,7 @@ export default function VideoGenerationPage() {
     const abortControllers = abortControllersRef.current;
     const loadPendingTasks = async () => {
       try {
-        const res = await fetch('/api/user/tasks');
+        const res = await fetch('/api/user/tasks?limit=200');
         if (res.ok) {
           const data = await res.json();
           const videoTasks: Task[] = (data.data || [])

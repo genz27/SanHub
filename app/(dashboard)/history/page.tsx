@@ -400,7 +400,7 @@ export default function HistoryPage() {
 
   const loadPendingTasks = useCallback(async () => {
     try {
-      const res = await fetch('/api/user/tasks');
+      const res = await fetch('/api/user/tasks?limit=200');
       if (res.ok) {
         const data = await res.json();
         const tasks: Task[] = (data.data || []).map((t: any) => ({

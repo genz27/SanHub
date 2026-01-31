@@ -349,7 +349,7 @@ export default function ImageGenerationPage() {
     const abortControllers = abortControllersRef.current;
     const loadPendingTasks = async () => {
       try {
-        const res = await fetch('/api/user/tasks');
+        const res = await fetch('/api/user/tasks?limit=200');
         if (res.ok) {
           const data = await res.json();
           // Filter pending image tasks (sora, gemini, zimage)
