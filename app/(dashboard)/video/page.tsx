@@ -204,12 +204,28 @@ export default function VideoGenerationPage() {
     loadCharacterCards();
   }, []);
 
+  // 检测是否包含中文字符
+  const containsChinese = (text: string): boolean => {
+    return /[\u4e00-\u9fa5]/.test(text);
+  };
+
+  // 中文提示词警告状态
+  const [chineseWarning, setChineseWarning] = useState<string | null>(null);
+
   // 处理提示词输入
   const handlePromptChange = (
     e: React.ChangeEvent<HTMLTextAreaElement>,
     setter: (value: string) => void
   ) => {
-    setter(e.target.value);
+    const value = e.target.value;
+    setter(value);
+    
+    // 检测中文字符
+    if (containsChinese(value)) {
+      setChineseWarning('提示词中包含中文字符，请使用英文输入');
+    } else {
+      setChineseWarning(null);
+    }
   };
 
   // 提示词增强
@@ -612,15 +628,21 @@ export default function VideoGenerationPage() {
     switch (creationMode) {
       case 'remix':
         if (!remixUrl.trim()) return '请输入视频分享链接或ID';
+        // 检测中文
+        if (containsChinese(prompt)) return '提示词禁止使用中文，请使用英文输入';
         break;
       case 'storyboard':
         if (!storyboardPrompt.trim()) return '请输入分镜提示词';
         if (!storyboardPrompt.includes('[') || !storyboardPrompt.includes(']')) {
           return '分镜格式错误，请使用 [时长]描述 格式，如 [5.0s]猫猫跳舞';
         }
+        // 检测中文
+        if (containsChinese(storyboardPrompt)) return '提示词禁止使用中文，请使用英文输入';
         break;
       default:
         if (!prompt.trim() && files.length === 0) return '请输入提示词或上传参考素材';
+        // 检测中文
+        if (containsChinese(prompt)) return '提示词禁止使用中文，请使用英文输入';
     }
     return null;
   };
@@ -724,6 +746,7 @@ export default function VideoGenerationPage() {
             setPrompt('');
             clearFiles();
         }
+        setChineseWarning(null);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : '生成失败');
@@ -780,6 +803,7 @@ export default function VideoGenerationPage() {
             setPrompt('');
             clearFiles();
         }
+        setChineseWarning(null);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : '生成失败');
@@ -839,7 +863,16 @@ export default function VideoGenerationPage() {
           {CREATION_MODES.map((mode) => (
             <button
               key={mode.id}
-              onClick={() => setCreationMode(mode.id as CreationMode)}
+              onClick={() => {
+                setCreationMode(mode.id as CreationMode);
+                // 根据新模式的提示词检测中文
+                const targetPrompt = mode.id === 'storyboard' ? storyboardPrompt : prompt;
+                if (containsChinese(targetPrompt)) {
+                  setChineseWarning('提示词中包含中文字符，请使用英文输入');
+                } else {
+                  setChineseWarning(null);
+                }
+              }}
               className={cn(
                 'flex items-center gap-2 px-4 py-3 text-sm font-medium transition-all border-b-2 -mb-[1px]',
                 creationMode === mode.id
@@ -927,8 +960,8 @@ export default function VideoGenerationPage() {
               ) : creationMode === 'storyboard' ? (
                 <textarea
                   value={storyboardPrompt}
-                  onChange={(e) => setStoryboardPrompt(e.target.value)}
-                  placeholder="[5.0s]猫猫从飞机上跳伞&#10;[5.0s]猫猫降落"
+                  onChange={(e) => handlePromptChange(e, setStoryboardPrompt)}
+                  placeholder="[5.0s]A cat skydiving from plane&#10;[5.0s]Cat landing"
                   className="w-full h-20 px-3 py-2 bg-input/70 border border-border/70 text-foreground rounded-lg resize-none text-sm font-mono focus:outline-none focus:border-border focus:ring-2 focus:ring-ring/30"
                 />
               ) : (
@@ -1097,6 +1130,14 @@ export default function VideoGenerationPage() {
               <span>保留</span>
             </label>
 
+            {/* 中文警告提示 */}
+            {chineseWarning && (
+              <div className="flex items-center gap-1.5 text-xs text-amber-400">
+                <AlertCircle className="w-3 h-3" />
+                <span>{chineseWarning}</span>
+              </div>
+            )}
+
             {/* 错误提示 */}
             {error && (
               <div className="flex items-center gap-1.5 text-xs text-red-400">
@@ -1111,10 +1152,10 @@ export default function VideoGenerationPage() {
             <div className="relative group">
               <button
                 onClick={handleGachaMode}
-                disabled={submitting || compressing}
+                disabled={submitting || compressing || !!chineseWarning}
                 className={cn(
                   'w-9 h-9 flex items-center justify-center rounded-lg transition-all',
-                  submitting || compressing
+                  submitting || compressing || chineseWarning
                     ? 'bg-card/60 text-foreground/40 cursor-not-allowed'
                     : 'bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:opacity-90'
                 )}
@@ -1136,10 +1177,10 @@ export default function VideoGenerationPage() {
             {/* 生成按钮 */}
             <button
               onClick={handleGenerate}
-              disabled={submitting || compressing}
+              disabled={submitting || compressing || !!chineseWarning}
               className={cn(
                 'flex items-center gap-2 px-5 py-2 rounded-lg font-medium text-sm transition-all',
-                submitting || compressing
+                submitting || compressing || chineseWarning
                   ? 'bg-card/60 text-foreground/40 cursor-not-allowed'
                   : 'bg-gradient-to-r from-sky-500 to-emerald-500 text-white hover:opacity-90'
               )}
