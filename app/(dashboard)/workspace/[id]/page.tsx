@@ -895,7 +895,9 @@ export default function WorkspaceEditorPage() {
         updateNodeData(node.id, { status: 'pending', errorMessage: undefined });
         
         const model = videoModels.find(m => m.id === node.data.modelId) || videoModels[0];
-        const taskModel = `sora-video-${node.data.aspectRatio || model?.defaultAspectRatio || 'landscape'}-${node.data.duration || model?.defaultDuration || '10s'}`;
+        const ratio = node.data.aspectRatio || model?.defaultAspectRatio || 'landscape';
+        const duration = node.data.duration || model?.defaultDuration || '10s';
+        const taskModel = `sora2-${ratio}-${duration}`;
         
         // Find image input node for reference image
         const videoInputEdge = edgesRef.current.find((edge) => edge.to === node.id);
@@ -912,7 +914,10 @@ export default function WorkspaceEditorPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            model: taskModel,
+            model: model?.apiModel || taskModel,
+            modelId: model?.id,
+            aspectRatio: ratio,
+            duration,
             prompt: basePrompt,
             ...(referenceImageUrl ? { referenceImageUrl } : {}),
           }),

@@ -12,6 +12,7 @@ import {
   isAuthorized,
   parseDataUrl,
 } from '@/lib/v1';
+import { processVideoPrompt } from '@/lib/prompt-processor';
 
 export const dynamic = 'force-dynamic';
 
@@ -423,9 +424,15 @@ export async function POST(request: NextRequest) {
       fileList.push({ mimeType: imageSource.mimeType, data: imageSource.data });
     }
 
+    let processedPrompt = prompt;
+    if (processedPrompt) {
+      const processed = await processVideoPrompt(processedPrompt);
+      processedPrompt = processed.processedPrompt;
+    }
+
     if (!streamEnabled) {
       try {
-        const result = await generateWithSora({ prompt, model, files: fileList });
+        const result = await generateWithSora({ prompt: processedPrompt, model, files: fileList });
         const content = buildChatResponseContent('video', result.url);
         return NextResponse.json({
           id: completionId,
@@ -461,7 +468,7 @@ export async function POST(request: NextRequest) {
 
         try {
           const result = await generateWithSora(
-            { prompt, model, files: fileList },
+            { prompt: processedPrompt, model, files: fileList },
             (progress) => {
               const chunk = buildChatChunk({
                 id: completionId,

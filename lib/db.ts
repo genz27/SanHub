@@ -86,7 +86,13 @@ CREATE TABLE IF NOT EXISTS system_config (
   pricing_gitee_image INT DEFAULT 30,
   pricing_chat INT DEFAULT 1,
   register_enabled TINYINT(1) DEFAULT 1,
-  default_balance INT DEFAULT 100
+  default_balance INT DEFAULT 100,
+  prompt_filter_enabled TINYINT(1) DEFAULT 0,
+  prompt_filter_model_id VARCHAR(36) DEFAULT '',
+  prompt_filter_prompt TEXT,
+  prompt_translate_enabled TINYINT(1) DEFAULT 0,
+  prompt_translate_model_id VARCHAR(36) DEFAULT '',
+  prompt_translate_prompt TEXT
 );
 
 -- 聊天模型表
@@ -473,6 +479,38 @@ export async function initializeDatabase(): Promise<void> {
   }
   try {
     await db.execute("ALTER TABLE system_config ADD COLUMN video_proxy_base_url VARCHAR(500) DEFAULT ''");
+  } catch {
+    // 字段已存在，忽略错误
+  }
+
+  // 添加提示词处理配置字段
+  try {
+    await db.execute("ALTER TABLE system_config ADD COLUMN prompt_filter_enabled TINYINT(1) DEFAULT 0");
+  } catch {
+    // 字段已存在，忽略错误
+  }
+  try {
+    await db.execute("ALTER TABLE system_config ADD COLUMN prompt_filter_model_id VARCHAR(36) DEFAULT ''");
+  } catch {
+    // 字段已存在，忽略错误
+  }
+  try {
+    await db.execute("ALTER TABLE system_config ADD COLUMN prompt_filter_prompt TEXT");
+  } catch {
+    // 字段已存在，忽略错误
+  }
+  try {
+    await db.execute("ALTER TABLE system_config ADD COLUMN prompt_translate_enabled TINYINT(1) DEFAULT 0");
+  } catch {
+    // 字段已存在，忽略错误
+  }
+  try {
+    await db.execute("ALTER TABLE system_config ADD COLUMN prompt_translate_model_id VARCHAR(36) DEFAULT ''");
+  } catch {
+    // 字段已存在，忽略错误
+  }
+  try {
+    await db.execute("ALTER TABLE system_config ADD COLUMN prompt_translate_prompt TEXT");
   } catch {
     // 字段已存在，忽略错误
   }
@@ -1239,6 +1277,14 @@ export async function getSystemConfig(): Promise<SystemConfig> {
         },
         videoProxyEnabled: false,
         videoProxyBaseUrl: '',
+        promptProcessing: {
+          filterEnabled: false,
+          filterModelId: '',
+          filterPrompt: 'You are a safety prompt filter for video generation. Rewrite the user prompt into a safe version while preserving creative intent as much as possible. Return only the rewritten prompt text.',
+          translateEnabled: false,
+          translateModelId: '',
+          translatePrompt: 'Translate the user prompt into clear, natural English for video generation. Preserve details, style, and constraints. Return only the translated prompt text.',
+        },
       };
     }
 
@@ -1303,6 +1349,14 @@ export async function getSystemConfig(): Promise<SystemConfig> {
       },
       videoProxyEnabled: Boolean(row.video_proxy_enabled),
       videoProxyBaseUrl: row.video_proxy_base_url || '',
+      promptProcessing: {
+        filterEnabled: Boolean(row.prompt_filter_enabled),
+        filterModelId: row.prompt_filter_model_id || '',
+        filterPrompt: row.prompt_filter_prompt || 'You are a safety prompt filter for video generation. Rewrite the user prompt into a safe version while preserving creative intent as much as possible. Return only the rewritten prompt text.',
+        translateEnabled: Boolean(row.prompt_translate_enabled),
+        translateModelId: row.prompt_translate_model_id || '',
+        translatePrompt: row.prompt_translate_prompt || 'Translate the user prompt into clear, natural English for video generation. Preserve details, style, and constraints. Return only the translated prompt text.',
+      },
     };
   });
 }
@@ -1525,6 +1579,35 @@ export async function updateSystemConfig(
   if (updates.videoProxyBaseUrl !== undefined) {
     fields.push('video_proxy_base_url = ?');
     values.push(updates.videoProxyBaseUrl);
+  }
+
+  // 提示词处理配置
+  if (updates.promptProcessing) {
+    const p = updates.promptProcessing;
+    if (p.filterEnabled !== undefined) {
+      fields.push('prompt_filter_enabled = ?');
+      values.push(p.filterEnabled ? 1 : 0);
+    }
+    if (p.filterModelId !== undefined) {
+      fields.push('prompt_filter_model_id = ?');
+      values.push(p.filterModelId);
+    }
+    if (p.filterPrompt !== undefined) {
+      fields.push('prompt_filter_prompt = ?');
+      values.push(p.filterPrompt);
+    }
+    if (p.translateEnabled !== undefined) {
+      fields.push('prompt_translate_enabled = ?');
+      values.push(p.translateEnabled ? 1 : 0);
+    }
+    if (p.translateModelId !== undefined) {
+      fields.push('prompt_translate_model_id = ?');
+      values.push(p.translateModelId);
+    }
+    if (p.translatePrompt !== undefined) {
+      fields.push('prompt_translate_prompt = ?');
+      values.push(p.translatePrompt);
+    }
   }
 
   if (fields.length > 0) {
@@ -3046,6 +3129,7 @@ export async function getSafeVideoModels(enabledOnly = false): Promise<SafeVideo
         id: m.id,
         channelId: m.channelId,
         channelType: channel.type,
+        apiModel: m.apiModel,
         name: m.name,
         description: m.description,
         features: m.features,

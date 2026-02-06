@@ -27,6 +27,8 @@ const IMAGE_TYPE_BY_CHANNEL: Record<ChannelType, GenerationType> = {
   modelscope: 'zimage-image',
   gitee: 'gitee-image',
   sora: 'sora-image',
+  flow2api: 'gemini-image',
+  grok2api: 'gemini-image',
 };
 
 async function fetchImageAsBase64(

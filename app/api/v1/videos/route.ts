@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createVideoTask, generateVideo, type VideoGenerationRequest, type VideoTaskResponse } from '@/lib/sora-api';
 import { buildErrorResponse, extractBearerToken, isAuthorized, parseDataUrl } from '@/lib/v1';
+import { processVideoPrompt } from '@/lib/prompt-processor';
 
 export const dynamic = 'force-dynamic';
 
@@ -137,13 +138,19 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    const processedRequest: VideoGenerationRequest = { ...parsed.request };
+    if (processedRequest.prompt) {
+      const processed = await processVideoPrompt(processedRequest.prompt);
+      processedRequest.prompt = processed.processedPrompt;
+    }
+
     if (parsed.asyncMode) {
-      const task = await createVideoTask(parsed.request);
+      const task = await createVideoTask(processedRequest);
       return NextResponse.json(task, { status: 201 });
     }
 
-    const result = await generateVideo(parsed.request);
-    const response = buildSyncResponse(parsed.request, result);
+    const result = await generateVideo(processedRequest);
+    const response = buildSyncResponse(processedRequest, result);
     return NextResponse.json(response);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Video generation failed';

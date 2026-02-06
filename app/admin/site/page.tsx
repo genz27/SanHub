@@ -1,13 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Globe, Loader2, Save, Upload, UserPlus, Coins, Zap } from 'lucide-react';
+import { Globe, Loader2, Save, Upload, UserPlus, Coins, Zap, Shield, Languages } from 'lucide-react';
+import type { ChatModel } from '@/types';
 import { toast } from '@/components/ui/toaster';
 import { useSiteConfigRefresh } from '@/components/providers/site-config-provider';
 import type { SystemConfig } from '@/types';
 
 export default function SiteConfigPage() {
   const [config, setConfig] = useState<SystemConfig | null>(null);
+  const [chatModels, setChatModels] = useState<ChatModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const refreshSiteConfig = useSiteConfigRefresh();
@@ -18,10 +20,19 @@ export default function SiteConfigPage() {
 
   const loadConfig = async () => {
     try {
-      const res = await fetch('/api/admin/settings');
-      if (res.ok) {
-        const data = await res.json();
+      const [settingsRes, modelsRes] = await Promise.all([
+        fetch('/api/admin/settings'),
+        fetch('/api/chat/models?all=true'),
+      ]);
+
+      if (settingsRes.ok) {
+        const data = await settingsRes.json();
         setConfig(data.data);
+      }
+
+      if (modelsRes.ok) {
+        const modelsData = await modelsRes.json();
+        setChatModels(modelsData.data || []);
       }
     } catch (err) {
       console.error('Failed to load config:', err);
@@ -44,6 +55,7 @@ export default function SiteConfigPage() {
           picuiBaseUrl: config.picuiBaseUrl,
           videoProxyEnabled: config.videoProxyEnabled,
           videoProxyBaseUrl: config.videoProxyBaseUrl,
+          promptProcessing: config.promptProcessing,
           registerEnabled: config.registerEnabled,
           defaultBalance: config.defaultBalance,
         }),
@@ -241,6 +253,158 @@ export default function SiteConfigPage() {
             <p className="text-xs text-foreground/30">
               从 <a href="https://picui.cn" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">picui.cn</a> 获取 API Key
             </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Prompt processing configuration */}
+      <div className="bg-card/60 border border-border/70 rounded-xl overflow-hidden">
+        <div className="p-4 border-b border-border/70 flex items-center gap-3">
+          <div className="w-8 h-8 bg-orange-500/20 rounded-lg flex items-center justify-center">
+            <Shield className="w-4 h-4 text-orange-400" />
+          </div>
+          <div>
+            <h2 className="font-medium text-foreground">Prompt Processing</h2>
+            <p className="text-xs text-foreground/40">Filter and translate prompt before video generation</p>
+          </div>
+        </div>
+
+        <div className="p-4 space-y-5">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="text-sm text-foreground">Enable Prompt Filter</label>
+                <p className="text-xs text-foreground/30 mt-1">Rewrite prompt to safer content before generation</p>
+              </div>
+              <button
+                onClick={() => setConfig({
+                  ...config,
+                  promptProcessing: {
+                    ...config.promptProcessing,
+                    filterEnabled: !config.promptProcessing.filterEnabled,
+                  },
+                })}
+                className={`relative w-12 h-6 rounded-full transition-colors ${
+                  config.promptProcessing.filterEnabled ? 'bg-orange-500' : 'bg-card/80'
+                }`}
+              >
+                <div
+                  className={`absolute top-1 w-4 h-4 rounded-full bg-foreground transition-transform ${
+                    config.promptProcessing.filterEnabled ? 'left-7' : 'left-1'
+                  }`}
+                />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm text-foreground/50">Filter Model</label>
+              <select
+                value={config.promptProcessing.filterModelId}
+                onChange={(e) => setConfig({
+                  ...config,
+                  promptProcessing: {
+                    ...config.promptProcessing,
+                    filterModelId: e.target.value,
+                  },
+                })}
+                className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-lg text-foreground focus:outline-none focus:border-border"
+              >
+                <option value="">Select a model</option>
+                {chatModels.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.name} ({model.modelId})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm text-foreground/50">Filter Prompt</label>
+              <textarea
+                value={config.promptProcessing.filterPrompt}
+                onChange={(e) => setConfig({
+                  ...config,
+                  promptProcessing: {
+                    ...config.promptProcessing,
+                    filterPrompt: e.target.value,
+                  },
+                })}
+                rows={4}
+                placeholder="Instructions for prompt filtering"
+                className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-lg text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border resize-none"
+              />
+            </div>
+          </div>
+
+          <div className="h-px bg-border/70" />
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-start gap-2">
+                <Languages className="w-4 h-4 text-sky-400 mt-0.5" />
+                <div>
+                  <label className="text-sm text-foreground">Enable Prompt Translation</label>
+                  <p className="text-xs text-foreground/30 mt-1">Translate prompt and filter translated content again</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setConfig({
+                  ...config,
+                  promptProcessing: {
+                    ...config.promptProcessing,
+                    translateEnabled: !config.promptProcessing.translateEnabled,
+                  },
+                })}
+                className={`relative w-12 h-6 rounded-full transition-colors ${
+                  config.promptProcessing.translateEnabled ? 'bg-sky-500' : 'bg-card/80'
+                }`}
+              >
+                <div
+                  className={`absolute top-1 w-4 h-4 rounded-full bg-foreground transition-transform ${
+                    config.promptProcessing.translateEnabled ? 'left-7' : 'left-1'
+                  }`}
+                />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm text-foreground/50">Translation Model</label>
+              <select
+                value={config.promptProcessing.translateModelId}
+                onChange={(e) => setConfig({
+                  ...config,
+                  promptProcessing: {
+                    ...config.promptProcessing,
+                    translateModelId: e.target.value,
+                  },
+                })}
+                className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-lg text-foreground focus:outline-none focus:border-border"
+              >
+                <option value="">Select a model</option>
+                {chatModels.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.name} ({model.modelId})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm text-foreground/50">Translation Prompt</label>
+              <textarea
+                value={config.promptProcessing.translatePrompt}
+                onChange={(e) => setConfig({
+                  ...config,
+                  promptProcessing: {
+                    ...config.promptProcessing,
+                    translatePrompt: e.target.value,
+                  },
+                })}
+                rows={4}
+                placeholder="Instructions for prompt translation"
+                className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-lg text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border resize-none"
+              />
+            </div>
           </div>
         </div>
       </div>

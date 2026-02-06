@@ -7,6 +7,7 @@ import { saveGeneration, updateUserBalance, getUserById, updateGeneration, getSy
 import type { Generation, SoraGenerateRequest } from '@/types';
 import { checkRateLimit, RateLimitConfig } from '@/lib/rate-limit';
 import { fetchExternalBuffer } from '@/lib/safe-fetch';
+import { processVideoPrompt } from '@/lib/prompt-processor';
 
 // 配置路由段选项
 export const maxDuration = 60;
@@ -83,6 +84,19 @@ async function processGenerationTask(
 ): Promise<void> {
   try {
     console.log(`[Task ${generationId}] 开始处理生成任务`);
+
+    const baseParams = {
+      model: body.model,
+      modelId: body.modelId,
+      aspectRatio: body.aspectRatio,
+      duration: body.duration,
+    };
+    let promptParams: {
+      originalPrompt?: string;
+      filteredPrompt?: string;
+      translatedPrompt?: string;
+      processedPrompt?: string;
+    } = {};
     
     // 更新状态为 processing
     await updateGeneration(generationId, { status: 'processing' }).catch(err => {
@@ -95,15 +109,50 @@ async function processGenerationTask(
       if (progress - lastProgress >= 5 || progress >= 100) {
         lastProgress = progress;
         await updateGeneration(generationId, { 
-          params: { model: body.model, progress } 
+          params: {
+            ...baseParams,
+            ...promptParams,
+            progress,
+          },
         }).catch(err => {
           console.error(`[Task ${generationId}] 更新进度失败:`, err);
         });
       }
     };
 
+    // Process prompt (filter + translate)
+    let processedBody = body;
+    if (body.prompt && body.prompt.trim()) {
+      try {
+        const processed = await processVideoPrompt(body.prompt);
+        promptParams = {
+          originalPrompt: processed.originalPrompt,
+          filteredPrompt: processed.filteredPrompt,
+          translatedPrompt: processed.translatedPrompt,
+          processedPrompt: processed.processedPrompt,
+        };
+        processedBody = {
+          ...body,
+          prompt: processed.processedPrompt,
+        };
+        await updateGeneration(generationId, {
+          params: {
+            ...baseParams,
+            ...promptParams,
+            progress: lastProgress,
+          },
+        }).catch(err => {
+          console.error(`[Task ${generationId}] 更新提示词处理结果失败:`, err);
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Prompt processing failed';
+        console.error(`[Task ${generationId}] 提示词处理失败:`, message);
+        throw new Error(message);
+      }
+    }
+
     // 调用 Sora API 生成内容
-    const result = await generateWithRateLimitRetry(body, onProgress, generationId);
+    const result = await generateWithRateLimitRetry(processedBody, onProgress, generationId);
 
     console.log(`[Task ${generationId}] 生成成功:`, result.url);
 
@@ -112,7 +161,8 @@ async function processGenerationTask(
       status: 'completed',
       resultUrl: result.url,
       params: {
-        model: body.model,
+        ...baseParams,
+        ...promptParams,
         videoId: result.videoId,
         videoChannelId: result.videoChannelId,
         permalink: result.permalink,
@@ -201,9 +251,12 @@ export async function POST(request: NextRequest) {
 
     // 预估成本
     const config = await getSystemConfig();
-    const estimatedCost = body.model.includes('15s')
-      ? config.pricing.soraVideo15s
-      : config.pricing.soraVideo10s;
+    const normalizedDuration = (body.duration || body.model || '').toLowerCase();
+    const estimatedCost = normalizedDuration.includes('25')
+      ? config.pricing.soraVideo25s
+      : normalizedDuration.includes('15')
+        ? config.pricing.soraVideo15s
+        : config.pricing.soraVideo10s;
 
     // 检查余额
     if (user.balance < estimatedCost) {
@@ -236,7 +289,12 @@ export async function POST(request: NextRequest) {
         userId: user.id,
         type,
         prompt: body.prompt || '',
-        params: { model: body.model },
+        params: {
+          model: body.model,
+          modelId: body.modelId,
+          aspectRatio: body.aspectRatio,
+          duration: body.duration,
+        },
         resultUrl: '',
         cost: estimatedCost,
         status: 'pending',

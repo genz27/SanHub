@@ -665,12 +665,15 @@ export default function VideoGenerationPage() {
       styleId?: string;
     }
   ) => {
-    const taskModel = buildModelId(config.aspectRatio, config.duration);
+    const fallbackModel = buildModelId(config.aspectRatio, config.duration);
     const res = await fetch('/api/generate/sora', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: taskModel,
+        model: currentModel?.apiModel || fallbackModel,
+        modelId,
+        aspectRatio: config.aspectRatio,
+        duration: config.duration,
         prompt: taskPrompt,
         files: config.files,
         remix_target_id: config.remixTargetId,
@@ -687,7 +690,7 @@ export default function VideoGenerationPage() {
     const newTask: Task = {
       id: data.data.id,
       prompt: taskPrompt,
-      model: taskModel,
+      model: currentModel?.apiModel || fallbackModel,
       modelId,
       type: 'sora-video',
       status: 'pending',

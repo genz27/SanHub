@@ -90,6 +90,7 @@ export interface Generation {
 // 生成参数
 export interface GenerationParams {
   model?: string;
+  modelId?: string;
   aspectRatio?: string;
   duration?: string;
   imageSize?: string;
@@ -102,6 +103,10 @@ export interface GenerationParams {
   videoChannelId?: string;
   permalink?: string;
   revised_prompt?: string;
+  originalPrompt?: string;
+  filteredPrompt?: string;
+  translatedPrompt?: string;
+  processedPrompt?: string;
   progress?: number; // 生成进度 0-100
 }
 
@@ -159,7 +164,15 @@ export interface ModelDisabledConfig {
 // ========================================
 
 // 渠道类型 - 决定请求方式
-export type ChannelType = 'openai-compatible' | 'openai-chat' | 'modelscope' | 'gitee' | 'gemini' | 'sora';
+export type ChannelType =
+  | 'openai-compatible'
+  | 'openai-chat'
+  | 'modelscope'
+  | 'gitee'
+  | 'gemini'
+  | 'sora'
+  | 'flow2api'
+  | 'grok2api';
 
 // 模型功能特性
 export interface ImageModelFeatures {
@@ -301,6 +314,7 @@ export interface SafeVideoModel {
   id: string;
   channelId: string;
   channelType: ChannelType;
+  apiModel?: string;
   name: string;
   description: string;
   features: VideoModelFeatures;
@@ -321,6 +335,16 @@ export interface SiteConfig {
   contactEmail: string;       // 联系邮箱
   copyright: string;          // 版权信息
   poweredBy: string;          // 技术支持信息
+}
+
+// Prompt processing configuration
+export interface PromptProcessingConfig {
+  filterEnabled: boolean;
+  filterModelId: string;
+  filterPrompt: string;
+  translateEnabled: boolean;
+  translateModelId: string;
+  translatePrompt: string;
 }
 
 // 系统配置
@@ -358,6 +382,8 @@ export interface SystemConfig {
   disabledModels: ModelDisabledConfig;
   // 网站配置
   siteConfig: SiteConfig;
+  // Prompt processing configuration
+  promptProcessing: PromptProcessingConfig;
 }
 
 // 定价配置
@@ -383,6 +409,9 @@ export interface ApiResponse<T = unknown> {
 export interface SoraGenerateRequest {
   prompt: string;
   model: string; // sora2-landscape-10s, sora-image 等
+  modelId?: string;
+  aspectRatio?: string;
+  duration?: string;
   files?: { mimeType: string; data: string }[];
   referenceImageUrl?: string;
   style_id?: string; // 风格: festive, retro, news, selfie, handheld, anime, comic, golden, vintage
