@@ -345,6 +345,8 @@ export interface PromptProcessingConfig {
   translateEnabled: boolean;
   translateModelId: string;
   translatePrompt: string;
+  blocklistEnabled: boolean;
+  blocklistWords: string;
 }
 
 // 系统配置

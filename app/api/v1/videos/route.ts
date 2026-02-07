@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createVideoTask, generateVideo, type VideoGenerationRequest, type VideoTaskResponse } from '@/lib/sora-api';
 import { buildErrorResponse, extractBearerToken, isAuthorized, parseDataUrl } from '@/lib/v1';
 import { processVideoPrompt } from '@/lib/prompt-processor';
+import { assertPromptsAllowed } from '@/lib/prompt-blocklist';
 
 export const dynamic = 'force-dynamic';
 
@@ -135,6 +136,17 @@ export async function POST(request: NextRequest) {
 
   if (!parsed.request.prompt) {
     return buildErrorResponse('Prompt is required', 400);
+  }
+
+  try {
+    await assertPromptsAllowed([
+      parsed.request.prompt,
+      parsed.request.style_id,
+      parsed.request.metadata,
+    ]);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Prompt blocked by safety policy';
+    return buildErrorResponse(message, 400);
   }
 
   try {

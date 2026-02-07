@@ -92,7 +92,9 @@ CREATE TABLE IF NOT EXISTS system_config (
   prompt_filter_prompt TEXT,
   prompt_translate_enabled TINYINT(1) DEFAULT 0,
   prompt_translate_model_id VARCHAR(36) DEFAULT '',
-  prompt_translate_prompt TEXT
+  prompt_translate_prompt TEXT,
+  prompt_blocklist_enabled TINYINT(1) DEFAULT 0,
+  prompt_blocklist_words TEXT
 );
 
 -- 聊天模型表
@@ -511,6 +513,18 @@ export async function initializeDatabase(): Promise<void> {
   }
   try {
     await db.execute("ALTER TABLE system_config ADD COLUMN prompt_translate_prompt TEXT");
+  } catch {
+    // 字段已存在，忽略错误
+  }
+
+  // 添加提示词敏感词拦截配置字段
+  try {
+    await db.execute("ALTER TABLE system_config ADD COLUMN prompt_blocklist_enabled TINYINT(1) DEFAULT 0");
+  } catch {
+    // 字段已存在，忽略错误
+  }
+  try {
+    await db.execute("ALTER TABLE system_config ADD COLUMN prompt_blocklist_words TEXT");
   } catch {
     // 字段已存在，忽略错误
   }
@@ -1284,6 +1298,8 @@ export async function getSystemConfig(): Promise<SystemConfig> {
           translateEnabled: false,
           translateModelId: '',
           translatePrompt: 'Translate the user prompt into clear, natural English for video generation. Preserve details, style, and constraints. Return only the translated prompt text.',
+          blocklistEnabled: false,
+          blocklistWords: '',
         },
       };
     }
@@ -1356,6 +1372,8 @@ export async function getSystemConfig(): Promise<SystemConfig> {
         translateEnabled: Boolean(row.prompt_translate_enabled),
         translateModelId: row.prompt_translate_model_id || '',
         translatePrompt: row.prompt_translate_prompt || 'Translate the user prompt into clear, natural English for video generation. Preserve details, style, and constraints. Return only the translated prompt text.',
+        blocklistEnabled: Boolean(row.prompt_blocklist_enabled),
+        blocklistWords: row.prompt_blocklist_words || '',
       },
     };
   });
@@ -1607,6 +1625,16 @@ export async function updateSystemConfig(
     if (p.translatePrompt !== undefined) {
       fields.push('prompt_translate_prompt = ?');
       values.push(p.translatePrompt);
+    }
+
+    if (p.blocklistEnabled !== undefined) {
+      fields.push('prompt_blocklist_enabled = ?');
+      values.push(p.blocklistEnabled ? 1 : 0);
+    }
+
+    if (p.blocklistWords !== undefined) {
+      fields.push('prompt_blocklist_words = ?');
+      values.push(p.blocklistWords);
     }
   }
 

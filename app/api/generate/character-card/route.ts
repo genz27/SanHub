@@ -6,6 +6,7 @@ import { saveCharacterCard, updateCharacterCard, deleteCharacterCard, getUserByI
 import { createCharacterCard } from '@/lib/sora-api';
 import { uploadToPicUI } from '@/lib/picui';
 import { checkRateLimit, RateLimitConfig } from '@/lib/rate-limit';
+import { assertPromptsAllowed, isPromptBlockedError } from '@/lib/prompt-blocklist';
 
 // 配置路由段选项
 export const maxDuration = 300; // 5分钟超时
@@ -117,6 +118,15 @@ export async function POST(request: NextRequest) {
 
     const body: CharacterCardRequest = await request.json();
 
+    await assertPromptsAllowed([
+      body.prompt,
+      body.username,
+      body.displayName,
+      body.instructionSet,
+      body.safetyInstructionSet,
+      body.styleId,
+    ]);
+
     if (!body.videoBase64 && !body.inputImage) {
       return NextResponse.json(
         { error: '请上传视频或图片' },
@@ -175,6 +185,14 @@ export async function POST(request: NextRequest) {
     console.error('[API] Character card generation error:', error);
 
     const errorMessage = error instanceof Error ? error.message : '生成失败';
+
+    if (isPromptBlockedError(error)) {
+      return NextResponse.json(
+        { error: errorMessage },
+        { status: 400 }
+      );
+    }
+
     return NextResponse.json(
       { error: errorMessage },
       { status: 500 }

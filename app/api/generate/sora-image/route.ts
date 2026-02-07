@@ -7,6 +7,7 @@ import { saveGeneration, updateUserBalance, getUserById, updateGeneration, getSy
 import { checkRateLimit, RateLimitConfig } from '@/lib/rate-limit';
 import { fetchExternalBuffer } from '@/lib/safe-fetch';
 import type { Generation } from '@/types';
+import { assertPromptsAllowed, isPromptBlockedError } from '@/lib/prompt-blocklist';
 
 export const maxDuration = 120;
 export const dynamic = 'force-dynamic';
@@ -130,6 +131,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    await assertPromptsAllowed([normalizedBody.prompt]);
+
     const user = await getUserById(session.user.id);
     if (!user) {
       return NextResponse.json({ error: '用户不存在' }, { status: 401 });
@@ -195,6 +198,14 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('[API] Sora Image generation error:', error);
+
+    if (isPromptBlockedError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Prompt blocked by safety policy' },
+        { status: 400 }
+      );
+    }
+
     return NextResponse.json(
       { error: error instanceof Error ? error.message : '生成失败' },
       { status: 500 }

@@ -6,12 +6,14 @@ import type { ChatModel } from '@/types';
 import { toast } from '@/components/ui/toaster';
 import { useSiteConfigRefresh } from '@/components/providers/site-config-provider';
 import type { SystemConfig } from '@/types';
+import { findBlockedWords } from '@/lib/prompt-blocklist-core';
 
 export default function SiteConfigPage() {
   const [config, setConfig] = useState<SystemConfig | null>(null);
   const [chatModels, setChatModels] = useState<ChatModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [blocklistTestInput, setBlocklistTestInput] = useState('');
   const refreshSiteConfig = useSiteConfigRefresh();
 
   useEffect(() => {
@@ -98,6 +100,10 @@ export default function SiteConfigPage() {
       siteConfig: { ...config.siteConfig, [key]: value }
     });
   };
+
+  const blocklistMatches = config.promptProcessing.blocklistEnabled
+    ? findBlockedWords(blocklistTestInput, config.promptProcessing.blocklistWords)
+    : [];
 
   return (
     <div className="space-y-6">
@@ -404,6 +410,72 @@ export default function SiteConfigPage() {
                 placeholder="Instructions for prompt translation"
                 className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-lg text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border resize-none"
               />
+            </div>
+
+            <div className="space-y-3 pt-2 border-t border-border/60">
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="text-sm text-foreground">Enable Prompt Blocklist</label>
+                  <p className="text-xs text-foreground/30 mt-1">Reject request immediately when blocked words are detected</p>
+                </div>
+                <button
+                  onClick={() => setConfig({
+                    ...config,
+                    promptProcessing: {
+                      ...config.promptProcessing,
+                      blocklistEnabled: !config.promptProcessing.blocklistEnabled,
+                    },
+                  })}
+                  className={`relative w-12 h-6 rounded-full transition-colors ${
+                    config.promptProcessing.blocklistEnabled ? 'bg-red-500' : 'bg-card/80'
+                  }`}
+                >
+                  <div
+                    className={`absolute top-1 w-4 h-4 rounded-full bg-foreground transition-transform ${
+                      config.promptProcessing.blocklistEnabled ? 'left-7' : 'left-1'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm text-foreground/50">Blocked Words (one per line)</label>
+                <textarea
+                  value={config.promptProcessing.blocklistWords}
+                  onChange={(e) => setConfig({
+                    ...config,
+                    promptProcessing: {
+                      ...config.promptProcessing,
+                      blocklistWords: e.target.value,
+                    },
+                  })}
+                  rows={6}
+                  placeholder={'word_a\nword_b\nword_c'}
+                  className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-lg text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border resize-none"
+                />
+                <p className="text-xs text-foreground/30">Case-insensitive matching. Each line is one blocked rule.</p>
+                <p className="text-xs text-foreground/30">Default is whole-word match. Prefix `substr:` for substring, `re:`/`regex:` for regex.</p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm text-foreground/50">Blocklist Tester</label>
+                <textarea
+                  value={blocklistTestInput}
+                  onChange={(e) => setBlocklistTestInput(e.target.value)}
+                  rows={4}
+                  placeholder="Enter a prompt to test against current rules"
+                  className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-lg text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border resize-none"
+                />
+                {config.promptProcessing.blocklistEnabled ? (
+                  blocklistMatches.length > 0 ? (
+                    <p className="text-xs text-red-400">Matched rules: {blocklistMatches.join(', ')}</p>
+                  ) : (
+                    <p className="text-xs text-emerald-400">No match</p>
+                  )
+                ) : (
+                  <p className="text-xs text-foreground/30">Blocklist is disabled</p>
+                )}
+              </div>
             </div>
           </div>
         </div>

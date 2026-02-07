@@ -14,6 +14,7 @@ import {
 import { saveMediaAsync } from '@/lib/media-storage';
 import { checkRateLimit, RateLimitConfig } from '@/lib/rate-limit';
 import { fetchExternalBuffer } from '@/lib/safe-fetch';
+import { assertPromptsAllowed, isPromptBlockedError } from '@/lib/prompt-blocklist';
 import type { ChannelType, Generation, GenerationType } from '@/types';
 
 export const maxDuration = 60;
@@ -117,6 +118,8 @@ export async function POST(request: NextRequest) {
       referenceImages,
       referenceImageUrl,
     } = body;
+
+    await assertPromptsAllowed([prompt]);
 
     if (!modelId) {
       return NextResponse.json({ error: '缺少模型 ID' }, { status: 400 });
@@ -264,6 +267,14 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('[API] Image generation error:', error);
+
+    if (isPromptBlockedError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Prompt blocked by safety policy' },
+        { status: 400 }
+      );
+    }
+
     return NextResponse.json(
       { error: error instanceof Error ? error.message : '生成失败' },
       { status: 500 }

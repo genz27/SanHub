@@ -13,6 +13,7 @@ import {
   parseDataUrl,
 } from '@/lib/v1';
 import { processVideoPrompt } from '@/lib/prompt-processor';
+import { assertPromptsAllowed } from '@/lib/prompt-blocklist';
 
 export const dynamic = 'force-dynamic';
 
@@ -279,6 +280,13 @@ export async function POST(request: NextRequest) {
 
   if (!prompt && imageUrls.length === 0) {
     return buildErrorResponse('Prompt or image input is required', 400);
+  }
+
+  try {
+    await assertPromptsAllowed([prompt]);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Prompt blocked by safety policy';
+    return buildErrorResponse(message, 400);
   }
 
   const origin = new URL(request.url).origin;
