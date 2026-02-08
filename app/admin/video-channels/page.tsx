@@ -6,7 +6,14 @@ import {
   Layers, ChevronDown, ChevronUp, Video, RefreshCw
 } from 'lucide-react';
 import { toast } from '@/components/ui/toaster';
-import type { VideoChannel, VideoModel, ChannelType, VideoModelFeatures, VideoDuration } from '@/types';
+import type {
+  VideoChannel,
+  VideoModel,
+  ChannelType,
+  VideoModelFeatures,
+  VideoDuration,
+  VideoConfigObject,
+} from '@/types';
 
 const CHANNEL_TYPES: { value: ChannelType; label: string }[] = [
   { value: 'sora', label: 'Sora API' },
@@ -35,6 +42,85 @@ const DEFAULT_DURATIONS: VideoDuration[] = [
   { value: '15s', label: '15 秒', cost: 150 },
   { value: '25s', label: '25 秒', cost: 200 },
 ];
+
+const GROK_ASPECT_RATIO_OPTIONS: Array<{ value: NonNullable<VideoConfigObject['aspect_ratio']>; label: string }> = [
+  { value: '16:9', label: '16:9' },
+  { value: '9:16', label: '9:16' },
+  { value: '1:1', label: '1:1' },
+  { value: '2:3', label: '2:3' },
+  { value: '3:2', label: '3:2' },
+];
+
+const GROK_TEMPLATE_ASPECT_RATIOS: AspectRatioRow[] = GROK_ASPECT_RATIO_OPTIONS.map((item) => ({
+  value: item.value,
+  label: item.label,
+}));
+
+const GROK_TEMPLATE_DURATIONS: VideoDuration[] = [
+  { value: '5s', label: '5 秒', cost: 100 },
+  { value: '10s', label: '10 秒', cost: 100 },
+  { value: '15s', label: '15 秒', cost: 150 },
+];
+
+const GROK_TEMPLATE_VIDEO_CONFIG_OBJECT: VideoConfigObject = {
+  aspect_ratio: '16:9',
+  video_length: 10,
+  resolution: 'HD',
+  preset: 'normal',
+};
+
+function parseDurationToSeconds(duration: string): number {
+  const matched = (duration || '').match(/(\d+)/);
+  const value = matched ? Number.parseInt(matched[1], 10) : 10;
+  if (!Number.isFinite(value) || value <= 0) return 10;
+  return value;
+}
+
+function normalizeAspectRatioForVideoConfig(aspectRatio?: string): NonNullable<VideoConfigObject['aspect_ratio']> {
+  if (!aspectRatio) return '16:9';
+  const normalized = aspectRatio.trim().toLowerCase();
+  if (normalized === 'landscape') return '16:9';
+  if (normalized === 'portrait') return '9:16';
+  if (normalized === 'square') return '1:1';
+  const matched = GROK_ASPECT_RATIO_OPTIONS.find((item) => item.value === aspectRatio.trim());
+  return matched?.value || '16:9';
+}
+
+function normalizeVideoConfigObject(input: VideoConfigObject): VideoConfigObject {
+  const videoLengthRaw = typeof input.video_length === 'number' ? input.video_length : 10;
+  const videoLength = Math.max(5, Math.min(15, Math.floor(videoLengthRaw)));
+  const resolution = input.resolution === 'SD' ? 'SD' : 'HD';
+  const preset = input.preset === 'fun' || input.preset === 'spicy' ? input.preset : 'normal';
+  return {
+    aspect_ratio: normalizeAspectRatioForVideoConfig(input.aspect_ratio),
+    video_length: videoLength,
+    resolution,
+    preset,
+  };
+}
+
+function buildGrokTemplateModelPayload(channelId: string) {
+  return {
+    channelId,
+    name: 'Grok Imagine Video',
+    description: 'Grok video generation template',
+    apiModel: 'grok-imagine-1.0-video',
+    features: {
+      textToVideo: true,
+      imageToVideo: true,
+      videoToVideo: false,
+      supportStyles: true,
+    },
+    aspectRatios: GROK_TEMPLATE_ASPECT_RATIOS,
+    durations: GROK_TEMPLATE_DURATIONS,
+    defaultAspectRatio: '16:9',
+    defaultDuration: '10s',
+    videoConfigObject: GROK_TEMPLATE_VIDEO_CONFIG_OBJECT,
+    highlight: false,
+    enabled: true,
+    sortOrder: 0,
+  };
+}
 
 export default function VideoChannelsPage() {
   const [channels, setChannels] = useState<VideoChannel[]>([]);
@@ -67,6 +153,9 @@ export default function VideoChannelsPage() {
     features: { ...DEFAULT_FEATURES },
     defaultAspectRatio: 'landscape',
     defaultDuration: '10s',
+    videoConfigObject: {
+      ...GROK_TEMPLATE_VIDEO_CONFIG_OBJECT,
+    } as VideoConfigObject,
     highlight: false,
     enabled: true,
     sortOrder: 0,
@@ -125,6 +214,9 @@ export default function VideoChannelsPage() {
       name: '', description: '', apiModel: '', baseUrl: '', apiKey: '',
       features: { ...DEFAULT_FEATURES },
       defaultAspectRatio: 'landscape', defaultDuration: '10s',
+      videoConfigObject: {
+        ...GROK_TEMPLATE_VIDEO_CONFIG_OBJECT,
+      },
       highlight: false, enabled: true, sortOrder: 0,
     });
     setAspectRatioRows([...DEFAULT_ASPECT_RATIOS]);
@@ -145,6 +237,15 @@ export default function VideoChannelsPage() {
   };
 
   const startEditModel = (model: VideoModel) => {
+    const existingVideoConfigObject = model.videoConfigObject
+      ? normalizeVideoConfigObject(model.videoConfigObject)
+      : normalizeVideoConfigObject({
+          aspect_ratio: normalizeAspectRatioForVideoConfig(model.defaultAspectRatio),
+          video_length: Math.max(5, Math.min(15, parseDurationToSeconds(model.defaultDuration))),
+          resolution: 'HD' as const,
+          preset: 'normal' as const,
+        });
+
     setModelForm({
       name: model.name,
       description: model.description,
@@ -154,6 +255,7 @@ export default function VideoChannelsPage() {
       features: model.features,
       defaultAspectRatio: model.defaultAspectRatio,
       defaultDuration: model.defaultDuration,
+      videoConfigObject: existingVideoConfigObject,
       highlight: model.highlight || false,
       enabled: model.enabled,
       sortOrder: model.sortOrder,
@@ -165,7 +267,35 @@ export default function VideoChannelsPage() {
   };
 
   const startAddModel = (channelId: string) => {
-    resetModelForm();
+    const channel = channels.find((item) => item.id === channelId);
+    if (channel?.type === 'grok2api') {
+      setModelForm({
+        name: 'Grok Imagine Video',
+        description: 'Grok video generation template',
+        apiModel: 'grok-imagine-1.0-video',
+        baseUrl: '',
+        apiKey: '',
+        features: {
+          textToVideo: true,
+          imageToVideo: true,
+          videoToVideo: false,
+          supportStyles: true,
+        },
+        defaultAspectRatio: '16:9',
+        defaultDuration: '10s',
+        videoConfigObject: {
+          ...GROK_TEMPLATE_VIDEO_CONFIG_OBJECT,
+        },
+        highlight: false,
+        enabled: true,
+        sortOrder: 0,
+      });
+      setAspectRatioRows([...GROK_TEMPLATE_ASPECT_RATIOS]);
+      setDurationRows([...GROK_TEMPLATE_DURATIONS]);
+      setEditingModel(null);
+    } else {
+      resetModelForm();
+    }
     setModelChannelId(channelId);
   };
 
@@ -185,7 +315,36 @@ export default function VideoChannelsPage() {
         const data = await res.json();
         throw new Error(data.error);
       }
+
+      const channelData = await res.json();
       toast({ title: editingChannel ? '渠道已更新' : '渠道已创建' });
+
+      if (!editingChannel && channelForm.type === 'grok2api') {
+        const createdChannelId = channelData?.data?.id as string | undefined;
+        if (createdChannelId) {
+          const modelListRes = await fetch('/api/admin/video-models');
+          const modelListJson = modelListRes.ok ? await modelListRes.json() : null;
+          const allModels = (modelListJson?.data || []) as VideoModel[];
+          const existingForChannel = allModels.filter((item) => item.channelId === createdChannelId);
+          if (existingForChannel.length === 0) {
+            const templatePayload = {
+              ...buildGrokTemplateModelPayload(createdChannelId),
+              sortOrder: existingForChannel.length,
+            };
+            const templateRes = await fetch('/api/admin/video-models', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(templatePayload),
+            });
+            if (!templateRes.ok) {
+              const templateData = await templateRes.json().catch(() => ({}));
+              throw new Error(templateData.error || 'Grok 模板模型创建失败');
+            }
+            toast({ title: '已自动添加 Grok 视频模板（默认 HD）' });
+          }
+        }
+      }
+
       resetChannelForm();
       loadData();
     } catch (err) {
@@ -258,6 +417,19 @@ export default function VideoChannelsPage() {
       const defaultDuration = normalizedDurations.some((row) => row.value === modelForm.defaultDuration)
         ? modelForm.defaultDuration
         : normalizedDurations[0].value;
+      const selectedChannel = channels.find((channel) => channel.id === modelChannelId);
+      const videoConfigObject =
+        selectedChannel?.type === 'grok2api'
+          ? normalizeVideoConfigObject({
+              ...(modelForm.videoConfigObject || {}),
+              aspect_ratio:
+                modelForm.videoConfigObject?.aspect_ratio ||
+                normalizeAspectRatioForVideoConfig(defaultAspectRatio),
+              video_length:
+                modelForm.videoConfigObject?.video_length ||
+                Math.max(5, Math.min(15, parseDurationToSeconds(defaultDuration))),
+            })
+          : undefined;
 
       const payload = {
         ...(editingModel ? { id: editingModel } : {}),
@@ -272,6 +444,7 @@ export default function VideoChannelsPage() {
         durations: normalizedDurations,
         defaultAspectRatio,
         defaultDuration,
+        videoConfigObject,
         highlight: modelForm.highlight,
         enabled: modelForm.enabled,
         sortOrder: modelForm.sortOrder,
@@ -332,11 +505,6 @@ export default function VideoChannelsPage() {
   };
 
   const getChannelModels = (channelId: string) => models.filter(m => m.channelId === channelId);
-
-  const getDurationCost = (model: VideoModel, duration: string) => {
-    const d = model.durations.find(d => d.value === duration);
-    return d?.cost || 0;
-  };
 
   if (loading) {
     return (
@@ -651,6 +819,104 @@ export default function VideoChannelsPage() {
               />
             </div>
           </div>
+
+          {(() => {
+            const currentChannel = channels.find((channel) => channel.id === modelChannelId);
+            if (currentChannel?.type !== 'grok2api') return null;
+
+            return (
+              <div className="space-y-3 pt-2">
+                <label className="text-sm text-foreground/70">Video Config Object（Grok 专用）</label>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-xs text-foreground/60">aspect_ratio</label>
+                    <select
+                      value={modelForm.videoConfigObject.aspect_ratio || '16:9'}
+                      onChange={(e) =>
+                        setModelForm({
+                          ...modelForm,
+                          videoConfigObject: {
+                            ...modelForm.videoConfigObject,
+                            aspect_ratio: e.target.value as NonNullable<VideoConfigObject['aspect_ratio']>,
+                          },
+                        })
+                      }
+                      className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border"
+                    >
+                      {GROK_ASPECT_RATIO_OPTIONS.map((item) => (
+                        <option key={item.value} value={item.value} className="bg-card/95">
+                          {item.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs text-foreground/60">video_length</label>
+                    <input
+                      type="number"
+                      min={5}
+                      max={15}
+                      value={modelForm.videoConfigObject.video_length || 10}
+                      onChange={(e) => {
+                        const value = Number.parseInt(e.target.value, 10);
+                        setModelForm({
+                          ...modelForm,
+                          videoConfigObject: {
+                            ...modelForm.videoConfigObject,
+                            video_length: Number.isFinite(value) ? Math.max(5, Math.min(15, value)) : 10,
+                          },
+                        });
+                      }}
+                      className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs text-foreground/60">resolution</label>
+                    <select
+                      value={modelForm.videoConfigObject.resolution || 'HD'}
+                      onChange={(e) =>
+                        setModelForm({
+                          ...modelForm,
+                          videoConfigObject: {
+                            ...modelForm.videoConfigObject,
+                            resolution: e.target.value as NonNullable<VideoConfigObject['resolution']>,
+                          },
+                        })
+                      }
+                      className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border"
+                    >
+                      <option value="HD" className="bg-card/95">HD</option>
+                      <option value="SD" className="bg-card/95">SD</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs text-foreground/60">preset</label>
+                    <select
+                      value={modelForm.videoConfigObject.preset || 'normal'}
+                      onChange={(e) =>
+                        setModelForm({
+                          ...modelForm,
+                          videoConfigObject: {
+                            ...modelForm.videoConfigObject,
+                            preset: e.target.value as NonNullable<VideoConfigObject['preset']>,
+                          },
+                        })
+                      }
+                      className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border"
+                    >
+                      <option value="normal" className="bg-card/95">normal</option>
+                      <option value="fun" className="bg-card/95">fun</option>
+                      <option value="spicy" className="bg-card/95">spicy</option>
+                    </select>
+                  </div>
+                </div>
+                <p className="text-xs text-foreground/40">新增 Grok 渠道时会自动添加模板，默认分辨率为 HD。</p>
+              </div>
+            );
+          })()}
 
           <div className="space-y-3 pt-2">
             <label className="text-sm text-foreground/70">功能特性</label>

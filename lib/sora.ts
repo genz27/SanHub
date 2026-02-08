@@ -129,6 +129,12 @@ function normalizeDurationSeconds(duration?: string): number {
   return parsed;
 }
 
+function normalizeGrokVideoLengthSeconds(duration?: string, fallback = 10): number {
+  const parsed = normalizeDurationSeconds(duration);
+  const base = Number.isFinite(parsed) ? parsed : fallback;
+  return Math.max(5, Math.min(15, Math.floor(base)));
+}
+
 function mapFlowModel(modelName: string, aspectRatio: string, duration: string): string {
   const ratio = (aspectRatio || '').toLowerCase();
   const seconds = normalizeDurationSeconds(duration);
@@ -160,17 +166,8 @@ function mapFlowModel(modelName: string, aspectRatio: string, duration: string):
   return ratio === 'portrait' ? 'veo_3_1_t2v_fast_portrait' : 'veo_3_1_t2v_fast_landscape';
 }
 
-function mapGrokModel(modelName: string, aspectRatio: string, duration: string): string {
-  const ratio = (aspectRatio || '').toLowerCase();
-  const seconds = normalizeDurationSeconds(duration);
-  const base = 'grok-imagine-1.0-video';
-  const orientation = ratio === 'portrait' ? 'portrait' : 'landscape';
-  const finalSeconds = seconds >= 15 ? '15s' : '10s';
-
-  if (modelName.toLowerCase().includes('grok-imagine-1.0-video-')) {
-    return modelName;
-  }
-  return `${base}-${orientation}-${finalSeconds}`;
+function mapGrokModel(modelName: string): string {
+  return modelName?.trim() || 'grok-imagine-1.0-video';
 }
 
 function mapChannelModel(channelType: VideoChannel['type'], model: VideoModel, request: SoraGenerateRequest): string {
@@ -181,9 +178,44 @@ function mapChannelModel(channelType: VideoChannel['type'], model: VideoModel, r
     return mapFlowModel(model.apiModel, ratio, duration);
   }
   if (channelType === 'grok2api') {
-    return mapGrokModel(model.apiModel, ratio, duration);
+    return mapGrokModel(model.apiModel);
   }
   return model.apiModel || request.model;
+}
+
+function resolveVideoConfigObject(
+  request: SoraGenerateRequest,
+  model: VideoModel
+): { aspect_ratio: string; video_length: number; resolution: 'SD' | 'HD'; preset: 'fun' | 'normal' | 'spicy' } {
+  const requestConfig = request.videoConfigObject || request.video_config;
+  const modelConfig = model.videoConfigObject;
+  const hasRequestAspectRatio = typeof request.aspectRatio === 'string' && request.aspectRatio.trim().length > 0;
+  const hasRequestDuration = typeof request.duration === 'string' && request.duration.trim().length > 0;
+
+  const aspectRatioRaw =
+    requestConfig?.aspect_ratio ||
+    (hasRequestAspectRatio
+      ? request.aspectRatio
+      : modelConfig?.aspect_ratio || model.defaultAspectRatio || 'landscape');
+
+  const videoLengthRaw =
+    typeof requestConfig?.video_length === 'number'
+      ? requestConfig.video_length
+      : hasRequestDuration
+        ? normalizeGrokVideoLengthSeconds(request.duration || '10s')
+        : typeof modelConfig?.video_length === 'number'
+          ? modelConfig.video_length
+          : normalizeGrokVideoLengthSeconds(model.defaultDuration || '10s');
+
+  const resolutionRaw = (requestConfig?.resolution || modelConfig?.resolution || 'HD').toString().toUpperCase();
+  const presetRaw = (requestConfig?.preset || modelConfig?.preset || 'normal').toString().toLowerCase();
+
+  return {
+    aspect_ratio: normalizeAspectRatioLabel(aspectRatioRaw || '16:9'),
+    video_length: Math.max(5, Math.min(15, Math.floor(videoLengthRaw))),
+    resolution: resolutionRaw === 'SD' ? 'SD' : 'HD',
+    preset: presetRaw === 'fun' || presetRaw === 'spicy' ? (presetRaw as 'fun' | 'spicy') : 'normal',
+  };
 }
 
 function getTypeAndCost(
@@ -275,12 +307,7 @@ async function generateViaExternalChat(
   };
 
   if (channel.type === 'grok2api') {
-    payload.video_config = {
-      aspect_ratio: normalizeAspectRatioLabel(request.aspectRatio || model.defaultAspectRatio || 'landscape'),
-      video_length: normalizeDurationSeconds(request.duration || model.defaultDuration || '10s'),
-      resolution_name: '720p',
-      preset: 'normal',
-    };
+    payload.video_config = resolveVideoConfigObject(request, model);
   }
 
   const apiUrl = `${effectiveBaseUrl.replace(/\/$/, '')}/v1/chat/completions`;
@@ -454,4 +481,3 @@ export async function generateWithSora(
     throw error;
   }
 }
-

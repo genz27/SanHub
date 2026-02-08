@@ -10,6 +10,37 @@ import { fetchExternalBuffer } from '@/lib/safe-fetch';
 import { processVideoPrompt } from '@/lib/prompt-processor';
 import { assertPromptsAllowed, isPromptBlockedError } from '@/lib/prompt-blocklist';
 
+function normalizeIncomingVideoConfigObject(input: SoraGenerateRequest): SoraGenerateRequest['videoConfigObject'] {
+  const raw = (input.videoConfigObject || input.video_config) as Record<string, unknown> | undefined;
+  if (!raw || typeof raw !== 'object') return undefined;
+
+  const output: NonNullable<SoraGenerateRequest['videoConfigObject']> = {};
+
+  if (typeof raw.aspect_ratio === 'string' && ['16:9', '9:16', '1:1', '2:3', '3:2'].includes(raw.aspect_ratio.trim())) {
+    output.aspect_ratio = raw.aspect_ratio.trim() as NonNullable<SoraGenerateRequest['videoConfigObject']>['aspect_ratio'];
+  }
+
+  if (typeof raw.video_length === 'number' && Number.isFinite(raw.video_length)) {
+    output.video_length = Math.max(5, Math.min(15, Math.floor(raw.video_length)));
+  }
+
+  if (typeof raw.resolution === 'string') {
+    const resolution = raw.resolution.trim().toUpperCase();
+    if (resolution === 'SD' || resolution === 'HD') {
+      output.resolution = resolution;
+    }
+  }
+
+  if (typeof raw.preset === 'string') {
+    const preset = raw.preset.trim().toLowerCase();
+    if (preset === 'fun' || preset === 'normal' || preset === 'spicy') {
+      output.preset = preset;
+    }
+  }
+
+  return Object.keys(output).length > 0 ? output : undefined;
+}
+
 // 配置路由段选项
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
@@ -91,6 +122,7 @@ async function processGenerationTask(
       modelId: body.modelId,
       aspectRatio: body.aspectRatio,
       duration: body.duration,
+      videoConfigObject: body.videoConfigObject,
     };
     let promptParams: {
       originalPrompt?: string;
@@ -236,8 +268,11 @@ export async function POST(request: NextRequest) {
     await assertPromptsAllowed([body.prompt, body.style_id]);
 
     const origin = new URL(request.url).origin;
+    const normalizedVideoConfigObject = normalizeIncomingVideoConfigObject(body);
     const normalizedBody: SoraGenerateRequest = {
       ...body,
+      videoConfigObject: normalizedVideoConfigObject,
+      video_config: normalizedVideoConfigObject,
       files: body.files ? [...body.files] : [],
     };
 
@@ -255,9 +290,12 @@ export async function POST(request: NextRequest) {
     // 预估成本
     const config = await getSystemConfig();
     const normalizedDuration = (body.duration || body.model || '').toLowerCase();
+    const effectiveDurationSeconds = normalizedVideoConfigObject?.video_length;
     const estimatedCost = normalizedDuration.includes('25')
       ? config.pricing.soraVideo25s
-      : normalizedDuration.includes('15')
+      : effectiveDurationSeconds && effectiveDurationSeconds >= 15
+        ? config.pricing.soraVideo15s
+        : normalizedDuration.includes('15')
         ? config.pricing.soraVideo15s
         : config.pricing.soraVideo10s;
 
@@ -297,6 +335,7 @@ export async function POST(request: NextRequest) {
           modelId: body.modelId,
           aspectRatio: body.aspectRatio,
           duration: body.duration,
+          videoConfigObject: normalizedVideoConfigObject,
         },
         resultUrl: '',
         cost: estimatedCost,

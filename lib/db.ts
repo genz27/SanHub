@@ -2763,7 +2763,15 @@ export async function hasImageChannelsConfigured(): Promise<boolean> {
 // 视频渠道操作
 // ========================================
 
-import type { VideoChannel, VideoModel, SafeVideoChannel, SafeVideoModel, VideoModelFeatures, VideoDuration } from '@/types';
+import type {
+  VideoChannel,
+  VideoModel,
+  SafeVideoChannel,
+  SafeVideoModel,
+  VideoModelFeatures,
+  VideoDuration,
+  VideoConfigObject,
+} from '@/types';
 
 // 创建视频渠道表
 const CREATE_VIDEO_CHANNELS_SQL = `
@@ -2792,6 +2800,7 @@ CREATE TABLE IF NOT EXISTS video_models (
   durations TEXT NOT NULL,
   default_aspect_ratio VARCHAR(20) DEFAULT 'landscape',
   default_duration VARCHAR(20) DEFAULT '10s',
+  video_config_object TEXT,
   highlight TINYINT(1) DEFAULT 0,
   enabled TINYINT(1) DEFAULT 1,
   sort_order INT DEFAULT 0,
@@ -2816,6 +2825,12 @@ async function initializeVideoChannelsTablesInternal(db: DatabaseAdapter): Promi
         }
       }
     }
+  }
+
+  try {
+    await db.execute('ALTER TABLE video_models ADD COLUMN video_config_object TEXT');
+  } catch {
+    // ignore duplicate/missing-table errors
   }
 }
 
@@ -2990,6 +3005,38 @@ function parseDurations(raw: unknown): VideoDuration[] {
   return [];
 }
 
+function parseVideoConfigObject(raw: unknown): VideoConfigObject | undefined {
+  if (!raw) return undefined;
+  let parsed: unknown = raw;
+
+  if (typeof raw === 'string') {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return undefined;
+    }
+  }
+
+  if (!parsed || typeof parsed !== 'object') return undefined;
+  const candidate = parsed as Record<string, unknown>;
+  const output: VideoConfigObject = {};
+
+  if (typeof candidate.aspect_ratio === 'string' && candidate.aspect_ratio.trim()) {
+    output.aspect_ratio = candidate.aspect_ratio.trim() as VideoConfigObject['aspect_ratio'];
+  }
+  if (typeof candidate.video_length === 'number' && Number.isFinite(candidate.video_length)) {
+    output.video_length = Math.floor(candidate.video_length);
+  }
+  if (typeof candidate.resolution === 'string' && candidate.resolution.trim()) {
+    output.resolution = candidate.resolution.trim().toUpperCase() as VideoConfigObject['resolution'];
+  }
+  if (typeof candidate.preset === 'string' && candidate.preset.trim()) {
+    output.preset = candidate.preset.trim().toLowerCase() as VideoConfigObject['preset'];
+  }
+
+  return Object.keys(output).length > 0 ? output : undefined;
+}
+
 // 获取所有视频模型
 export async function getVideoModels(enabledOnly = false): Promise<VideoModel[]> {
   await initializeDatabase();
@@ -3015,6 +3062,7 @@ export async function getVideoModels(enabledOnly = false): Promise<VideoModel[]>
     durations: parseDurations(row.durations),
     defaultAspectRatio: row.default_aspect_ratio || 'landscape',
     defaultDuration: row.default_duration || '10s',
+    videoConfigObject: parseVideoConfigObject(row.video_config_object),
     highlight: Boolean(row.highlight),
     enabled: Boolean(row.enabled),
     sortOrder: row.sort_order || 0,
@@ -3047,6 +3095,7 @@ export async function getVideoModel(id: string): Promise<VideoModel | null> {
     durations: parseDurations(row.durations),
     defaultAspectRatio: row.default_aspect_ratio || 'landscape',
     defaultDuration: row.default_duration || '10s',
+    videoConfigObject: parseVideoConfigObject(row.video_config_object),
     highlight: Boolean(row.highlight),
     enabled: Boolean(row.enabled),
     sortOrder: row.sort_order || 0,
@@ -3070,9 +3119,9 @@ export async function createVideoModel(
     `INSERT INTO video_models (
       id, channel_id, name, description, api_model, base_url, api_key,
       features, aspect_ratios, durations,
-      default_aspect_ratio, default_duration, highlight,
+      default_aspect_ratio, default_duration, video_config_object, highlight,
       enabled, sort_order, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       model.channelId,
@@ -3086,6 +3135,7 @@ export async function createVideoModel(
       JSON.stringify(model.durations),
       model.defaultAspectRatio,
       model.defaultDuration,
+      model.videoConfigObject ? JSON.stringify(model.videoConfigObject) : null,
       model.highlight ? 1 : 0,
       model.enabled ? 1 : 0,
       model.sortOrder,
@@ -3120,6 +3170,11 @@ export async function updateVideoModel(
   if (updates.durations !== undefined) { fields.push('durations = ?'); values.push(JSON.stringify(updates.durations)); }
   if (updates.defaultAspectRatio !== undefined) { fields.push('default_aspect_ratio = ?'); values.push(updates.defaultAspectRatio); }
   if (updates.defaultDuration !== undefined) { fields.push('default_duration = ?'); values.push(updates.defaultDuration); }
+  if (Object.prototype.hasOwnProperty.call(updates, 'videoConfigObject')) {
+    const value = (updates as { videoConfigObject?: VideoConfigObject }).videoConfigObject;
+    fields.push('video_config_object = ?');
+    values.push(value ? JSON.stringify(value) : null);
+  }
   if (updates.highlight !== undefined) { fields.push('highlight = ?'); values.push(updates.highlight ? 1 : 0); }
   if (updates.enabled !== undefined) { fields.push('enabled = ?'); values.push(updates.enabled ? 1 : 0); }
   if (updates.sortOrder !== undefined) { fields.push('sort_order = ?'); values.push(updates.sortOrder); }
@@ -3165,6 +3220,7 @@ export async function getSafeVideoModels(enabledOnly = false): Promise<SafeVideo
         durations: m.durations,
         defaultAspectRatio: m.defaultAspectRatio,
         defaultDuration: m.defaultDuration,
+        videoConfigObject: m.videoConfigObject,
         highlight: m.highlight,
         enabled: m.enabled,
       };

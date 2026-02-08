@@ -8,6 +8,46 @@ import {
   updateVideoModel,
   deleteVideoModel,
 } from '@/lib/db';
+import type { VideoConfigObject } from '@/types';
+
+function normalizeVideoConfigObject(raw: unknown): VideoConfigObject | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+
+  const source = raw as Record<string, unknown>;
+  const config: VideoConfigObject = {};
+
+  const aspectRatioRaw = source.aspect_ratio;
+  if (typeof aspectRatioRaw === 'string') {
+    const aspectRatio = aspectRatioRaw.trim();
+    if (['16:9', '9:16', '1:1', '2:3', '3:2'].includes(aspectRatio)) {
+      config.aspect_ratio = aspectRatio as VideoConfigObject['aspect_ratio'];
+    }
+  }
+
+  const videoLengthRaw = source.video_length;
+  if (typeof videoLengthRaw === 'number' && Number.isFinite(videoLengthRaw)) {
+    const seconds = Math.max(5, Math.min(15, Math.floor(videoLengthRaw)));
+    config.video_length = seconds;
+  }
+
+  const resolutionRaw = source.resolution;
+  if (typeof resolutionRaw === 'string') {
+    const resolution = resolutionRaw.trim().toUpperCase();
+    if (resolution === 'SD' || resolution === 'HD') {
+      config.resolution = resolution;
+    }
+  }
+
+  const presetRaw = source.preset;
+  if (typeof presetRaw === 'string') {
+    const preset = presetRaw.trim().toLowerCase();
+    if (preset === 'fun' || preset === 'normal' || preset === 'spicy') {
+      config.preset = preset;
+    }
+  }
+
+  return Object.keys(config).length > 0 ? config : undefined;
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -40,7 +80,7 @@ export async function POST(request: NextRequest) {
     const {
       channelId, name, description, apiModel, baseUrl, apiKey,
       features, aspectRatios, durations,
-      defaultAspectRatio, defaultDuration, highlight, enabled, sortOrder,
+      defaultAspectRatio, defaultDuration, videoConfigObject, highlight, enabled, sortOrder,
     } = body;
 
     if (!channelId || !name || !apiModel) {
@@ -69,6 +109,7 @@ export async function POST(request: NextRequest) {
       ],
       defaultAspectRatio: defaultAspectRatio || 'landscape',
       defaultDuration: defaultDuration || '10s',
+      videoConfigObject: normalizeVideoConfigObject(videoConfigObject),
       highlight: highlight || false,
       enabled: enabled !== false,
       sortOrder: sortOrder || 0,
@@ -98,7 +139,17 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: '缺少 ID' }, { status: 400 });
     }
 
-    const model = await updateVideoModel(id, updates);
+    const normalizedUpdates =
+      Object.prototype.hasOwnProperty.call(updates, 'videoConfigObject')
+        ? {
+            ...updates,
+            videoConfigObject: normalizeVideoConfigObject(
+              (updates as { videoConfigObject?: unknown }).videoConfigObject
+            ),
+          }
+        : updates;
+
+    const model = await updateVideoModel(id, normalizedUpdates);
     if (!model) {
       return NextResponse.json({ error: '模型不存在' }, { status: 404 });
     }

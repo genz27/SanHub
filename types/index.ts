@@ -93,6 +93,7 @@ export interface GenerationParams {
   modelId?: string;
   aspectRatio?: string;
   duration?: string;
+  videoConfigObject?: VideoConfigObject;
   imageSize?: string;
   size?: string; // Z-Image 分辨率
   referenceImages?: string[]; // base64 数组
@@ -280,6 +281,17 @@ export interface VideoDuration {
   cost: number;    // 该时长的积分消耗
 }
 
+export type VideoAspectRatio = '16:9' | '9:16' | '1:1' | '2:3' | '3:2';
+export type VideoResolution = 'SD' | 'HD';
+export type VideoPreset = 'fun' | 'normal' | 'spicy';
+
+export interface VideoConfigObject {
+  aspect_ratio?: VideoAspectRatio;
+  video_length?: number;
+  resolution?: VideoResolution;
+  preset?: VideoPreset;
+}
+
 // 视频模型配置
 export interface VideoModel {
   id: string;
@@ -294,6 +306,7 @@ export interface VideoModel {
   durations: VideoDuration[];
   defaultAspectRatio: string;
   defaultDuration: string;
+  videoConfigObject?: VideoConfigObject;
   highlight?: boolean;
   enabled: boolean;
   sortOrder: number;
@@ -322,6 +335,7 @@ export interface SafeVideoModel {
   durations: VideoDuration[];
   defaultAspectRatio: string;
   defaultDuration: string;
+  videoConfigObject?: VideoConfigObject;
   highlight?: boolean;
   enabled: boolean;
 }
@@ -414,6 +428,8 @@ export interface SoraGenerateRequest {
   modelId?: string;
   aspectRatio?: string;
   duration?: string;
+  videoConfigObject?: VideoConfigObject;
+  video_config?: VideoConfigObject;
   files?: { mimeType: string; data: string }[];
   referenceImageUrl?: string;
   style_id?: string; // 风格: festive, retro, news, selfie, handheld, anime, comic, golden, vintage

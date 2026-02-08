@@ -122,6 +122,43 @@ function extractPromptAndImages(messages: ChatMessage[]): { prompt: string; imag
   return { prompt: promptParts.join('\n').trim(), imageUrls };
 }
 
+function normalizeIncomingVideoConfigObject(payload: Record<string, unknown>):
+  | { aspect_ratio?: '16:9' | '9:16' | '1:1' | '2:3' | '3:2'; video_length?: number; resolution?: 'SD' | 'HD'; preset?: 'fun' | 'normal' | 'spicy' }
+  | undefined {
+  const raw =
+    (payload.videoConfigObject as Record<string, unknown> | undefined) ||
+    (payload.video_config as Record<string, unknown> | undefined);
+  if (!raw || typeof raw !== 'object') return undefined;
+
+  const output: {
+    aspect_ratio?: '16:9' | '9:16' | '1:1' | '2:3' | '3:2';
+    video_length?: number;
+    resolution?: 'SD' | 'HD';
+    preset?: 'fun' | 'normal' | 'spicy';
+  } = {};
+
+  if (typeof raw.aspect_ratio === 'string' && ['16:9', '9:16', '1:1', '2:3', '3:2'].includes(raw.aspect_ratio.trim())) {
+    output.aspect_ratio = raw.aspect_ratio.trim() as '16:9' | '9:16' | '1:1' | '2:3' | '3:2';
+  }
+  if (typeof raw.video_length === 'number' && Number.isFinite(raw.video_length)) {
+    output.video_length = Math.max(5, Math.min(15, Math.floor(raw.video_length)));
+  }
+  if (typeof raw.resolution === 'string') {
+    const resolution = raw.resolution.trim().toUpperCase();
+    if (resolution === 'SD' || resolution === 'HD') {
+      output.resolution = resolution;
+    }
+  }
+  if (typeof raw.preset === 'string') {
+    const preset = raw.preset.trim().toLowerCase();
+    if (preset === 'fun' || preset === 'normal' || preset === 'spicy') {
+      output.preset = preset;
+    }
+  }
+
+  return Object.keys(output).length > 0 ? output : undefined;
+}
+
 async function loadImageSource(input: string, origin: string): Promise<{ mimeType: string; data: string; dataUrl: string }> {
   const trimmed = input.trim();
   const parsed = parseDataUrl(trimmed);
@@ -293,6 +330,7 @@ export async function POST(request: NextRequest) {
   const created = Math.floor(Date.now() / 1000);
   const completionId = `chatcmpl-${generateId()}`;
   const streamEnabled = Boolean(stream);
+  const normalizedVideoConfigObject = normalizeIncomingVideoConfigObject(payload as Record<string, unknown>);
   const openAiStream = shouldUseOpenAiStream(payload, model, streamEnabled);
 
   if (openAiStream) {
@@ -440,7 +478,13 @@ export async function POST(request: NextRequest) {
 
     if (!streamEnabled) {
       try {
-        const result = await generateWithSora({ prompt: processedPrompt, model, files: fileList });
+        const result = await generateWithSora({
+          prompt: processedPrompt,
+          model,
+          files: fileList,
+          videoConfigObject: normalizedVideoConfigObject,
+          video_config: normalizedVideoConfigObject,
+        });
         const content = buildChatResponseContent('video', result.url);
         return NextResponse.json({
           id: completionId,
@@ -476,7 +520,13 @@ export async function POST(request: NextRequest) {
 
         try {
           const result = await generateWithSora(
-            { prompt: processedPrompt, model, files: fileList },
+            {
+              prompt: processedPrompt,
+              model,
+              files: fileList,
+              videoConfigObject: normalizedVideoConfigObject,
+              video_config: normalizedVideoConfigObject,
+            },
             (progress) => {
               const chunk = buildChatChunk({
                 id: completionId,
