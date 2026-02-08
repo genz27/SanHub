@@ -52,6 +52,76 @@ type ExternalChatResponse = {
   choices?: ExternalChatChoice[];
 };
 
+const VIDEO_URL_PATTERN = /\.(mp4|mov|webm|mkv|m3u8)(\?|#|$)/i;
+const IMAGE_URL_PATTERN = /\.(jpg|jpeg|png|webp|gif|bmp|svg)(\?|#|$)/i;
+
+function normalizeExtractedUrl(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+
+  const cleaned = trimmed.replace(/^['"(<\[]+|[>'")\],.]+$/g, '');
+  if (!cleaned) return null;
+  if (!/^https?:\/\//i.test(cleaned)) return null;
+
+  return cleaned;
+}
+
+function collectCapturedUrls(input: string, pattern: RegExp): string[] {
+  const results: string[] = [];
+  pattern.lastIndex = 0;
+
+  let matched: RegExpExecArray | null;
+  while ((matched = pattern.exec(input)) !== null) {
+    const captured = typeof matched[1] === 'string' ? matched[1] : matched[0];
+    const normalized = normalizeExtractedUrl(captured);
+    if (normalized) {
+      results.push(normalized);
+    }
+  }
+
+  return results;
+}
+
+function scoreVideoCandidate(url: string, baseScore: number): number {
+  const lower = url.toLowerCase();
+  let score = baseScore;
+
+  if (VIDEO_URL_PATTERN.test(lower)) score += 90;
+  if (lower.includes('/v1/files/video/')) score += 80;
+  if (lower.includes('/videos/')) score += 70;
+  if (lower.includes('/video/')) score += 60;
+  if (lower.includes('generated_video')) score += 70;
+  if (lower.includes('video')) score += 20;
+
+  if (IMAGE_URL_PATTERN.test(lower)) score -= 120;
+  if (lower.includes('preview_image')) score -= 80;
+  if (lower.includes('/preview/')) score -= 40;
+  if (lower.includes('poster')) score -= 40;
+
+  return score;
+}
+
+function selectBestVideoCandidate(candidates: Array<{ url: string; score: number }>): string | null {
+  if (candidates.length === 0) return null;
+
+  const deduped = new Map<string, number>();
+  for (const candidate of candidates) {
+    const previousScore = deduped.get(candidate.url);
+    if (previousScore === undefined || candidate.score > previousScore) {
+      deduped.set(candidate.url, candidate.score);
+    }
+  }
+
+  const ranked = Array.from(deduped.entries())
+    .map(([url, score]) => ({ url, score }))
+    .sort((a, b) => b.score - a.score);
+
+  if (ranked.length === 0) return null;
+  if (ranked[0]!.score > 0) return ranked[0]!.url;
+
+  return null;
+}
+
 function buildMediaJson(type: 'video' | 'image', url: string): string {
   return JSON.stringify({ type, url });
 }
@@ -78,33 +148,45 @@ function extractVideoUrlFromText(content: string): string | null {
     return mediaJson.url;
   }
 
-  const htmlVideoMatch = trimmed.match(/<video[^>]*\s(?:src|poster)=['"]([^'"]+)['"]/i);
-  if (htmlVideoMatch?.[1]) {
-    const candidate = htmlVideoMatch[1].trim();
-    if (candidate) return candidate;
+  const candidates: Array<{ url: string; score: number }> = [];
+
+  const videoTagSrcMatches = collectCapturedUrls(
+    trimmed,
+    /<video\b[^>]*\bsrc=['"]([^'"]+)['"]/gi,
+  );
+  for (const url of videoTagSrcMatches) {
+    candidates.push({ url, score: scoreVideoCandidate(url, 140) });
   }
 
-  const htmlSourceMatch = trimmed.match(/<source[^>]*\ssrc=['"]([^'"]+)['"]/i);
-  if (htmlSourceMatch?.[1]) {
-    const candidate = htmlSourceMatch[1].trim();
-    if (candidate) return candidate;
+  const sourceTagMatches = collectCapturedUrls(
+    trimmed,
+    /<source\b[^>]*\bsrc=['"]([^'"]+)['"]/gi,
+  );
+  for (const url of sourceTagMatches) {
+    candidates.push({ url, score: scoreVideoCandidate(url, 120) });
   }
 
-  const markdownVideoMatch = trimmed.match(/!\[[^\]]*]\((https?:\/\/[^)]+)\)/i);
-  if (markdownVideoMatch?.[1]) {
-    const candidate = markdownVideoMatch[1].trim();
-    if (candidate) return candidate;
+  const markdownLinkMatches = collectCapturedUrls(
+    trimmed,
+    /!?\[[^\]]*]\((https?:\/\/[^)]+)\)/gi,
+  );
+  for (const url of markdownLinkMatches) {
+    candidates.push({ url, score: scoreVideoCandidate(url, 70) });
   }
 
-  const urlMatch = trimmed.match(/https?:\/\/[^\s"'<>`]+/i);
-  if (!urlMatch?.[0]) return null;
+  const rawUrlMatches = collectCapturedUrls(
+    trimmed,
+    /(https?:\/\/[^\s"'<>`]+)/gi,
+  );
+  for (const url of rawUrlMatches) {
+    candidates.push({ url, score: scoreVideoCandidate(url, 50) });
+  }
 
-  const candidate = urlMatch[0].trim();
-  const lower = candidate.toLowerCase();
-  if (/(\.mp4|\.mov|\.webm|\.mkv)(\?|#|$)/.test(lower)) return candidate;
-  if (lower.includes('/video/')) return candidate;
-  if (lower.includes('video')) return candidate;
-  return candidate;
+  const best = selectBestVideoCandidate(candidates);
+  if (best) return best;
+
+  const fallback = rawUrlMatches.find((url) => !IMAGE_URL_PATTERN.test(url.toLowerCase())) || null;
+  return fallback;
 }
 
 function normalizeAspectRatioLabel(aspectRatio: string): string {

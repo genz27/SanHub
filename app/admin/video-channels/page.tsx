@@ -417,6 +417,8 @@ export default function VideoChannelsPage() {
       const defaultDuration = normalizedDurations.some((row) => row.value === modelForm.defaultDuration)
         ? modelForm.defaultDuration
         : normalizedDurations[0].value;
+      const normalizedModelBaseUrl = modelForm.baseUrl.trim();
+      const normalizedModelApiKey = modelForm.apiKey.trim();
       const selectedChannel = channels.find((channel) => channel.id === modelChannelId);
       const videoConfigObject =
         selectedChannel?.type === 'grok2api'
@@ -437,8 +439,15 @@ export default function VideoChannelsPage() {
         name: modelForm.name,
         description: modelForm.description,
         apiModel: modelForm.apiModel,
-        baseUrl: modelForm.baseUrl || undefined,
-        apiKey: modelForm.apiKey || undefined,
+        ...(editingModel
+          ? {
+              baseUrl: normalizedModelBaseUrl,
+              apiKey: normalizedModelApiKey,
+            }
+          : {
+              baseUrl: normalizedModelBaseUrl || undefined,
+              apiKey: normalizedModelApiKey || undefined,
+            }),
         features: modelForm.features,
         aspectRatios: normalizedAspectRatios,
         durations: normalizedDurations,
@@ -670,6 +679,49 @@ export default function VideoChannelsPage() {
                 className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
               />
             </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-sm text-foreground/70">模型 Base URL 覆盖（可选）</label>
+              <input
+                type="text"
+                value={modelForm.baseUrl}
+                onChange={(e) => setModelForm({ ...modelForm, baseUrl: e.target.value })}
+                placeholder="留空则继承渠道 Base URL"
+                className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm text-foreground/70">模型 API Key 覆盖（可选）</label>
+              <div className="relative">
+                <input
+                  type={showKeys['model'] ? 'text' : 'password'}
+                  value={modelForm.apiKey}
+                  onChange={(e) => setModelForm({ ...modelForm, apiKey: e.target.value })}
+                  placeholder="留空则继承渠道 API Key（勿加 Bearer 前缀）"
+                  className="w-full px-4 py-3 pr-12 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowKeys({ ...showKeys, model: !showKeys['model'] })}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-foreground/40 hover:text-foreground/70"
+                >
+                  {showKeys['model'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-3 text-xs text-foreground/40">
+            <span>留空后保存即可使用渠道级 Base URL / API Key。</span>
+            <button
+              type="button"
+              onClick={() => setModelForm({ ...modelForm, baseUrl: '', apiKey: '' })}
+              className="px-3 py-1.5 rounded-lg border border-border/70 bg-card/60 hover:bg-card/70 text-foreground/70"
+            >
+              清空覆盖并继承渠道
+            </button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

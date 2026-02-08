@@ -139,15 +139,23 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: '缺少 ID' }, { status: 400 });
     }
 
-    const normalizedUpdates =
-      Object.prototype.hasOwnProperty.call(updates, 'videoConfigObject')
-        ? {
-            ...updates,
-            videoConfigObject: normalizeVideoConfigObject(
-              (updates as { videoConfigObject?: unknown }).videoConfigObject
-            ),
-          }
-        : updates;
+    const normalizedUpdates: Record<string, unknown> = { ...updates };
+
+    if (Object.prototype.hasOwnProperty.call(updates, 'baseUrl')) {
+      const value = (updates as { baseUrl?: unknown }).baseUrl;
+      normalizedUpdates.baseUrl = typeof value === 'string' ? value.trim() : '';
+    }
+
+    if (Object.prototype.hasOwnProperty.call(updates, 'apiKey')) {
+      const value = (updates as { apiKey?: unknown }).apiKey;
+      normalizedUpdates.apiKey = typeof value === 'string' ? value.trim() : '';
+    }
+
+    if (Object.prototype.hasOwnProperty.call(updates, 'videoConfigObject')) {
+      normalizedUpdates.videoConfigObject = normalizeVideoConfigObject(
+        (updates as { videoConfigObject?: unknown }).videoConfigObject
+      );
+    }
 
     const model = await updateVideoModel(id, normalizedUpdates);
     if (!model) {
