@@ -18,6 +18,7 @@ type ClassifiedVideoModel = {
   name: string;
   description: string;
   category: VideoCategory;
+  categoryLabel: string;
   features: VideoModelFeatures;
   aspectRatios: Array<{ value: string; label: string }>;
   defaultAspectRatio: string;
@@ -25,11 +26,30 @@ type ClassifiedVideoModel = {
   defaultDuration: string;
 };
 
+type ImportRequestBody = {
+  channelId?: string;
+  modelIds?: string[];
+};
+
 const CATEGORY_ORDER: Record<VideoCategory, number> = {
   t2v: 1,
   i2v: 2,
   r2v: 3,
   upsample: 4,
+};
+
+const CATEGORY_LABELS: Record<VideoCategory, string> = {
+  t2v: '文生视频',
+  i2v: '图生视频',
+  r2v: '多图视频',
+  upsample: '视频放大',
+};
+
+const CATEGORY_DESCRIPTION: Record<VideoCategory, string> = {
+  t2v: '不支持上传图片',
+  i2v: '支持 1-2 张图片（首帧/首尾帧）',
+  r2v: '支持多张参考图片',
+  upsample: '用于视频放大输出',
 };
 
 function inferDurationSeconds(modelId: string): 10 | 15 | 25 {
@@ -51,15 +71,55 @@ function inferDurationCost(modelId: string, category: VideoCategory, seconds: 10
   return 100;
 }
 
-function inferAspectRatio(modelId: string): { value: string; label: string } {
+function inferAspectRatio(modelId: string): { value: string; label: string; zhLabel: string } {
   const lower = modelId.toLowerCase();
   if (lower.includes('portrait')) {
-    return { value: 'portrait', label: '9:16' };
+    return { value: 'portrait', label: '9:16', zhLabel: '竖屏' };
   }
   if (lower.includes('square')) {
-    return { value: 'square', label: '1:1' };
+    return { value: 'square', label: '1:1', zhLabel: '方屏' };
   }
-  return { value: 'landscape', label: '16:9' };
+  return { value: 'landscape', label: '16:9', zhLabel: '横屏' };
+}
+
+function inferOutputResolution(modelId: string): string | null {
+  const lower = modelId.toLowerCase();
+  if (/_4k$/.test(lower)) return '4K';
+  if (/_1080p$/.test(lower)) return '1080P';
+  return null;
+}
+
+function inferVeoVersionLabel(modelId: string): string {
+  const lower = modelId.toLowerCase();
+  const match = lower.match(/^veo_(\d+)_(\d+)/);
+  if (match) return `Veo ${match[1]}.${match[2]}`;
+  const fallback = lower.match(/^veo_(\d+)/);
+  if (fallback) return `Veo ${fallback[1]}`;
+  return 'Veo';
+}
+
+function inferModelTierLabel(modelId: string): string {
+  const lower = modelId.toLowerCase();
+  if (lower.includes('ultra_relaxed')) return 'Ultra Relaxed';
+  if (lower.includes('ultra')) return 'Ultra';
+  if (lower.includes('fast')) return 'Fast';
+  return 'Standard';
+}
+
+function buildLocalizedName(params: {
+  category: VideoCategory;
+  orientationZh: string;
+  seconds: 10 | 15 | 25;
+  outputResolution: string | null;
+  versionLabel: string;
+  tierLabel: string;
+}): string {
+  const categoryLabel = CATEGORY_LABELS[params.category];
+  if (params.category === 'upsample') {
+    const output = params.outputResolution || '高清';
+    return `${categoryLabel}（${output}）${params.versionLabel} ${params.tierLabel}`;
+  }
+  return `${categoryLabel}（${params.orientationZh} ${params.seconds}秒）${params.versionLabel} ${params.tierLabel}`;
 }
 
 function classifyFlow2ApiModel(modelId: string): ClassifiedVideoModel | null {
@@ -70,7 +130,6 @@ function classifyFlow2ApiModel(modelId: string): ClassifiedVideoModel | null {
   const isT2V = lower.includes('_t2v_');
   const isI2V = lower.includes('_i2v_');
   const isR2V = lower.includes('_r2v_');
-
   if (!isT2V && !isI2V && !isR2V) return null;
 
   let category: VideoCategory;
@@ -83,13 +142,9 @@ function classifyFlow2ApiModel(modelId: string): ClassifiedVideoModel | null {
   const cost = inferDurationCost(modelId, category, seconds);
   const duration = `${seconds}s`;
   const aspectRatio = inferAspectRatio(modelId);
-
-  const descriptionByCategory: Record<VideoCategory, string> = {
-    t2v: 'Flow2API text-to-video model',
-    i2v: 'Flow2API image-to-video model (1-2 images)',
-    r2v: 'Flow2API reference-images-to-video model (multiple images)',
-    upsample: 'Flow2API video upsample model',
-  };
+  const outputResolution = inferOutputResolution(modelId);
+  const versionLabel = inferVeoVersionLabel(modelId);
+  const tierLabel = inferModelTierLabel(modelId);
 
   const features: VideoModelFeatures = {
     textToVideo: true,
@@ -98,13 +153,33 @@ function classifyFlow2ApiModel(modelId: string): ClassifiedVideoModel | null {
     supportStyles: false,
   };
 
+  const categoryLabel = CATEGORY_LABELS[category];
+  const usage = CATEGORY_DESCRIPTION[category];
+  const readableName = buildLocalizedName({
+    category,
+    orientationZh: aspectRatio.zhLabel,
+    seconds,
+    outputResolution,
+    versionLabel,
+    tierLabel,
+  });
+  const readableDescription = [
+    usage,
+    `方向: ${aspectRatio.zhLabel}`,
+    category === 'upsample' ? `输出: ${outputResolution || '高清'}` : `时长: ${seconds}秒`,
+    `版本: ${versionLabel}`,
+    `等级: ${tierLabel}`,
+    `模型ID: ${modelId}`,
+  ].join(' | ');
+
   return {
     apiModel: modelId,
-    name: modelId,
-    description: descriptionByCategory[category],
+    name: readableName,
+    description: readableDescription,
     category,
+    categoryLabel,
     features,
-    aspectRatios: [aspectRatio],
+    aspectRatios: [{ value: aspectRatio.value, label: aspectRatio.label }],
     defaultAspectRatio: aspectRatio.value,
     durations: [{ value: duration, label: `${seconds} 秒`, cost }],
     defaultDuration: duration,
@@ -155,6 +230,13 @@ async function fetchChannelRemoteModels(channelId: string): Promise<RemoteModel[
   return Array.isArray(models) ? models : [];
 }
 
+function parseSelectedModelIds(body: ImportRequestBody): Set<string> {
+  const modelIds = Array.isArray(body.modelIds)
+    ? body.modelIds.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : [];
+  return new Set(modelIds);
+}
+
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -175,6 +257,13 @@ export async function GET(request: NextRequest) {
         .filter((model): model is ClassifiedVideoModel => Boolean(model))
     );
 
+    const existingModels = await getVideoModels();
+    const existingApiModelSet = new Set(
+      existingModels
+        .filter((model) => model.channelId === channelId)
+        .map((model) => model.apiModel)
+    );
+
     return NextResponse.json({
       success: true,
       data: {
@@ -182,10 +271,13 @@ export async function GET(request: NextRequest) {
         matched: classified.length,
         models: classified.map((model) => ({
           id: model.apiModel,
-          name: model.name,
+          displayName: model.name,
+          description: model.description,
           category: model.category,
+          categoryLabel: model.categoryLabel,
           defaultAspectRatio: model.defaultAspectRatio,
           defaultDuration: model.defaultDuration,
+          alreadyImported: existingApiModelSet.has(model.apiModel),
         })),
       },
     });
@@ -205,22 +297,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '无权限' }, { status: 403 });
     }
 
-    const body = await request.json().catch(() => ({}));
-    const channelId = typeof body?.channelId === 'string' ? body.channelId : '';
+    const body = (await request.json().catch(() => ({}))) as ImportRequestBody;
+    const channelId = typeof body.channelId === 'string' ? body.channelId : '';
     if (!channelId) {
       return NextResponse.json({ error: '缺少 channelId' }, { status: 400 });
     }
 
+    const selectedModelIds = parseSelectedModelIds(body);
     const remoteModels = await fetchChannelRemoteModels(channelId);
-    const classified = sortClassifiedModels(
+    let classified = sortClassifiedModels(
       remoteModels
         .map((model) => classifyFlow2ApiModel(model.id))
         .filter((model): model is ClassifiedVideoModel => Boolean(model))
     );
 
+    if (selectedModelIds.size > 0) {
+      classified = classified.filter((model) => selectedModelIds.has(model.apiModel));
+    }
+
     if (classified.length === 0) {
       return NextResponse.json(
-        { error: '远程 /v1/models 未发现可导入的视频模型' },
+        { error: selectedModelIds.size > 0 ? '未匹配到可导入的已选模型' : '远程 /v1/models 未发现可导入的视频模型' },
         { status: 400 }
       );
     }

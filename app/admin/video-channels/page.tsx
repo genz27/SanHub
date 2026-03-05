@@ -31,6 +31,16 @@ const DEFAULT_FEATURES: VideoModelFeatures = {
 
 type AspectRatioRow = { value: string; label: string };
 type DurationRow = { value: string; label: string; cost: number };
+type RemoteFlow2ApiModel = {
+  id: string;
+  displayName: string;
+  description: string;
+  category: 't2v' | 'i2v' | 'r2v' | 'upsample';
+  categoryLabel: string;
+  defaultAspectRatio: string;
+  defaultDuration: string;
+  alreadyImported: boolean;
+};
 
 const DEFAULT_ASPECT_RATIOS: AspectRatioRow[] = [
   { value: 'landscape', label: '16:9' },
@@ -129,6 +139,10 @@ export default function VideoChannelsPage() {
   const [saving, setSaving] = useState(false);
   const [migrating, setMigrating] = useState(false);
   const [importingChannelId, setImportingChannelId] = useState<string | null>(null);
+  const [remoteFlowModelsChannelId, setRemoteFlowModelsChannelId] = useState<string | null>(null);
+  const [remoteFlowModels, setRemoteFlowModels] = useState<RemoteFlow2ApiModel[]>([]);
+  const [fetchingRemoteFlowModels, setFetchingRemoteFlowModels] = useState(false);
+  const [selectedRemoteFlowModels, setSelectedRemoteFlowModels] = useState<Set<string>>(new Set());
   const [expandedChannels, setExpandedChannels] = useState<Set<string>>(new Set());
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
 
@@ -381,15 +395,75 @@ export default function VideoChannelsPage() {
     }
   };
 
-  const importFlow2ApiModels = async (channel: VideoChannel) => {
+  const fetchRemoteFlow2ApiModels = async (channel: VideoChannel) => {
     if (channel.type !== 'flow2api') return;
-    if (!confirm('将从该渠道的 /v1/models 一键导入视频模型（自动跳过已存在模型），是否继续？')) return;
-    setImportingChannelId(channel.id);
+    setFetchingRemoteFlowModels(true);
+    setRemoteFlowModelsChannelId(channel.id);
+    setRemoteFlowModels([]);
+    setSelectedRemoteFlowModels(new Set());
+    try {
+      const res = await fetch(`/api/admin/video-channels/models?channelId=${channel.id}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || '拉取模型失败');
+      }
+      const remoteItems = (data?.data?.models || []) as RemoteFlow2ApiModel[];
+      setRemoteFlowModels(remoteItems);
+      setSelectedRemoteFlowModels(
+        new Set(remoteItems.filter((item) => !item.alreadyImported).map((item) => item.id))
+      );
+      setExpandedChannels((prev) => {
+        const next = new Set(prev);
+        next.add(channel.id);
+        return next;
+      });
+      toast({ title: `已拉取 ${remoteItems.length} 个可识别视频模型` });
+    } catch (err) {
+      toast({
+        title: '拉取失败',
+        description: err instanceof Error ? err.message : '未知错误',
+        variant: 'destructive',
+      });
+      setRemoteFlowModelsChannelId(null);
+    } finally {
+      setFetchingRemoteFlowModels(false);
+    }
+  };
+
+  const closeRemoteFlow2ApiModels = () => {
+    setRemoteFlowModelsChannelId(null);
+    setRemoteFlowModels([]);
+    setSelectedRemoteFlowModels(new Set());
+  };
+
+  const toggleRemoteFlowModelSelection = (modelId: string) => {
+    setSelectedRemoteFlowModels((prev) => {
+      const next = new Set(prev);
+      if (next.has(modelId)) next.delete(modelId);
+      else next.add(modelId);
+      return next;
+    });
+  };
+
+  const selectAllRemoteFlowModels = () => {
+    setSelectedRemoteFlowModels(new Set(remoteFlowModels.filter((item) => !item.alreadyImported).map((item) => item.id)));
+  };
+
+  const deselectAllRemoteFlowModels = () => {
+    setSelectedRemoteFlowModels(new Set());
+  };
+
+  const importSelectedFlow2ApiModels = async () => {
+    if (!remoteFlowModelsChannelId || selectedRemoteFlowModels.size === 0) return;
+    setImportingChannelId(remoteFlowModelsChannelId);
     try {
       const res = await fetch('/api/admin/video-channels/models', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ channelId: channel.id }),
+        body: JSON.stringify({
+          channelId: remoteFlowModelsChannelId,
+          modelIds: Array.from(selectedRemoteFlowModels),
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -400,6 +474,10 @@ export default function VideoChannelsPage() {
         title: `导入完成：新增 ${summary.created || 0}，跳过 ${summary.skipped || 0}`,
       });
       await loadData();
+      const currentChannel = channels.find((item) => item.id === remoteFlowModelsChannelId);
+      if (currentChannel && currentChannel.type === 'flow2api') {
+        await fetchRemoteFlow2ApiModels(currentChannel);
+      }
     } catch (err) {
       toast({
         title: '导入失败',
@@ -1112,12 +1190,18 @@ export default function VideoChannelsPage() {
                       </button>
                       {channel.type === 'flow2api' && (
                         <button
-                          onClick={() => importFlow2ApiModels(channel)}
-                          disabled={importingChannelId === channel.id}
-                          title="一键导入 Flow2API 视频模型"
+                          onClick={() => {
+                            if (remoteFlowModelsChannelId === channel.id) {
+                              closeRemoteFlow2ApiModels();
+                            } else {
+                              fetchRemoteFlow2ApiModels(channel);
+                            }
+                          }}
+                          disabled={importingChannelId === channel.id || fetchingRemoteFlowModels}
+                          title="拉取并选择 Flow2API 视频模型"
                           className="p-2 text-foreground/40 hover:text-cyan-400 hover:bg-cyan-500/10 rounded-lg disabled:opacity-50"
                         >
-                          {importingChannelId === channel.id ? (
+                          {fetchingRemoteFlowModels && remoteFlowModelsChannelId === channel.id ? (
                             <Loader2 className="w-4 h-4 animate-spin" />
                           ) : (
                             <RefreshCw className="w-4 h-4" />
@@ -1141,6 +1225,92 @@ export default function VideoChannelsPage() {
 
                   {isExpanded && (
                     <div className="border-t border-border/70 p-4 space-y-2 bg-card/60">
+                      {remoteFlowModelsChannelId === channel.id && (
+                        <div className="mb-3 p-3 bg-card/70 border border-border/70 rounded-xl space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="text-sm font-medium text-foreground">Flow2API 模型选择导入</div>
+                            <button
+                              type="button"
+                              onClick={closeRemoteFlow2ApiModels}
+                              className="text-xs text-foreground/40 hover:text-foreground"
+                            >
+                              关闭
+                            </button>
+                          </div>
+
+                          {fetchingRemoteFlowModels ? (
+                            <div className="flex items-center justify-center py-4 text-foreground/40">
+                              <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                              拉取模型中...
+                            </div>
+                          ) : remoteFlowModels.length === 0 ? (
+                            <p className="text-sm text-foreground/40 text-center py-2">未发现可识别的 Flow2API 视频模型</p>
+                          ) : (
+                            <>
+                              <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                                {remoteFlowModels.map((item) => {
+                                  const isSelected = selectedRemoteFlowModels.has(item.id);
+                                  return (
+                                    <button
+                                      key={item.id}
+                                      type="button"
+                                      onClick={() => !item.alreadyImported && toggleRemoteFlowModelSelection(item.id)}
+                                      disabled={item.alreadyImported}
+                                      className={`w-full text-left p-3 rounded-xl border transition-all ${
+                                        item.alreadyImported
+                                          ? 'bg-card/50 border-border/50 opacity-60 cursor-not-allowed'
+                                          : isSelected
+                                            ? 'bg-cyan-500/10 border-cyan-500/30'
+                                            : 'bg-card/50 border-border/70 hover:bg-card/70'
+                                      }`}
+                                    >
+                                      <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2">
+                                          <input
+                                            type="checkbox"
+                                            checked={isSelected || item.alreadyImported}
+                                            readOnly
+                                            className="w-4 h-4 rounded border-border/70 bg-card/60"
+                                          />
+                                          <span className="text-sm font-medium text-foreground">{item.displayName}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <span className="px-2 py-0.5 text-xs rounded-full bg-card/80 text-foreground/60">
+                                            {item.categoryLabel}
+                                          </span>
+                                          {item.alreadyImported && (
+                                            <span className="px-2 py-0.5 text-xs rounded-full bg-green-500/20 text-green-400">
+                                              已导入
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                      <p className="text-xs text-foreground/40 mt-1">{item.description}</p>
+                                      <p className="text-xs text-foreground/30 mt-1">
+                                        {item.id} · 默认 {item.defaultAspectRatio} / {item.defaultDuration}
+                                      </p>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+
+                              <div className="flex items-center gap-2 text-xs text-foreground/50">
+                                <button onClick={selectAllRemoteFlowModels} className="hover:text-foreground">全选可导入</button>
+                                <button onClick={deselectAllRemoteFlowModels} className="hover:text-foreground">清空选择</button>
+                                <span className="ml-auto">{selectedRemoteFlowModels.size} 已选择</span>
+                                <button
+                                  onClick={importSelectedFlow2ApiModels}
+                                  disabled={selectedRemoteFlowModels.size === 0 || importingChannelId === channel.id}
+                                  className="px-3 py-1.5 text-xs rounded-lg bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 disabled:opacity-50"
+                                >
+                                  {importingChannelId === channel.id ? '导入中...' : `导入选中 (${selectedRemoteFlowModels.size})`}
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
+
                       {channelModels.length === 0 ? (
                         <p className="text-center text-foreground/30 py-4">暂无模型</p>
                       ) : (

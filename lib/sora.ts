@@ -55,25 +55,40 @@ type ExternalChatResponse = {
 const VIDEO_URL_PATTERN = /\.(mp4|mov|webm|mkv|m3u8)(\?|#|$)/i;
 const IMAGE_URL_PATTERN = /\.(jpg|jpeg|png|webp|gif|bmp|svg)(\?|#|$)/i;
 
-function normalizeExtractedUrl(raw: string): string | null {
+function normalizeExtractedUrl(raw: string, baseUrl?: string): string | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
 
   const cleaned = trimmed.replace(/^['"(<\[]+|[>'")\],.]+$/g, '');
   if (!cleaned) return null;
-  if (!/^https?:\/\//i.test(cleaned)) return null;
+  if (/^https?:\/\//i.test(cleaned)) return cleaned;
 
-  return cleaned;
+  if (baseUrl) {
+    const canResolveRelative =
+      cleaned.startsWith('/') ||
+      cleaned.startsWith('./') ||
+      cleaned.startsWith('../') ||
+      cleaned.startsWith('cache/');
+    if (canResolveRelative) {
+      try {
+        return new URL(cleaned, baseUrl).toString();
+      } catch {
+        return null;
+      }
+    }
+  }
+
+  return null;
 }
 
-function collectCapturedUrls(input: string, pattern: RegExp): string[] {
+function collectCapturedUrls(input: string, pattern: RegExp, baseUrl?: string): string[] {
   const results: string[] = [];
   pattern.lastIndex = 0;
 
   let matched: RegExpExecArray | null;
   while ((matched = pattern.exec(input)) !== null) {
     const captured = typeof matched[1] === 'string' ? matched[1] : matched[0];
-    const normalized = normalizeExtractedUrl(captured);
+    const normalized = normalizeExtractedUrl(captured, baseUrl);
     if (normalized) {
       results.push(normalized);
     }
@@ -139,13 +154,14 @@ function parseMediaJsonFromContent(content: string): { type: 'video' | 'image'; 
   }
 }
 
-function extractVideoUrlFromText(content: string): string | null {
+function extractVideoUrlFromText(content: string, baseUrl?: string): string | null {
   const trimmed = content.trim();
   if (!trimmed) return null;
 
   const mediaJson = parseMediaJsonFromContent(trimmed);
   if (mediaJson?.type === 'video' && mediaJson.url) {
-    return mediaJson.url;
+    const normalized = normalizeExtractedUrl(mediaJson.url, baseUrl);
+    if (normalized) return normalized;
   }
 
   const candidates: Array<{ url: string; score: number }> = [];
@@ -153,6 +169,7 @@ function extractVideoUrlFromText(content: string): string | null {
   const videoTagSrcMatches = collectCapturedUrls(
     trimmed,
     /<video\b[^>]*\bsrc=['"]([^'"]+)['"]/gi,
+    baseUrl,
   );
   for (const url of videoTagSrcMatches) {
     candidates.push({ url, score: scoreVideoCandidate(url, 140) });
@@ -161,6 +178,7 @@ function extractVideoUrlFromText(content: string): string | null {
   const sourceTagMatches = collectCapturedUrls(
     trimmed,
     /<source\b[^>]*\bsrc=['"]([^'"]+)['"]/gi,
+    baseUrl,
   );
   for (const url of sourceTagMatches) {
     candidates.push({ url, score: scoreVideoCandidate(url, 120) });
@@ -168,7 +186,8 @@ function extractVideoUrlFromText(content: string): string | null {
 
   const markdownLinkMatches = collectCapturedUrls(
     trimmed,
-    /!?\[[^\]]*]\((https?:\/\/[^)]+)\)/gi,
+    /!?\[[^\]]*]\(([^)]+)\)/gi,
+    baseUrl,
   );
   for (const url of markdownLinkMatches) {
     candidates.push({ url, score: scoreVideoCandidate(url, 70) });
@@ -177,6 +196,7 @@ function extractVideoUrlFromText(content: string): string | null {
   const rawUrlMatches = collectCapturedUrls(
     trimmed,
     /(https?:\/\/[^\s"'<>`]+)/gi,
+    baseUrl,
   );
   for (const url of rawUrlMatches) {
     candidates.push({ url, score: scoreVideoCandidate(url, 50) });
@@ -431,7 +451,7 @@ async function generateViaExternalChat(
     throw new Error('上游返回缺少有效内容');
   }
 
-  const rawUrl = extractVideoUrlFromText(content);
+  const rawUrl = extractVideoUrlFromText(content, effectiveBaseUrl);
   if (!rawUrl) {
     logDebug('[Video Adapter] Unrecognized upstream content:', content.slice(0, 500));
     throw new Error('无法从上游响应中解析视频链接');
