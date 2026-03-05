@@ -44,12 +44,21 @@ type ExternalVideoPayload = {
 
 type ExternalChatChoice = {
   message?: {
-    content?: string;
+    content?: unknown;
+  };
+  delta?: {
+    content?: unknown;
+    reasoning_content?: unknown;
   };
 };
 
 type ExternalChatResponse = {
   choices?: ExternalChatChoice[];
+  error?: {
+    message?: string;
+    detail?: string;
+  } | string;
+  detail?: string;
 };
 
 const VIDEO_URL_PATTERN = /\.(mp4|mov|webm|mkv|m3u8)(\?|#|$)/i;
@@ -68,7 +77,8 @@ function normalizeExtractedUrl(raw: string, baseUrl?: string): string | null {
       cleaned.startsWith('/') ||
       cleaned.startsWith('./') ||
       cleaned.startsWith('../') ||
-      cleaned.startsWith('cache/');
+      cleaned.startsWith('cache/') ||
+      cleaned.startsWith('tmp/');
     if (canResolveRelative) {
       try {
         return new URL(cleaned, baseUrl).toString();
@@ -207,6 +217,202 @@ function extractVideoUrlFromText(content: string, baseUrl?: string): string | nu
 
   const fallback = rawUrlMatches.find((url) => !IMAGE_URL_PATTERN.test(url.toLowerCase())) || null;
   return fallback;
+}
+
+function normalizeContentToText(content: unknown, depth = 0): string {
+  if (depth > 6 || content === null || content === undefined) return '';
+  if (typeof content === 'string') return content;
+
+  if (Array.isArray(content)) {
+    return content
+      .map((item) => normalizeContentToText(item, depth + 1))
+      .filter(Boolean)
+      .join('\n')
+      .trim();
+  }
+
+  if (typeof content === 'object') {
+    const record = content as Record<string, unknown>;
+    if (typeof record.text === 'string') return record.text;
+    if (typeof record.content === 'string') return record.content;
+    if (typeof record.url === 'string') return record.url;
+
+    return Object.values(record)
+      .map((item) => normalizeContentToText(item, depth + 1))
+      .filter(Boolean)
+      .join('\n')
+      .trim();
+  }
+
+  return '';
+}
+
+function compactSnippet(content: string, max = 200): string {
+  return content.replace(/\s+/g, ' ').trim().slice(0, max);
+}
+
+function extractUpstreamErrorMessage(payload: unknown): string | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const record = payload as Record<string, unknown>;
+
+  const detail = typeof record.detail === 'string' ? record.detail.trim() : '';
+  if (detail) return detail;
+
+  const error = record.error;
+  if (typeof error === 'string' && error.trim()) {
+    return error.trim();
+  }
+  if (error && typeof error === 'object') {
+    const errorRecord = error as Record<string, unknown>;
+    if (typeof errorRecord.message === 'string' && errorRecord.message.trim()) {
+      return errorRecord.message.trim();
+    }
+    if (typeof errorRecord.detail === 'string' && errorRecord.detail.trim()) {
+      return errorRecord.detail.trim();
+    }
+  }
+
+  return null;
+}
+
+function extractContentFromExternalChatPayload(payload: unknown): string {
+  if (!payload || typeof payload !== 'object') return '';
+  const record = payload as Record<string, unknown>;
+  const choices = Array.isArray(record.choices) ? record.choices : [];
+  const segments: string[] = [];
+
+  for (const choice of choices) {
+    if (!choice || typeof choice !== 'object') continue;
+    const item = choice as Record<string, unknown>;
+    const message = item.message as Record<string, unknown> | undefined;
+    const delta = item.delta as Record<string, unknown> | undefined;
+
+    const candidates = [
+      message?.content,
+      delta?.content,
+      delta?.reasoning_content,
+    ];
+
+    for (const candidate of candidates) {
+      const text = normalizeContentToText(candidate);
+      if (text) segments.push(text);
+    }
+  }
+
+  return segments.join('\n').trim();
+}
+
+function extractVideoUrlFromUnknownPayload(payload: unknown, baseUrl?: string): string | null {
+  const queue: unknown[] = [payload];
+  const visited = new Set<unknown>();
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (current === null || current === undefined) continue;
+
+    if (typeof current === 'string') {
+      const fromText = extractVideoUrlFromText(current, baseUrl);
+      if (fromText) return fromText;
+
+      const normalized = normalizeExtractedUrl(current, baseUrl);
+      if (normalized && scoreVideoCandidate(normalized, 0) > 0) {
+        return normalized;
+      }
+      continue;
+    }
+
+    if (typeof current !== 'object') continue;
+    if (visited.has(current)) continue;
+    visited.add(current);
+
+    if (Array.isArray(current)) {
+      for (const item of current) queue.push(item);
+      continue;
+    }
+
+    for (const value of Object.values(current as Record<string, unknown>)) {
+      queue.push(value);
+    }
+  }
+
+  return null;
+}
+
+function parseSseDataEvents(rawText: string): string[] {
+  const events: string[] = [];
+  const normalized = rawText.replace(/\r\n/g, '\n');
+  const lines = normalized.split('\n');
+  let dataLines: string[] = [];
+
+  for (const line of lines) {
+    if (line.startsWith('data:')) {
+      dataLines.push(line.slice(5).trimStart());
+      continue;
+    }
+
+    if (line.trim() === '') {
+      if (dataLines.length > 0) {
+        events.push(dataLines.join('\n'));
+        dataLines = [];
+      }
+      continue;
+    }
+  }
+
+  if (dataLines.length > 0) {
+    events.push(dataLines.join('\n'));
+  }
+
+  return events;
+}
+
+function extractVideoUrlFromSseResponseText(
+  rawText: string,
+  baseUrl?: string
+): { url: string | null; errorMessage: string | null; text: string } {
+  const events = parseSseDataEvents(rawText);
+  const textSegments: string[] = [];
+  let errorMessage: string | null = null;
+
+  for (const eventData of events) {
+    const data = eventData.trim();
+    if (!data || data === '[DONE]') continue;
+
+    let payload: unknown = null;
+    try {
+      payload = JSON.parse(data);
+    } catch {
+      const directUrl = extractVideoUrlFromText(data, baseUrl);
+      if (directUrl) {
+        return { url: directUrl, errorMessage, text: textSegments.join('\n').trim() };
+      }
+      textSegments.push(data);
+      continue;
+    }
+
+    const upstreamError = extractUpstreamErrorMessage(payload);
+    if (upstreamError && !errorMessage) {
+      errorMessage = upstreamError;
+    }
+
+    const urlFromPayload = extractVideoUrlFromUnknownPayload(payload, baseUrl);
+    if (urlFromPayload) {
+      return { url: urlFromPayload, errorMessage, text: textSegments.join('\n').trim() };
+    }
+
+    const contentText = extractContentFromExternalChatPayload(payload);
+    if (contentText) {
+      textSegments.push(contentText);
+      const urlFromContent = extractVideoUrlFromText(contentText, baseUrl);
+      if (urlFromContent) {
+        return { url: urlFromContent, errorMessage, text: textSegments.join('\n').trim() };
+      }
+    }
+  }
+
+  const mergedText = textSegments.join('\n').trim();
+  const fallbackUrl = mergedText ? extractVideoUrlFromText(mergedText, baseUrl) : null;
+  return { url: fallbackUrl, errorMessage, text: mergedText };
 }
 
 function normalizeAspectRatioLabel(aspectRatio: string): string {
@@ -409,11 +615,12 @@ async function generateViaExternalChat(
   const resolvedModel = mapChannelModel(channel.type, model, request);
   const files = request.files || [];
   const prompt = request.prompt || '';
+  const useStreamingResponse = channel.type === 'flow2api';
 
   const payload: Record<string, unknown> = {
     model: resolvedModel,
     messages: buildVideoMessages({ prompt, model: resolvedModel, files }),
-    stream: false,
+    stream: useStreamingResponse,
   };
 
   if (channel.type === 'grok2api') {
@@ -428,6 +635,7 @@ async function generateViaExternalChat(
     channelName: channel.name,
     apiUrl,
     model: resolvedModel,
+    stream: useStreamingResponse,
     hasImages: files.some((file) => file.mimeType.startsWith('image/')),
   });
 
@@ -440,20 +648,42 @@ async function generateViaExternalChat(
     body: JSON.stringify(payload),
   }));
 
-  const data = (await response.json().catch(() => null)) as ExternalChatResponse | null;
+  const rawBody = await response.text();
+
+  let parsedBody: unknown = null;
+  if (rawBody.trim()) {
+    try {
+      parsedBody = JSON.parse(rawBody) as ExternalChatResponse;
+    } catch {
+      parsedBody = null;
+    }
+  }
+
   if (!response.ok) {
-    const detail = data ? JSON.stringify(data).slice(0, 400) : '';
+    const upstreamError = extractUpstreamErrorMessage(parsedBody);
+    const detail = upstreamError || compactSnippet(rawBody, 400);
     throw new Error(`上游返回错误 (${response.status})${detail ? `: ${detail}` : ''}`);
   }
 
-  const content = data?.choices?.[0]?.message?.content;
-  if (!content || typeof content !== 'string') {
-    throw new Error('上游返回缺少有效内容');
+  let rawUrl: string | null = null;
+  let upstreamMessage = '';
+
+  if (useStreamingResponse) {
+    const parsedStream = extractVideoUrlFromSseResponseText(rawBody, effectiveBaseUrl);
+    rawUrl = parsedStream.url;
+    upstreamMessage = parsedStream.errorMessage || parsedStream.text;
+  } else {
+    rawUrl = extractVideoUrlFromUnknownPayload(parsedBody, effectiveBaseUrl);
+    upstreamMessage = extractContentFromExternalChatPayload(parsedBody);
   }
 
-  const rawUrl = extractVideoUrlFromText(content, effectiveBaseUrl);
   if (!rawUrl) {
-    logDebug('[Video Adapter] Unrecognized upstream content:', content.slice(0, 500));
+    const message = compactSnippet(upstreamMessage, 220);
+    if (message) {
+      logWarn('[Video Adapter] Upstream response without video URL:', message);
+      throw new Error(`上游未返回视频链接: ${message}`);
+    }
+    logWarn('[Video Adapter] Unrecognized upstream payload:', compactSnippet(rawBody, 300));
     throw new Error('无法从上游响应中解析视频链接');
   }
 
