@@ -4,7 +4,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { generateImage } from '@/lib/sora-api';
 import { saveGeneration, updateUserBalance, getUserById, updateGeneration, getSystemConfig, refundGenerationBalance } from '@/lib/db';
-import { checkRateLimit, RateLimitConfig } from '@/lib/rate-limit';
+import { checkRateLimit } from '@/lib/rate-limit';
 import { fetchExternalBuffer } from '@/lib/safe-fetch';
 import type { Generation } from '@/types';
 import { assertPromptsAllowed, isPromptBlockedError } from '@/lib/prompt-blocklist';
@@ -102,7 +102,14 @@ async function processGenerationTask(
 
 export async function POST(request: NextRequest) {
   try {
-    const rateLimit = checkRateLimit(request, RateLimitConfig.GENERATE, 'generate-sora-image');
+    const systemConfig = await getSystemConfig();
+    const imageMaxRequests = Math.max(1, Number(systemConfig.rateLimit?.imageMaxRequests) || 30);
+    const imageWindowSeconds = Math.max(1, Number(systemConfig.rateLimit?.imageWindowSeconds) || 60);
+    const rateLimit = checkRateLimit(
+      request,
+      { maxRequests: imageMaxRequests, windowSeconds: imageWindowSeconds },
+      'generate-sora-image'
+    );
     if (!rateLimit.allowed) {
       return NextResponse.json(
         { error: 'Too many requests' },
@@ -138,8 +145,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '用户不存在' }, { status: 401 });
     }
 
-    const config = await getSystemConfig();
-    const estimatedCost = config.pricing.soraImage || 1;
+    const estimatedCost = systemConfig.pricing.soraImage || 1;
 
     if (user.balance < estimatedCost) {
       return NextResponse.json(

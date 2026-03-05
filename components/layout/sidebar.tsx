@@ -20,49 +20,7 @@ interface SidebarProps {
   user: SafeUser;
 }
 
-type GenerationStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
-
-interface VideoTaskStatus {
-  id: string;
-  status: GenerationStatus;
-  createdAt: number;
-  updatedAt: number;
-  durationMs?: number;
-  elapsedMs?: number;
-}
-
 const STATUS_POLL_MS = 5_000;
-const VIDEO_POLL_MS = 5_000;
-const VIDEO_DISPLAY_LIMIT = 3;
-
-const statusLabelMap: Record<GenerationStatus, string> = {
-  pending: '排队中',
-  processing: '生成中',
-  completed: '已完成',
-  failed: '失败',
-  cancelled: '已取消',
-};
-
-const statusColorMap: Record<GenerationStatus, string> = {
-  pending: 'bg-amber-400',
-  processing: 'bg-sky-400',
-  completed: 'bg-emerald-400',
-  failed: 'bg-rose-400',
-  cancelled: 'bg-zinc-400',
-};
-
-function formatDuration(ms: number): string {
-  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  const parts: string[] = [];
-
-  if (hours > 0) parts.push(`${hours}小时`);
-  if (minutes > 0 || hours > 0) parts.push(`${minutes}分钟`);
-  parts.push(`${seconds}秒`);
-  return parts.join(' ');
-}
 
 function formatRelativeTime(timestamp: number | null): string {
   if (!timestamp) return '未更新';
@@ -91,8 +49,6 @@ export function Sidebar({ user }: SidebarProps) {
   const siteConfig = useSiteConfig();
   const [pendingCount, setPendingCount] = useState<number | null>(null);
   const [pendingUpdatedAt, setPendingUpdatedAt] = useState<number | null>(null);
-  const [videoTasks, setVideoTasks] = useState<VideoTaskStatus[]>([]);
-  const [videoUpdatedAt, setVideoUpdatedAt] = useState<number | null>(null);
 
   const fetchPendingTasks = useCallback(async () => {
     try {
@@ -107,40 +63,11 @@ export function Sidebar({ user }: SidebarProps) {
     }
   }, []);
 
-  const fetchVideoTasks = useCallback(async () => {
-    try {
-      const res = await fetch('/api/status/video', { cache: 'no-store' });
-      if (!res.ok) return;
-      const data = await res.json();
-      const payload = data?.data;
-      const rows = Array.isArray(payload?.tasks) ? payload.tasks : [];
-      const mapped = rows.map((item: VideoTaskStatus) => ({
-        id: String(item.id),
-        status: item.status,
-        createdAt: Number(item.createdAt) || 0,
-        updatedAt: Number(item.updatedAt) || Number(item.createdAt) || 0,
-        durationMs: typeof item.durationMs === 'number' ? item.durationMs : undefined,
-        elapsedMs: typeof item.elapsedMs === 'number' ? item.elapsedMs : undefined,
-      }));
-
-      setVideoTasks(mapped.slice(0, VIDEO_DISPLAY_LIMIT));
-      setVideoUpdatedAt(typeof payload?.updatedAt === 'number' ? payload.updatedAt : Date.now());
-    } catch (error) {
-      console.error('[Status Panel] Failed to fetch video tasks:', error);
-    }
-  }, []);
-
   useEffect(() => {
     void fetchPendingTasks();
     const interval = setInterval(fetchPendingTasks, STATUS_POLL_MS);
     return () => clearInterval(interval);
   }, [fetchPendingTasks]);
-
-  useEffect(() => {
-    void fetchVideoTasks();
-    const interval = setInterval(fetchVideoTasks, VIDEO_POLL_MS);
-    return () => clearInterval(interval);
-  }, [fetchVideoTasks]);
 
   return (
     <>
@@ -241,36 +168,6 @@ export function Sidebar({ user }: SidebarProps) {
             <p className="mt-1 text-[10px] text-foreground/40">
               更新于 {formatRelativeTime(pendingUpdatedAt)}
             </p>
-          </div>
-          <div className="rounded-xl border border-border/70 bg-card/60 p-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-foreground/60">Sora 视频</span>
-              <span className="text-[10px] text-foreground/40">
-                更新于 {formatRelativeTime(videoUpdatedAt)}
-              </span>
-            </div>
-            <div className="mt-2 space-y-2">
-              {videoTasks.length === 0 ? (
-                <p className="text-[10px] text-foreground/40">暂无任务</p>
-              ) : (
-                videoTasks.map((task) => {
-                  const statusLabel = statusLabelMap[task.status] ?? '未知';
-                  const statusColor = statusColorMap[task.status] ?? 'bg-zinc-400';
-                  const durationMs = typeof task.durationMs === 'number' ? task.durationMs : task.elapsedMs;
-                  return (
-                    <div key={task.id} className="flex items-center justify-between text-[11px] text-foreground/70">
-                      <div className="flex items-center gap-2">
-                        <span className={cn('h-1.5 w-1.5 rounded-full', statusColor)} />
-                        <span className="text-[10px] uppercase tracking-wide">{statusLabel}</span>
-                      </div>
-                      <span className="text-foreground/50">
-                        {typeof durationMs === 'number' ? formatDuration(durationMs) : '--'}
-                      </span>
-                    </div>
-                  );
-                })
-              )}
-            </div>
           </div>
         </div>
       </div>

@@ -3,6 +3,12 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { getSystemConfig, updateSystemConfig } from '@/lib/db';
 
+function normalizePositiveInt(value: unknown, fallback: number): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(1, Math.floor(parsed));
+}
+
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
@@ -40,6 +46,16 @@ export async function POST(request: NextRequest) {
       updates.soraBackendUrl.trim() !== (current.soraBackendUrl || '').trim()
     ) {
       nextUpdates.soraBackendToken = '';
+    }
+
+    if (updates.rateLimit && typeof updates.rateLimit === 'object') {
+      const rateLimit = updates.rateLimit as Record<string, unknown>;
+      nextUpdates.rateLimit = {
+        imageMaxRequests: normalizePositiveInt(rateLimit.imageMaxRequests, current.rateLimit.imageMaxRequests),
+        imageWindowSeconds: normalizePositiveInt(rateLimit.imageWindowSeconds, current.rateLimit.imageWindowSeconds),
+        videoMaxRequests: normalizePositiveInt(rateLimit.videoMaxRequests, current.rateLimit.videoMaxRequests),
+        videoWindowSeconds: normalizePositiveInt(rateLimit.videoWindowSeconds, current.rateLimit.videoWindowSeconds),
+      };
     }
 
     const config = await updateSystemConfig(nextUpdates);

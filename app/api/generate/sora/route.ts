@@ -5,7 +5,7 @@ import { authOptions } from '@/lib/auth';
 import { generateWithSora } from '@/lib/sora';
 import { saveGeneration, updateUserBalance, getUserById, updateGeneration, getSystemConfig, refundGenerationBalance } from '@/lib/db';
 import type { Generation, SoraGenerateRequest } from '@/types';
-import { checkRateLimit, RateLimitConfig } from '@/lib/rate-limit';
+import { checkRateLimit } from '@/lib/rate-limit';
 import { fetchExternalBuffer } from '@/lib/safe-fetch';
 import { processVideoPrompt } from '@/lib/prompt-processor';
 import { assertPromptsAllowed, isPromptBlockedError } from '@/lib/prompt-blocklist';
@@ -239,7 +239,14 @@ async function processGenerationTask(
 
 export async function POST(request: NextRequest) {
   try {
-    const rateLimit = checkRateLimit(request, RateLimitConfig.GENERATE, 'generate-sora-video');
+    const systemConfig = await getSystemConfig();
+    const videoMaxRequests = Math.max(1, Number(systemConfig.rateLimit?.videoMaxRequests) || 30);
+    const videoWindowSeconds = Math.max(1, Number(systemConfig.rateLimit?.videoWindowSeconds) || 60);
+    const rateLimit = checkRateLimit(
+      request,
+      { maxRequests: videoMaxRequests, windowSeconds: videoWindowSeconds },
+      'generate-sora-video'
+    );
     if (!rateLimit.allowed) {
       return NextResponse.json(
         { error: 'Too many requests' },
@@ -288,16 +295,15 @@ export async function POST(request: NextRequest) {
     }
 
     // 预估成本
-    const config = await getSystemConfig();
     const normalizedDuration = (body.duration || body.model || '').toLowerCase();
     const effectiveDurationSeconds = normalizedVideoConfigObject?.video_length;
     const estimatedCost = normalizedDuration.includes('25')
-      ? config.pricing.soraVideo25s
+      ? systemConfig.pricing.soraVideo25s
       : effectiveDurationSeconds && effectiveDurationSeconds >= 15
-        ? config.pricing.soraVideo15s
+        ? systemConfig.pricing.soraVideo15s
         : normalizedDuration.includes('15')
-        ? config.pricing.soraVideo15s
-        : config.pricing.soraVideo10s;
+        ? systemConfig.pricing.soraVideo15s
+        : systemConfig.pricing.soraVideo10s;
 
     // 检查余额
     if (user.balance < estimatedCost) {

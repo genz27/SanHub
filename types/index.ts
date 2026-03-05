@@ -370,6 +370,14 @@ export interface PromptProcessingConfig {
   blocklistWords: string;
 }
 
+// Generate API rate limit configuration
+export interface GenerateRateLimitConfig {
+  imageMaxRequests: number;
+  imageWindowSeconds: number;
+  videoMaxRequests: number;
+  videoWindowSeconds: number;
+}
+
 // 系统配置
 export interface SystemConfig {
   soraApiKey: string;
@@ -407,6 +415,8 @@ export interface SystemConfig {
   siteConfig: SiteConfig;
   // Prompt processing configuration
   promptProcessing: PromptProcessingConfig;
+  // Generate API rate limit configuration
+  rateLimit: GenerateRateLimitConfig;
 }
 
 // 定价配置

@@ -9,10 +9,11 @@ import {
   getUserById,
   updateGeneration,
   getImageModelWithChannel,
+  getSystemConfig,
   refundGenerationBalance,
 } from '@/lib/db';
 import { saveMediaAsync } from '@/lib/media-storage';
-import { checkRateLimit, RateLimitConfig } from '@/lib/rate-limit';
+import { checkRateLimit } from '@/lib/rate-limit';
 import { fetchExternalBuffer } from '@/lib/safe-fetch';
 import { assertPromptsAllowed, isPromptBlockedError } from '@/lib/prompt-blocklist';
 import type { ChannelType, Generation, GenerationType } from '@/types';
@@ -95,7 +96,14 @@ async function processGenerationTask(
 
 export async function POST(request: NextRequest) {
   try {
-    const rateLimit = checkRateLimit(request, RateLimitConfig.GENERATE, 'generate-image');
+    const systemConfig = await getSystemConfig();
+    const imageMaxRequests = Math.max(1, Number(systemConfig.rateLimit?.imageMaxRequests) || 30);
+    const imageWindowSeconds = Math.max(1, Number(systemConfig.rateLimit?.imageWindowSeconds) || 60);
+    const rateLimit = checkRateLimit(
+      request,
+      { maxRequests: imageMaxRequests, windowSeconds: imageWindowSeconds },
+      'generate-image'
+    );
     if (!rateLimit.allowed) {
       return NextResponse.json(
         { error: 'Too many requests' },

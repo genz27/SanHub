@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Globe, Loader2, Save, Upload, UserPlus, Coins, Zap, Shield, Languages } from 'lucide-react';
+import { Globe, Loader2, Save, Upload, UserPlus, Coins, Zap, Shield, Languages, Gauge } from 'lucide-react';
 import type { ChatModel } from '@/types';
 import { toast } from '@/components/ui/toaster';
 import { useSiteConfigRefresh } from '@/components/providers/site-config-provider';
@@ -57,6 +57,7 @@ export default function SiteConfigPage() {
           picuiBaseUrl: config.picuiBaseUrl,
           videoProxyEnabled: config.videoProxyEnabled,
           videoProxyBaseUrl: config.videoProxyBaseUrl,
+          rateLimit: config.rateLimit,
           promptProcessing: config.promptProcessing,
           registerEnabled: config.registerEnabled,
           defaultBalance: config.defaultBalance,
@@ -98,6 +99,16 @@ export default function SiteConfigPage() {
     setConfig({
       ...config,
       siteConfig: { ...config.siteConfig, [key]: value }
+    });
+  };
+
+  const updateRateLimitConfig = (key: keyof typeof config.rateLimit, value: number) => {
+    setConfig({
+      ...config,
+      rateLimit: {
+        ...config.rateLimit,
+        [key]: Math.max(1, Math.floor(value) || 1),
+      },
     });
   };
 
@@ -526,6 +537,79 @@ export default function SiteConfigPage() {
             />
             <p className="text-xs text-foreground/30">将 videos.openai.com 替换为该域名，需配置反向代理</p>
           </div>
+        </div>
+      </div>
+
+      {/* 生成限流配置 */}
+      <div className="bg-card/60 border border-border/70 rounded-xl overflow-hidden">
+        <div className="p-4 border-b border-border/70 flex items-center gap-3">
+          <div className="w-8 h-8 bg-amber-500/20 rounded-lg flex items-center justify-center">
+            <Gauge className="w-4 h-4 text-amber-400" />
+          </div>
+          <div>
+            <h2 className="font-medium text-foreground">生成限流（Too many requests）</h2>
+            <p className="text-xs text-foreground/40">按时间窗口限制图片和视频生成请求</p>
+          </div>
+        </div>
+
+        <div className="p-4 space-y-6">
+          <div className="space-y-4">
+            <h3 className="text-sm font-medium text-foreground">图片生成</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm text-foreground/50">窗口内最大请求数</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={config.rateLimit.imageMaxRequests}
+                  onChange={(e) => updateRateLimitConfig('imageMaxRequests', parseInt(e.target.value, 10))}
+                  className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-lg text-foreground focus:outline-none focus:border-border"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm text-foreground/50">时间窗口（秒）</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={config.rateLimit.imageWindowSeconds}
+                  onChange={(e) => updateRateLimitConfig('imageWindowSeconds', parseInt(e.target.value, 10))}
+                  className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-lg text-foreground focus:outline-none focus:border-border"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="h-px bg-border/70" />
+
+          <div className="space-y-4">
+            <h3 className="text-sm font-medium text-foreground">视频生成</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm text-foreground/50">窗口内最大请求数</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={config.rateLimit.videoMaxRequests}
+                  onChange={(e) => updateRateLimitConfig('videoMaxRequests', parseInt(e.target.value, 10))}
+                  className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-lg text-foreground focus:outline-none focus:border-border"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm text-foreground/50">时间窗口（秒）</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={config.rateLimit.videoWindowSeconds}
+                  onChange={(e) => updateRateLimitConfig('videoWindowSeconds', parseInt(e.target.value, 10))}
+                  className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-lg text-foreground focus:outline-none focus:border-border"
+                />
+              </div>
+            </div>
+          </div>
+
+          <p className="text-xs text-foreground/30">
+            当用户在窗口内超过限制时，接口会返回 Too many requests（HTTP 429）。
+          </p>
         </div>
       </div>
 
