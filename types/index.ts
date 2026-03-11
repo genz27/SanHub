@@ -502,14 +502,23 @@ export interface InviteCode {
   creatorId: string;
   usedBy?: string;
   usedAt?: number;
-  bonusPoints: number;    // 被邀请人获得的额外积分
-  creatorBonus: number;   // 邀请人获得的积分奖励
+  bonusPoints: number;    // invitee bonus points
+  creatorBonus: number;   // inviter bonus points
   expiresAt?: number;
   createdAt: number;
   creatorEmail?: string;
   creatorName?: string;
   usedByEmail?: string;
   usedByName?: string;
+}
+
+export interface InviteBatchResult {
+  createdAt: number;
+  count: number;
+  bonusPoints: number;
+  creatorBonus: number;
+  expiresAt?: number;
+  codes: InviteCode[];
 }
 
 // ========================================
@@ -526,6 +535,27 @@ export interface RedemptionCode {
   batchId?: string;
   note?: string;
   createdAt: number;
+}
+
+export interface RedemptionBatchSummary {
+  batchId: string;
+  count: number;
+  usedCount: number;
+  unusedCount: number;
+  points: number;
+  note?: string;
+  expiresAt?: number;
+  createdAt: number;
+}
+
+export interface RedemptionBatchResult {
+  batchId: string;
+  createdAt: number;
+  count: number;
+  points: number;
+  note?: string;
+  expiresAt?: number;
+  codes: RedemptionCode[];
 }
 
 // ========================================
@@ -730,5 +760,3 @@ export interface WorkspaceSummary {
   createdAt: number;
   updatedAt: number;
 }
-
-

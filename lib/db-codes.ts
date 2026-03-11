@@ -1,4 +1,4 @@
-import type { InviteCode, RedemptionCode, StatsOverview, DailyStats } from '@/types';
+import type { InviteBatchResult, InviteCode, RedemptionBatchSummary, RedemptionCode, StatsOverview, DailyStats } from '@/types';
 import { generateId } from './utils';
 import { createDatabaseAdapter, type DatabaseAdapter } from './db-adapter';
 
@@ -198,6 +198,31 @@ export async function createInviteCode(
   }
   
   throw new Error('Failed to generate unique invite code');
+}
+
+export async function createInviteBatch(
+  creatorId: string,
+  count: number,
+  bonusPoints = 0,
+  creatorBonus = 0,
+  expiresAt?: number
+): Promise<InviteBatchResult> {
+  const safeCount = Math.max(1, Math.min(100, Math.floor(count || 1)));
+  const codes: InviteCode[] = [];
+
+  for (let index = 0; index < safeCount; index += 1) {
+    const invite = await createInviteCode(creatorId, bonusPoints, creatorBonus, expiresAt);
+    codes.push(invite);
+  }
+
+  return {
+    createdAt: Date.now(),
+    count: codes.length,
+    bonusPoints,
+    creatorBonus,
+    expiresAt,
+    codes,
+  };
 }
 
 export async function getInviteCodeByCode(code: string): Promise<InviteCode | null> {
@@ -517,6 +542,43 @@ export async function getRedemptionCodesCount(options: { batchId?: string; showU
 
   const [rows] = await db.execute(sql, params);
   return Number((rows as any[])[0]?.count || 0);
+}
+
+export async function getRecentRedemptionBatches(limit = 8): Promise<RedemptionBatchSummary[]> {
+  await initializeCodesTables();
+  const db = getAdapter();
+  const safeLimit = Math.max(1, Math.min(20, Math.floor(limit || 8)));
+
+  const [rows] = await db.execute(
+    `SELECT
+       batch_id,
+       COUNT(1) as count,
+       SUM(CASE WHEN used_by IS NOT NULL THEN 1 ELSE 0 END) as used_count,
+       MAX(points) as points,
+       MAX(note) as note,
+       MAX(expires_at) as expires_at,
+       MAX(created_at) as created_at
+     FROM redemption_codes
+     WHERE batch_id IS NOT NULL AND batch_id != ''
+     GROUP BY batch_id
+     ORDER BY created_at DESC
+     LIMIT ${safeLimit}`
+  );
+
+  return (rows as any[]).map((row) => {
+    const count = Number(row.count || 0);
+    const usedCount = Number(row.used_count || 0);
+    return {
+      batchId: row.batch_id,
+      count,
+      usedCount,
+      unusedCount: Math.max(0, count - usedCount),
+      points: Number(row.points || 0),
+      note: row.note || undefined,
+      expiresAt: row.expires_at ? Number(row.expires_at) : undefined,
+      createdAt: Number(row.created_at || 0),
+    };
+  });
 }
 
 export async function deleteRedemptionCode(id: string): Promise<boolean> {

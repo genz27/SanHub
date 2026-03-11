@@ -53,6 +53,8 @@ const DEFAULT_DURATIONS: VideoDuration[] = [
   { value: '25s', label: '25 秒', cost: 200 },
 ];
 
+const GROK_MAX_VIDEO_LENGTH_SECONDS = 30;
+
 const GROK_ASPECT_RATIO_OPTIONS: Array<{ value: NonNullable<VideoConfigObject['aspect_ratio']>; label: string }> = [
   { value: '16:9', label: '16:9' },
   { value: '9:16', label: '9:16' },
@@ -67,9 +69,10 @@ const GROK_TEMPLATE_ASPECT_RATIOS: AspectRatioRow[] = GROK_ASPECT_RATIO_OPTIONS.
 }));
 
 const GROK_TEMPLATE_DURATIONS: VideoDuration[] = [
-  { value: '5s', label: '5 秒', cost: 100 },
-  { value: '10s', label: '10 秒', cost: 100 },
-  { value: '15s', label: '15 秒', cost: 150 },
+  { value: '5s', label: '5 \u79d2', cost: 100 },
+  { value: '10s', label: '10 \u79d2', cost: 100 },
+  { value: '15s', label: '15 \u79d2', cost: 150 },
+  { value: '30s', label: '30 \u79d2', cost: 200 },
 ];
 
 const GROK_TEMPLATE_VIDEO_CONFIG_OBJECT: VideoConfigObject = {
@@ -98,7 +101,7 @@ function normalizeAspectRatioForVideoConfig(aspectRatio?: string): NonNullable<V
 
 function normalizeVideoConfigObject(input: VideoConfigObject): VideoConfigObject {
   const videoLengthRaw = typeof input.video_length === 'number' ? input.video_length : 10;
-  const videoLength = Math.max(5, Math.min(15, Math.floor(videoLengthRaw)));
+  const videoLength = Math.max(5, Math.min(GROK_MAX_VIDEO_LENGTH_SECONDS, Math.floor(videoLengthRaw)));
   const resolution = input.resolution === 'SD' ? 'SD' : 'HD';
   const preset = input.preset === 'fun' || input.preset === 'spicy' ? input.preset : 'normal';
   return {
@@ -113,19 +116,137 @@ function buildGrokTemplateModelPayload(channelId: string) {
   return {
     channelId,
     name: 'Grok Imagine Video',
-    description: 'Grok video generation template',
+    description: 'Grok \u9ed8\u8ba4\u6a21\u677f\uff0c\u5185\u7f6e 5/10/15/30 \u79d2\u548c HD \u914d\u7f6e',
     apiModel: 'grok-imagine-1.0-video',
     features: {
       textToVideo: true,
       imageToVideo: true,
       videoToVideo: false,
-      supportStyles: true,
+      supportStyles: false,
     },
     aspectRatios: GROK_TEMPLATE_ASPECT_RATIOS,
     durations: GROK_TEMPLATE_DURATIONS,
     defaultAspectRatio: '16:9',
     defaultDuration: '10s',
     videoConfigObject: GROK_TEMPLATE_VIDEO_CONFIG_OBJECT,
+    highlight: false,
+    enabled: true,
+    sortOrder: 0,
+  };
+}
+
+function buildSoraTemplateModelPayload(channelId: string) {
+  return {
+    channelId,
+    name: 'Sora \u9ed8\u8ba4\u6a21\u578b',
+    description: '\u6309\u5e38\u7528 Sora \u914d\u7f6e\u9884\u586b\uff0c\u521b\u5efa\u6e20\u9053\u540e\u53ef\u76f4\u63a5\u4f7f\u7528',
+    apiModel: 'sora-video',
+    features: {
+      textToVideo: true,
+      imageToVideo: true,
+      videoToVideo: false,
+      supportStyles: false,
+    },
+    aspectRatios: [...DEFAULT_ASPECT_RATIOS],
+    durations: [...DEFAULT_DURATIONS],
+    defaultAspectRatio: 'landscape',
+    defaultDuration: '10s',
+    highlight: true,
+    enabled: true,
+    sortOrder: 0,
+  };
+}
+
+function buildManualTemplateModelPayload(channel: VideoChannel) {
+  if (channel.type === 'grok2api') {
+    return {
+      name: 'Grok Imagine Video',
+      description: '\u5df2\u9884\u586b Grok \u6a21\u677f\uff0c\u652f\u6301 5/10/15/30 \u79d2',
+      apiModel: 'grok-imagine-1.0-video',
+      baseUrl: '',
+      apiKey: '',
+      features: {
+        textToVideo: true,
+        imageToVideo: true,
+        videoToVideo: false,
+        supportStyles: false,
+      },
+      defaultAspectRatio: '16:9',
+      defaultDuration: '10s',
+      videoConfigObject: {
+        ...GROK_TEMPLATE_VIDEO_CONFIG_OBJECT,
+      },
+      highlight: false,
+      enabled: true,
+      sortOrder: 0,
+    };
+  }
+
+  if (channel.type === 'sora') {
+    return {
+      name: `${channel.name} \u9ed8\u8ba4\u6a21\u578b`,
+      description: '\u5df2\u6309 Sora \u5e38\u7528\u6a21\u677f\u9884\u586b\uff0c\u786e\u8ba4\u540e\u53ef\u76f4\u63a5\u4fdd\u5b58',
+      apiModel: 'sora-video',
+      baseUrl: '',
+      apiKey: '',
+      features: {
+        textToVideo: true,
+        imageToVideo: true,
+        videoToVideo: false,
+        supportStyles: false,
+      },
+      defaultAspectRatio: 'landscape',
+      defaultDuration: '10s',
+      videoConfigObject: {
+        ...GROK_TEMPLATE_VIDEO_CONFIG_OBJECT,
+      },
+      highlight: true,
+      enabled: true,
+      sortOrder: 0,
+    };
+  }
+
+  if (channel.type === 'flow2api') {
+    return {
+      name: `${channel.name} \u624b\u52a8\u6a21\u578b`,
+      description: '\u9002\u5408\u5df2\u77e5 Flow2API \u6a21\u578b ID \u7684\u573a\u666f\uff0c\u4e5f\u53ef\u5148\u7528\u4e00\u952e\u5bfc\u5165',
+      apiModel: '',
+      baseUrl: '',
+      apiKey: '',
+      features: {
+        textToVideo: true,
+        imageToVideo: true,
+        videoToVideo: false,
+        supportStyles: false,
+      },
+      defaultAspectRatio: 'landscape',
+      defaultDuration: '10s',
+      videoConfigObject: {
+        ...GROK_TEMPLATE_VIDEO_CONFIG_OBJECT,
+      },
+      highlight: false,
+      enabled: true,
+      sortOrder: 0,
+    };
+  }
+
+  return {
+    name: `${channel.name} \u81ea\u5b9a\u4e49\u6a21\u578b`,
+    description: '\u9002\u7528\u4e8e\u517c\u5bb9 /v1/chat/completions \u7684\u89c6\u9891\u63a5\u53e3',
+    apiModel: '',
+    baseUrl: '',
+    apiKey: '',
+    features: {
+      textToVideo: true,
+      imageToVideo: true,
+      videoToVideo: false,
+      supportStyles: false,
+    },
+    defaultAspectRatio: 'landscape',
+    defaultDuration: '10s',
+    videoConfigObject: {
+      ...GROK_TEMPLATE_VIDEO_CONFIG_OBJECT,
+    },
     highlight: false,
     enabled: true,
     sortOrder: 0,
@@ -256,7 +377,7 @@ export default function VideoChannelsPage() {
       ? normalizeVideoConfigObject(model.videoConfigObject)
       : normalizeVideoConfigObject({
           aspect_ratio: normalizeAspectRatioForVideoConfig(model.defaultAspectRatio),
-          video_length: Math.max(5, Math.min(15, parseDurationToSeconds(model.defaultDuration))),
+          video_length: Math.max(5, Math.min(GROK_MAX_VIDEO_LENGTH_SECONDS, parseDurationToSeconds(model.defaultDuration))),
           resolution: 'HD' as const,
           preset: 'normal' as const,
         });
@@ -283,35 +404,126 @@ export default function VideoChannelsPage() {
 
   const startAddModel = (channelId: string) => {
     const channel = channels.find((item) => item.id === channelId);
-    if (channel?.type === 'grok2api') {
-      setModelForm({
-        name: 'Grok Imagine Video',
-        description: 'Grok video generation template',
-        apiModel: 'grok-imagine-1.0-video',
-        baseUrl: '',
-        apiKey: '',
-        features: {
-          textToVideo: true,
-          imageToVideo: true,
-          videoToVideo: false,
-          supportStyles: true,
-        },
-        defaultAspectRatio: '16:9',
-        defaultDuration: '10s',
-        videoConfigObject: {
-          ...GROK_TEMPLATE_VIDEO_CONFIG_OBJECT,
-        },
-        highlight: false,
-        enabled: true,
-        sortOrder: 0,
-      });
-      setAspectRatioRows([...GROK_TEMPLATE_ASPECT_RATIOS]);
-      setDurationRows([...GROK_TEMPLATE_DURATIONS]);
-      setEditingModel(null);
-    } else {
-      resetModelForm();
-    }
+    if (!channel) return;
+
+    resetModelForm();
+    setModelForm(buildManualTemplateModelPayload(channel));
+    setAspectRatioRows(
+      channel.type === 'grok2api'
+        ? [...GROK_TEMPLATE_ASPECT_RATIOS]
+        : [...DEFAULT_ASPECT_RATIOS]
+    );
+    setDurationRows(
+      channel.type === 'grok2api'
+        ? [...GROK_TEMPLATE_DURATIONS]
+        : [...DEFAULT_DURATIONS]
+    );
     setModelChannelId(channelId);
+  };
+
+  const ensureTemplateModelForChannel = async (channel: VideoChannel) => {
+    const modelListRes = await fetch('/api/admin/video-models');
+    const modelListJson = modelListRes.ok ? await modelListRes.json() : null;
+    const allModels = (modelListJson?.data || []) as VideoModel[];
+    const existingForChannel = allModels.filter((item) => item.channelId === channel.id);
+    if (existingForChannel.length > 0) {
+      return false;
+    }
+
+    let templatePayload:
+      | ReturnType<typeof buildGrokTemplateModelPayload>
+      | ReturnType<typeof buildSoraTemplateModelPayload>
+      | null = null;
+
+    if (channel.type === 'grok2api') {
+      templatePayload = buildGrokTemplateModelPayload(channel.id);
+    } else if (channel.type === 'sora') {
+      templatePayload = buildSoraTemplateModelPayload(channel.id);
+    }
+
+    if (!templatePayload) {
+      return false;
+    }
+
+    const templateRes = await fetch('/api/admin/video-models', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(templatePayload),
+    });
+    if (!templateRes.ok) {
+      const templateData = await templateRes.json().catch(() => ({}));
+      throw new Error(templateData.error || '\u81ea\u52a8\u521b\u5efa\u6a21\u677f\u6a21\u578b\u5931\u8d25');
+    }
+
+    toast({
+      title: channel.type === 'grok2api' ? '\u5df2\u81ea\u52a8\u6dfb\u52a0 Grok \u6a21\u677f' : '\u5df2\u81ea\u52a8\u6dfb\u52a0 Sora \u6a21\u677f',
+      description: channel.type === 'grok2api' ? '\u9ed8\u8ba4\u5e26 5/10/15/30 \u79d2\u548c HD \u914d\u7f6e' : '\u5e38\u7528\u7684 Sora \u6a21\u578b\u5df2\u81ea\u52a8\u8865\u9f50',
+    });
+    return true;
+  };
+
+  const quickImportFlow2ApiModels = async (channel: VideoChannel) => {
+    if (channel.type !== 'flow2api') return;
+
+    setImportingChannelId(channel.id);
+    setRemoteFlowModelsChannelId(channel.id);
+    setFetchingRemoteFlowModels(true);
+    try {
+      const listRes = await fetch(`/api/admin/video-channels/models?channelId=${channel.id}`);
+      const listData = await listRes.json().catch(() => ({}));
+      if (!listRes.ok) {
+        throw new Error(listData.error || '\u62c9\u53d6\u8fdc\u7aef\u6a21\u578b\u5931\u8d25');
+      }
+
+      const remoteItems = (listData?.data?.models || []) as RemoteFlow2ApiModel[];
+      setRemoteFlowModels(remoteItems);
+
+      const importableIds = remoteItems
+        .filter((item) => !item.alreadyImported)
+        .map((item) => item.id);
+
+      setSelectedRemoteFlowModels(new Set(importableIds));
+      setExpandedChannels((prev) => {
+        const next = new Set(prev);
+        next.add(channel.id);
+        return next;
+      });
+
+      if (importableIds.length === 0) {
+        toast({ title: '\u5f53\u524d Flow2API \u6a21\u578b\u90fd\u5df2\u5bfc\u5165\uff0c\u65e0\u9700\u91cd\u590d\u5bfc\u5165' });
+        return;
+      }
+
+      const importRes = await fetch('/api/admin/video-channels/models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channelId: channel.id,
+          modelIds: importableIds,
+        }),
+      });
+      const importData = await importRes.json().catch(() => ({}));
+      if (!importRes.ok) {
+        throw new Error(importData.error || '\u5bfc\u5165\u6a21\u578b\u5931\u8d25');
+      }
+
+      toast({
+        title: 'Flow2API \u4e00\u952e\u5bfc\u5165\u5b8c\u6210',
+        description: `\u65b0\u589e ${importData?.data?.created || 0} \u4e2a\uff0c\u8df3\u8fc7 ${importData?.data?.skipped || 0} \u4e2a`,
+      });
+
+      await loadData();
+      await fetchRemoteFlow2ApiModels(channel);
+    } catch (err) {
+      toast({
+        title: 'Flow2API \u4e00\u952e\u5bfc\u5165\u5931\u8d25',
+        description: err instanceof Error ? err.message : '\u672a\u77e5\u9519\u8bef',
+        variant: 'destructive',
+      });
+    } finally {
+      setFetchingRemoteFlowModels(false);
+      setImportingChannelId(null);
+    }
   };
 
   const saveChannel = async () => {
@@ -332,31 +544,25 @@ export default function VideoChannelsPage() {
       }
 
       const channelData = await res.json();
-      toast({ title: editingChannel ? '渠道已更新' : '渠道已创建' });
+      const createdChannel = channelData?.data as VideoChannel | undefined;
+      toast({ title: editingChannel ? '\u6e20\u9053\u5df2\u66f4\u65b0' : '\u6e20\u9053\u5df2\u521b\u5efa' });
 
-      if (!editingChannel && channelForm.type === 'grok2api') {
-        const createdChannelId = channelData?.data?.id as string | undefined;
-        if (createdChannelId) {
-          const modelListRes = await fetch('/api/admin/video-models');
-          const modelListJson = modelListRes.ok ? await modelListRes.json() : null;
-          const allModels = (modelListJson?.data || []) as VideoModel[];
-          const existingForChannel = allModels.filter((item) => item.channelId === createdChannelId);
-          if (existingForChannel.length === 0) {
-            const templatePayload = {
-              ...buildGrokTemplateModelPayload(createdChannelId),
-              sortOrder: existingForChannel.length,
-            };
-            const templateRes = await fetch('/api/admin/video-models', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(templatePayload),
+      if (!editingChannel && createdChannel) {
+        if (createdChannel.type === 'flow2api') {
+          if (createdChannel.baseUrl) {
+            toast({
+              title: '\u5f00\u59cb\u81ea\u52a8\u5bfc\u5165',
+              description: '\u5df2\u5c1d\u8bd5\u81ea\u52a8\u62c9\u53d6\u5e76\u5bfc\u5165 Flow2API \u89c6\u9891\u6a21\u578b',
             });
-            if (!templateRes.ok) {
-              const templateData = await templateRes.json().catch(() => ({}));
-              throw new Error(templateData.error || 'Grok 模板模型创建失败');
-            }
-            toast({ title: '已自动添加 Grok 视频模板（默认 HD）' });
+            await quickImportFlow2ApiModels(createdChannel);
+          } else {
+            toast({
+              title: '\u6e20\u9053\u5df2\u521b\u5efa',
+              description: 'Flow2API \u5efa\u8bae\u5148\u586b\u5199 Base URL\uff0c\u518d\u4f7f\u7528\u201c\u4e00\u952e\u5bfc\u5165\u201d\u81ea\u52a8\u62c9\u53d6\u6a21\u578b',
+            });
           }
+        } else {
+          await ensureTemplateModelForChannel(createdChannel);
         }
       }
 
@@ -538,7 +744,7 @@ export default function VideoChannelsPage() {
                 normalizeAspectRatioForVideoConfig(defaultAspectRatio),
               video_length:
                 modelForm.videoConfigObject?.video_length ||
-                Math.max(5, Math.min(15, parseDurationToSeconds(defaultDuration))),
+                Math.max(5, Math.min(GROK_MAX_VIDEO_LENGTH_SECONDS, parseDurationToSeconds(defaultDuration))),
             })
           : undefined;
 
@@ -557,7 +763,10 @@ export default function VideoChannelsPage() {
               baseUrl: normalizedModelBaseUrl || undefined,
               apiKey: normalizedModelApiKey || undefined,
             }),
-        features: modelForm.features,
+        features: {
+          ...modelForm.features,
+          supportStyles: false,
+        },
         aspectRatios: normalizedAspectRatios,
         durations: normalizedDurations,
         defaultAspectRatio,
@@ -623,6 +832,11 @@ export default function VideoChannelsPage() {
   };
 
   const getChannelModels = (channelId: string) => models.filter(m => m.channelId === channelId);
+  const selectedChannel = modelChannelId ? channels.find((channel) => channel.id === modelChannelId) : null;
+  const flowImportableCount =
+    remoteFlowModelsChannelId
+      ? remoteFlowModels.filter((item) => !item.alreadyImported).length
+      : 0;
 
   if (loading) {
     return (
@@ -660,6 +874,13 @@ export default function VideoChannelsPage() {
           <h2 className="text-lg font-semibold text-foreground">
             {editingChannel ? '编辑渠道' : '添加渠道'}
           </h2>
+        </div>
+
+        <div className="rounded-xl border border-border/70 bg-card/50 p-4 text-sm text-foreground/60">
+          {channelForm.type === 'flow2api' && '\u4fdd\u5b58\u6e20\u9053\u540e\u4f1a\u4f18\u5148\u5c1d\u8bd5\u81ea\u52a8\u62c9\u53d6\u5e76\u5bfc\u5165\u8fdc\u7aef\u6a21\u578b\uff1b\u540e\u7eed\u4e5f\u53ef\u4ee5\u5728\u6e20\u9053\u5361\u7247\u91cc\u4f7f\u7528\u201c\u4e00\u952e\u5bfc\u5165\u201d\u6216\u624b\u52a8\u52fe\u9009\u5bfc\u5165\u3002'}
+          {channelForm.type === 'grok2api' && `\u4fdd\u5b58\u6e20\u9053\u540e\u4f1a\u81ea\u52a8\u8865\u4e00\u6761 Grok \u6a21\u677f\u6a21\u578b\uff0cvideo_length \u5141\u8bb8 5-${GROK_MAX_VIDEO_LENGTH_SECONDS} \u79d2\uff0c\u5e76\u4f1a\u7ee7\u7eed\u900f\u4f20\u5230\u751f\u6210\u8bf7\u6c42\u3002`}
+          {channelForm.type === 'sora' && '\u4fdd\u5b58\u6e20\u9053\u540e\u4f1a\u81ea\u52a8\u8865\u4e00\u6761 Sora \u9ed8\u8ba4\u6a21\u578b\uff0c\u901a\u5e38\u4e0d\u9700\u8981\u624b\u5de5\u586b\u5199\u7b2c\u4e00\u6761\u6a21\u578b\u3002'}
+          {channelForm.type === 'openai-compatible' && '\u9002\u7528\u4e8e\u517c\u5bb9 /v1/chat/completions \u7684\u89c6\u9891\u63a5\u53e3\u3002\u5148\u5efa\u6e20\u9053\uff0c\u518d\u6309\u5b9e\u9645\u6a21\u578b ID \u8865\u5145\u6a21\u578b\u5373\u53ef\u3002'}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -757,6 +978,14 @@ export default function VideoChannelsPage() {
             </h2>
           </div>
 
+          {selectedChannel && (
+            <div className="rounded-xl border border-border/70 bg-card/50 p-4 text-sm text-foreground/60">
+              {selectedChannel.type === 'flow2api' && '\u5df2\u77e5\u6a21\u578b ID \u65f6\u518d\u624b\u52a8\u6dfb\u52a0\uff1b\u5982\u679c\u53ea\u662f\u60f3\u628a\u8fdc\u7aef\u6a21\u578b\u62c9\u4e0b\u6765\uff0c\u4f18\u5148\u4f7f\u7528\u6e20\u9053\u5361\u7247\u91cc\u7684\u201c\u4e00\u952e\u5bfc\u5165\u201d\u6216\u5237\u65b0\u9009\u62e9\u5bfc\u5165\u3002'}
+              {selectedChannel.type === 'grok2api' && `\u5df2\u6309 Grok \u6a21\u677f\u9884\u586b\uff0cvideo_length \u652f\u6301 5-${GROK_MAX_VIDEO_LENGTH_SECONDS} \u79d2\uff0c\u4fdd\u5b58\u540e\u4f1a\u539f\u6837\u900f\u4f20\u5230\u751f\u6210\u8bf7\u6c42\u3002`}
+              {selectedChannel.type === 'sora' && '\u5df2\u6309 Sora \u5e38\u7528\u6a21\u677f\u9884\u586b\uff0c\u901a\u5e38\u53ea\u9700\u8981\u786e\u8ba4\u540d\u79f0\u3001\u9ed8\u8ba4\u65f6\u957f\u548c\u4ef7\u683c\u5373\u53ef\u4fdd\u5b58\u3002'}
+              {selectedChannel.type === 'openai-compatible' && '\u6a21\u578b\u7ea7 Base URL / API Key \u53ef\u4ee5\u7559\u7a7a\uff0c\u4fdd\u5b58\u65f6\u4f1a\u81ea\u52a8\u7ee7\u627f\u6e20\u9053\u4e0a\u7684\u914d\u7f6e\u3002'}
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2">
               <label className="text-sm text-foreground/70">名称 *</label>
@@ -1017,7 +1246,7 @@ export default function VideoChannelsPage() {
                     <input
                       type="number"
                       min={5}
-                      max={15}
+                      max={GROK_MAX_VIDEO_LENGTH_SECONDS}
                       value={modelForm.videoConfigObject.video_length || 10}
                       onChange={(e) => {
                         const value = Number.parseInt(e.target.value, 10);
@@ -1025,7 +1254,7 @@ export default function VideoChannelsPage() {
                           ...modelForm,
                           videoConfigObject: {
                             ...modelForm.videoConfigObject,
-                            video_length: Number.isFinite(value) ? Math.max(5, Math.min(15, value)) : 10,
+                            video_length: Number.isFinite(value) ? Math.max(5, Math.min(GROK_MAX_VIDEO_LENGTH_SECONDS, value)) : 10,
                           },
                         });
                       }}
@@ -1086,7 +1315,6 @@ export default function VideoChannelsPage() {
                 { key: 'textToVideo', label: '文生视频' },
                 { key: 'imageToVideo', label: '图生视频' },
                 { key: 'videoToVideo', label: '视频转视频' },
-                { key: 'supportStyles', label: '支持风格' },
               ].map(f => (
                 <label key={f.key} className="flex items-center gap-2 cursor-pointer">
                   <input
@@ -1190,6 +1418,16 @@ export default function VideoChannelsPage() {
                       </button>
                       {channel.type === 'flow2api' && (
                         <button
+                          onClick={() => quickImportFlow2ApiModels(channel)}
+                          disabled={importingChannelId === channel.id || fetchingRemoteFlowModels}
+                          title="\u4e00\u952e\u5bfc\u5165\u5168\u90e8\u53ef\u8bc6\u522b\u7684 Flow2API \u89c6\u9891\u6a21\u578b"
+                          className="px-3 py-1.5 text-xs rounded-full bg-cyan-500/15 text-cyan-300 hover:bg-cyan-500/25 disabled:opacity-50"
+                        >
+                          {importingChannelId === channel.id ? '\u5bfc\u5165\u4e2d...' : '\u4e00\u952e\u5bfc\u5165'}
+                        </button>
+                      )}
+                      {channel.type === 'flow2api' && (
+                        <button
                           onClick={() => {
                             if (remoteFlowModelsChannelId === channel.id) {
                               closeRemoteFlow2ApiModels();
@@ -1208,7 +1446,7 @@ export default function VideoChannelsPage() {
                           )}
                         </button>
                       )}
-                      <button onClick={() => startAddModel(channel.id)} className="p-2 text-foreground/40 hover:text-green-400 hover:bg-green-500/10 rounded-lg">
+                      <button onClick={() => startAddModel(channel.id)} title="\u624b\u52a8\u6dfb\u52a0\u6a21\u578b" className="p-2 text-foreground/40 hover:text-green-400 hover:bg-green-500/10 rounded-lg">
                         <Plus className="w-4 h-4" />
                       </button>
                       <button onClick={() => startEditChannel(channel)} className="p-2 text-foreground/40 hover:text-foreground hover:bg-card/70 rounded-lg">
@@ -1247,6 +1485,9 @@ export default function VideoChannelsPage() {
                             <p className="text-sm text-foreground/40 text-center py-2">未发现可识别的 Flow2API 视频模型</p>
                           ) : (
                             <>
+                              <div className="rounded-xl border border-border/70 bg-card/50 px-3 py-2 text-xs text-foreground/50">
+                                \u5df2\u62c9\u53d6 {remoteFlowModels.length} \u4e2a\u8fdc\u7aef\u6a21\u578b\uff0c\u5176\u4e2d {flowImportableCount} \u4e2a\u5c1a\u672a\u5bfc\u5165\u3002\u53ef\u76f4\u63a5\u5168\u9009\u5bfc\u5165\uff0c\u6216\u53ea\u52fe\u9009\u9700\u8981\u7684\u6a21\u578b\u3002
+                              </div>
                               <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
                                 {remoteFlowModels.map((item) => {
                                   const isSelected = selectedRemoteFlowModels.has(item.id);

@@ -6,8 +6,6 @@ import { useSession } from 'next-auth/react';
 import {
   Download,
   Trash2,
-  Search,
-  Filter,
   Play,
   Video,
   Image as ImageIcon,
@@ -19,19 +17,15 @@ import {
   User,
   History,
   Maximize2,
-  Palette,
-  ChevronDown,
   Loader2,
-  AlertCircle,
   Edit3,
   ExternalLink,
   Droplets,
 } from 'lucide-react';
 import { toast } from '@/components/ui/toaster';
 import type { Generation, CharacterCard } from '@/types';
-import { formatDate, truncate } from '@/lib/utils';
+import { formatDate } from '@/lib/utils';
 import { downloadAsset } from '@/lib/download';
-import { IMAGE_MODELS } from '@/lib/model-config';
 
 // 任务类型
 interface Task {
@@ -47,30 +41,19 @@ interface Task {
 const isVideoType = (gen: Generation) => gen.type.includes('video');
 const isTaskVideoType = (type: string) => type?.includes('video');
 
-const TYPE_BADGE_MAP: Record<string, { label: string; icon: any }> = {
-  'sora-video': { label: 'Sora 视频', icon: Video },
-  'sora-image': { label: 'Sora 图像', icon: ImageIcon },
-  'gemini-image': { label: 'Gemini', icon: Palette },
-  'zimage-image': { label: 'Z-Image', icon: ImageIcon },
-  'gitee-image': { label: 'Gitee', icon: ImageIcon },
-  'character-card': { label: '角色卡', icon: User },
+const VIDEO_BADGE = { label: 'Sora 视频', icon: Video };
+const IMAGE_BADGE = { label: 'Sora 图像', icon: ImageIcon };
+const CHARACTER_BADGE = { label: '角色卡', icon: User };
+
+const getTypeBadge = (type: string) => {
+  if (type === 'character-card') return CHARACTER_BADGE;
+  return isTaskVideoType(type) ? VIDEO_BADGE : IMAGE_BADGE;
 };
 
-const IMAGE_MODEL_LABELS = new Map(
-  IMAGE_MODELS.map((model) => [model.apiModel, model.name])
-);
-
-const getTypeBadge = (type: string) => TYPE_BADGE_MAP[type] || { label: type, icon: Palette };
 const getGenerationBadge = (gen: Generation) => {
-  if (gen.type === 'gemini-image' || gen.type === 'zimage-image' || gen.type === 'gitee-image') {
-    const modelLabel = gen.params?.model ? IMAGE_MODEL_LABELS.get(gen.params.model) : undefined;
-    if (modelLabel) {
-      return { label: modelLabel, icon: ImageIcon };
-    }
-  }
-  return getTypeBadge(gen.type);
+  if (gen.type === 'character-card') return CHARACTER_BADGE;
+  return isVideoType(gen) ? VIDEO_BADGE : IMAGE_BADGE;
 };
-
 
 // 骨架屏组件
 const SkeletonCard = () => (
@@ -1232,4 +1215,3 @@ function CharacterCardHistoryItem({ card }: { card: CharacterCard }) {
     </div>
   );
 }
-

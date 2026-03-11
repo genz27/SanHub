@@ -13,8 +13,6 @@ import {
   Dices,
   Info,
   User,
-  ChevronDown,
-  Palette,
   X,
   Plus,
 } from 'lucide-react';
@@ -77,20 +75,6 @@ export default function VideoGenerationPage() {
   const [compressing, setCompressing] = useState(false);
   const [compressedCache, setCompressedCache] = useState<Map<File, string>>(new Map());
 
-  // 视频风格选择 (仅普通模式可用)
-  const [selectedStyle, setSelectedStyle] = useState<string | null>(null);
-  const VIDEO_STYLES = [
-    { id: 'anime', name: 'Anime', image: '/styles/Anime.jpg' },
-    { id: 'comic', name: 'Comic', image: '/styles/Comic.jpg' },
-    { id: 'festive', name: 'Festive', image: '/styles/Festive.jpg' },
-    { id: 'golden', name: 'Golden', image: '/styles/Golden.jpg' },
-    { id: 'handheld', name: 'Handheld', image: '/styles/Handheld.jpg' },
-    { id: 'news', name: 'News', image: '/styles/News.jpg' },
-    { id: 'retro', name: 'Retro', image: '/styles/Retro.jpg' },
-    { id: 'selfie', name: 'Selfie', image: '/styles/Selfie.jpg' },
-    { id: 'vintage', name: 'Vintage', image: '/styles/Vintage.jpg' },
-  ];
-
   // Remix 模式
   const [remixUrl, setRemixUrl] = useState('');
 
@@ -103,7 +87,7 @@ export default function VideoGenerationPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [keepPrompt, setKeepPrompt] = useState(false);
-  const [enhancing, setEnhancing] = useState(false);
+
 
   // 角色卡选择
   const [characterCards, setCharacterCards] = useState<CharacterCard[]>([]);
@@ -113,16 +97,15 @@ export default function VideoGenerationPage() {
   // 新增：拖拽上传状态
   const [isDragging, setIsDragging] = useState(false);
 
-  // 新增：角色卡弹出菜单
-  const [showCharacterMenu, setShowCharacterMenu] = useState(false);
 
-  // 新增：风格弹出面板
-  const [showStylePanel, setShowStylePanel] = useState(false);
+  const [showCharacterMenu, setShowCharacterMenu] = useState(false);
 
   // 获取当前选中的模型配置
   const currentModel = useMemo(() => {
     return availableModels.find(m => m.id === selectedModelId) || availableModels[0];
   }, [availableModels, selectedModelId]);
+  const isSoraChannel = currentModel?.channelType === 'sora';
+  const canMentionCharacterCards = isSoraChannel && characterCards.length > 0;
 
   // 加载模型列表
   useEffect(() => {
@@ -204,6 +187,12 @@ export default function VideoGenerationPage() {
     loadCharacterCards();
   }, []);
 
+  useEffect(() => {
+    if (!isSoraChannel) {
+      setShowCharacterMenu(false);
+    }
+  }, [isSoraChannel]);
+
   // 检测是否包含中文字符（暂时禁用）
   // const containsChinese = (text: string): boolean => {
   //   return /[\u4e00-\u9fa5]/.test(text);
@@ -230,52 +219,8 @@ export default function VideoGenerationPage() {
     setter(e.target.value);
   };
 
-  // 提示词增强
-  const handleEnhancePrompt = async () => {
-    const currentPrompt = creationMode === 'storyboard' ? storyboardPrompt : prompt;
-    if (!currentPrompt.trim()) {
-      toast({ title: '请先输入提示词', variant: 'destructive' });
-      return;
-    }
-
-    setEnhancing(true);
-    try {
-      const durationNum = duration === '10s' ? 10 : duration === '15s' ? 15 : undefined;
-      const res = await fetch('/api/enhance-prompt', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: currentPrompt.trim(),
-          expansion_level: 'medium',
-          duration_s: durationNum,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || '提示词增强失败');
-      }
-
-      if (data.data?.enhanced_prompt) {
-        if (creationMode === 'storyboard') {
-          setStoryboardPrompt(data.data.enhanced_prompt);
-        } else {
-          setPrompt(data.data.enhanced_prompt);
-        }
-        toast({ title: '提示词已增强' });
-      }
-    } catch (err) {
-      toast({
-        title: '增强失败',
-        description: err instanceof Error ? err.message : '请稍后重试',
-        variant: 'destructive',
-      });
-    } finally {
-      setEnhancing(false);
-    }
-  };
-
   const handleAddCharacter = (characterName: string) => {
+    if (!isSoraChannel) return;
     const mention = `@${characterName}`;
     setPrompt((prev) => (prev ? `${prev} ${mention}` : mention));
     promptTextareaRef.current?.focus();
@@ -315,11 +260,18 @@ export default function VideoGenerationPage() {
     }
   };
 
-  // 新增：监听 @ 输入触发角色卡菜单
+
   const handlePromptKeyUp = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (!canMentionCharacterCards) {
+      if (showCharacterMenu) {
+        setShowCharacterMenu(false);
+      }
+      return;
+    }
+
     const value = (e.target as HTMLTextAreaElement).value;
     const lastChar = value.slice(-1);
-    if (lastChar === '@' && characterCards.length > 0) {
+    if (lastChar === '@') {
       setShowCharacterMenu(true);
     } else if (e.key === 'Escape') {
       setShowCharacterMenu(false);
@@ -662,7 +614,6 @@ export default function VideoGenerationPage() {
       duration: string;
       files: { mimeType: string; data: string }[];
       remixTargetId?: string;
-      styleId?: string;
     }
   ) => {
     const fallbackModel = buildModelId(config.aspectRatio, config.duration);
@@ -677,7 +628,6 @@ export default function VideoGenerationPage() {
         prompt: taskPrompt,
         files: config.files,
         remix_target_id: config.remixTargetId,
-        style_id: config.styleId,
       }),
     });
 
@@ -714,8 +664,7 @@ export default function VideoGenerationPage() {
 
     const taskPrompt = buildPrompt();
     const remixTargetId = extractRemixTargetId();
-    // 仅普通模式可用风格
-    const styleId = creationMode === 'normal' ? selectedStyle || undefined : undefined;
+
 
     try {
       // 处理图片压缩
@@ -726,7 +675,6 @@ export default function VideoGenerationPage() {
         duration,
         files: taskFiles,
         remixTargetId,
-        styleId,
       });
 
       toast({
@@ -773,7 +721,6 @@ export default function VideoGenerationPage() {
 
     const taskPrompt = buildPrompt();
     const remixTargetId = extractRemixTargetId();
-    const styleId = creationMode === 'normal' ? selectedStyle || undefined : undefined;
 
     try {
       // 处理图片压缩 (只执行一次)
@@ -786,7 +733,6 @@ export default function VideoGenerationPage() {
           duration,
           files: taskFiles,
           remixTargetId,
-          styleId,
         });
       }
 
@@ -946,8 +892,8 @@ export default function VideoGenerationPage() {
                     ref={remixPromptRef}
                     value={prompt}
                     onChange={(e) => handlePromptChange(e, setPrompt)}
-                    onKeyUp={handlePromptKeyUp}
-                    placeholder="描述你想要的修改，如：改成水墨画风格"
+                    onKeyUp={canMentionCharacterCards ? handlePromptKeyUp : undefined}
+                    placeholder={isSoraChannel ? '描述你想要的修改，输入 @ 引用角色卡' : '描述你想要的修改，如：改成水墨画风格'}
                     className="w-full h-14 px-3 py-2 bg-input/70 border border-border/70 text-foreground rounded-lg resize-none text-sm focus:outline-none focus:border-border focus:ring-2 focus:ring-ring/30"
                   />
                 </div>
@@ -963,14 +909,14 @@ export default function VideoGenerationPage() {
                   ref={promptTextareaRef}
                   value={prompt}
                   onChange={(e) => handlePromptChange(e, setPrompt)}
-                  onKeyUp={handlePromptKeyUp}
-                  placeholder="描述视频动态，或拖入图片生成图生视频... 输入 @ 引用角色卡"
+                  onKeyUp={canMentionCharacterCards ? handlePromptKeyUp : undefined}
+                  placeholder={isSoraChannel ? '描述视频动态，或拖入图片生成图生视频... 输入 @ 引用角色卡' : '描述视频动态，或拖入图片生成图生视频...'}
                   className="w-full h-20 px-3 py-2 bg-input/70 border border-border/70 text-foreground rounded-lg resize-none text-sm focus:outline-none focus:border-border focus:ring-2 focus:ring-ring/30"
                 />
               )}
 
-              {/* @ 触发的角色卡弹出菜单 */}
-              {showCharacterMenu && characterCards.length > 0 && (
+              {/* @ 触发的角色卡弹出菜单，仅 sora 渠道显示 */}
+              {isSoraChannel && showCharacterMenu && characterCards.length > 0 && (
                 <div className="absolute bottom-full left-0 mb-2 w-64 max-h-48 overflow-auto bg-card border border-border/70 rounded-lg shadow-lg z-20">
                   <div className="p-2 border-b border-border/70 text-xs text-foreground/50">选择角色卡</div>
                   {characterCards.map((card) => (
@@ -995,21 +941,6 @@ export default function VideoGenerationPage() {
                 </div>
               )}
 
-              {/* 增强按钮 */}
-              <button
-                type="button"
-                onClick={handleEnhancePrompt}
-                disabled={enhancing || !(creationMode === 'storyboard' ? storyboardPrompt.trim() : prompt.trim())}
-                className={cn(
-                  'absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded text-xs transition-all',
-                  enhancing || !(creationMode === 'storyboard' ? storyboardPrompt.trim() : prompt.trim())
-                    ? 'text-foreground/30 cursor-not-allowed'
-                    : 'text-sky-400 hover:text-sky-300 hover:bg-sky-500/10'
-                )}
-              >
-                {enhancing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
-                <span>增强</span>
-              </button>
             </div>
           </div>
 
@@ -1057,59 +988,6 @@ export default function VideoGenerationPage() {
                   }))}
                   placeholder="比例"
                 />
-              </div>
-            )}
-
-            {/* 风格选择按钮 - 仅普通模式 */}
-            {creationMode === 'normal' && (
-              <div className="relative">
-                <button
-                  onClick={() => setShowStylePanel(!showStylePanel)}
-                  className={cn(
-                    'flex items-center gap-1.5 px-3 py-1.5 bg-card/60 border border-border/70 rounded-lg text-xs transition-all hover:bg-card/80',
-                    selectedStyle ? 'text-sky-400' : 'text-foreground'
-                  )}
-                >
-                  <Palette className="w-3 h-3" />
-                  <span>{selectedStyle ? VIDEO_STYLES.find(s => s.id === selectedStyle)?.name : '风格'}</span>
-                  <ChevronDown className="w-3 h-3 text-foreground/50" />
-                </button>
-
-                {/* 风格弹出面板 */}
-                {showStylePanel && (
-                  <div className="absolute bottom-full left-0 mb-2 p-4 w-[420px] bg-card border border-border/70 rounded-lg shadow-lg z-20">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs text-foreground/50">选择风格</span>
-                      {selectedStyle && (
-                        <button
-                          onClick={() => { setSelectedStyle(null); setShowStylePanel(false); }}
-                          className="text-xs text-foreground/40 hover:text-foreground/70"
-                        >
-                          清除
-                        </button>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-4 gap-3">
-                      {VIDEO_STYLES.map((style) => (
-                        <button
-                          key={style.id}
-                          onClick={() => { setSelectedStyle(style.id); setShowStylePanel(false); }}
-                          className={cn(
-                            'relative w-24 h-16 rounded-lg overflow-hidden border-2 transition-all',
-                            selectedStyle === style.id
-                              ? 'border-sky-400 ring-2 ring-sky-400/30'
-                              : 'border-border/70 hover:border-border'
-                          )}
-                        >
-                          <img src={style.image} alt={style.name} className="w-full h-full object-cover" />
-                          <div className="absolute inset-0 flex items-end justify-center pb-1 bg-gradient-to-t from-black/80 to-transparent">
-                            <span className="text-xs font-medium text-white">{style.name}</span>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             )}
 

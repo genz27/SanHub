@@ -21,7 +21,7 @@ function normalizeIncomingVideoConfigObject(input: SoraGenerateRequest): SoraGen
   }
 
   if (typeof raw.video_length === 'number' && Number.isFinite(raw.video_length)) {
-    output.video_length = Math.max(5, Math.min(15, Math.floor(raw.video_length)));
+    output.video_length = Math.max(5, Math.min(30, Math.floor(raw.video_length)));
   }
 
   if (typeof raw.resolution === 'string') {

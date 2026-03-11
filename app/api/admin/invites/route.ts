@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { createInviteCode, getInviteCodes, getInviteCodesCount, deleteInviteCode } from '@/lib/db-codes';
+import { createInviteBatch, getInviteCodes, getInviteCodesCount, deleteInviteCode } from '@/lib/db-codes';
 
 export async function GET(request: Request) {
   try {
@@ -41,10 +41,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '无权限' }, { status: 403 });
     }
 
-    const { bonusPoints = 0, creatorBonus = 0, expiresAt } = await request.json();
+    const { count = 1, bonusPoints = 0, creatorBonus = 0, expiresAt } = await request.json();
+    const safeCount = Math.max(1, Math.min(100, Math.floor(Number(count) || 1)));
 
-    const code = await createInviteCode(session.user.id, bonusPoints, creatorBonus, expiresAt);
-    return NextResponse.json({ success: true, data: code });
+    const batch = await createInviteBatch(session.user.id, safeCount, bonusPoints, creatorBonus, expiresAt);
+    return NextResponse.json({ success: true, data: batch.codes, batch });
   } catch (error) {
     console.error('Create invite code error:', error);
     return NextResponse.json({ error: '创建邀请码失败' }, { status: 500 });

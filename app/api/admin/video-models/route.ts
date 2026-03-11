@@ -26,7 +26,7 @@ function normalizeVideoConfigObject(raw: unknown): VideoConfigObject | undefined
 
   const videoLengthRaw = source.video_length;
   if (typeof videoLengthRaw === 'number' && Number.isFinite(videoLengthRaw)) {
-    const seconds = Math.max(5, Math.min(15, Math.floor(videoLengthRaw)));
+    const seconds = Math.max(5, Math.min(30, Math.floor(videoLengthRaw)));
     config.video_length = seconds;
   }
 

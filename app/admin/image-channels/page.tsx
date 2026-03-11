@@ -6,16 +6,18 @@ import {
   Layers, ChevronDown, ChevronUp, Image as ImageIcon, RefreshCw, Download, Check
 } from 'lucide-react';
 import { toast } from '@/components/ui/toaster';
-import type { ImageChannel, ImageModel, ChannelType, ImageModelFeatures } from '@/types';
+import type { ImageChannel, ImageModel, ImageModelFeatures } from '@/types';
 
-const CHANNEL_TYPES: { value: ChannelType; label: string; description: string }[] = [
+const CHANNEL_TYPES = [
   { value: 'openai-compatible', label: 'OpenAI Images', description: 'OpenAI /v1/images/generations API' },
   { value: 'openai-chat', label: 'OpenAI Chat', description: 'OpenAI /v1/chat/completions API' },
   { value: 'gemini', label: 'Gemini', description: 'Google Gemini Native API' },
   { value: 'modelscope', label: 'ModelScope', description: 'ModelScope API' },
   { value: 'gitee', label: 'Gitee AI', description: 'Gitee AI API' },
   { value: 'sora', label: 'Sora', description: 'OpenAI Sora API' },
-];
+] as const;
+
+type ImageAdminChannelType = (typeof CHANNEL_TYPES)[number]['value'];
 
 const DEFAULT_FEATURES: ImageModelFeatures = {
   textToImage: true,
@@ -94,9 +96,8 @@ const GEMINI_PRO_SIZE_GROUPS_PIXELS: SizeResolutionGroup[] = [
 // Gemini 3 Pro model ID mapping (for dynamic model selection)
 // Format: gemini-3.0-pro-image-{ratio}[-{size}]
 const buildGeminiProModelGroups = (baseModel: string): SizeResolutionGroup[] => {
-  // Extract base name, e.g. "gemini-3.0-pro-image" from "gemini-3.0-pro-image-square"
   const baseName = baseModel.replace(/-(landscape|portrait|square|four-three|three-four)(-2k|-4k)?$/i, '');
-  
+
   const ratioToSuffix: Record<string, string> = {
     '1:1': 'square',
     '16:9': 'landscape',
@@ -104,11 +105,11 @@ const buildGeminiProModelGroups = (baseModel: string): SizeResolutionGroup[] => 
     '4:3': 'four-three',
     '3:4': 'three-four',
   };
-  
+
   const sizes = ['1K', '2K', '4K'];
   const sizeSuffixes: Record<string, string> = { '1K': '', '2K': '-2k', '4K': '-4k' };
-  
-  return sizes.map(size => ({
+
+  return sizes.map((size) => ({
     size,
     rows: Object.entries(ratioToSuffix).map(([ratio, suffix]) => ({
       ratio,
@@ -117,48 +118,169 @@ const buildGeminiProModelGroups = (baseModel: string): SizeResolutionGroup[] => 
   }));
 };
 
-export default function ImageChannelsPage() {
-  const [channels, setChannels] = useState<ImageChannel[]>([]);
-  const [models, setModels] = useState<ImageModel[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [migrating, setMigrating] = useState(false);
-  const [expandedChannels, setExpandedChannels] = useState<Set<string>>(new Set());
-  const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
-  
-  // Channel form
-  const [editingChannel, setEditingChannel] = useState<string | null>(null);
-  const [channelForm, setChannelForm] = useState({
-    name: '',
-    type: 'openai-compatible' as ChannelType,
+type RemoteModelOption = {
+  id: string;
+  owned_by: string;
+};
+
+type GroupedRemoteModel = {
+  baseName: string;
+  displayName: string;
+  apiModel: string;
+  modelIds: string[];
+  modelCount: number;
+  recommendedName: string;
+  recommendedDescription: string;
+  tags: string[];
+  aspectRatios: string[];
+  imageSizes: string[];
+  resolutions: Record<string, string | Record<string, string>>;
+  features: { textToImage: boolean; imageToImage: boolean; imageSize: boolean };
+};
+
+type ModelPresetId = 'general' | 'edit' | 'hd' | 'matting' | 'upscale';
+
+type ModelPresetOption = {
+  id: ModelPresetId;
+  label: string;
+  description: string;
+};
+
+type ModelFormState = {
+  name: string;
+  description: string;
+  apiModel: string;
+  baseUrl: string;
+  apiKey: string;
+  features: ImageModelFeatures;
+  defaultAspectRatio: string;
+  defaultImageSize: string;
+  requiresReferenceImage: boolean;
+  allowEmptyPrompt: boolean;
+  highlight: boolean;
+  enabled: boolean;
+  costPerGeneration: number;
+  sortOrder: number;
+};
+
+const ORIGINAL_IMAGE_ROWS: RatioResolutionRow[] = [{ ratio: 'original', resolution: '' }];
+
+const CHANNEL_FORM_GUIDES: Record<ImageAdminChannelType, {
+  defaultName: string;
+  summary: string;
+  hint: string;
+  baseUrlExample?: string;
+  recommendedAction: string;
+}> = {
+  'openai-compatible': {
+    defaultName: 'OpenAI Images',
+    summary: '适合 NewAPI、One API、OpenRouter 这类兼容 OpenAI Images 的聚合渠道。',
+    hint: '优先填写可访问的 Base URL，保存后可直接从 /v1/models 智能拉取模型。',
+    recommendedAction: '先保存渠道，再点“智能导入远端模型”',
+  },
+  'openai-chat': {
+    defaultName: 'OpenAI Chat',
+    summary: '适合通过 /v1/chat/completions 提供生图能力的兼容渠道。',
+    hint: '如果上游同时提供 /v1/models，可在保存后直接拉取并批量导入。',
+    recommendedAction: '先保存渠道，再点“智能导入远端模型”',
+  },
+  gemini: {
+    defaultName: 'Gemini',
+    summary: '适合 Google Gemini 原生接口，兼顾快速出图和高分辨率模型。',
+    hint: '通常只需要 Base URL 和 API Key，模型建议优先使用下方预设。',
+    baseUrlExample: 'https://generativelanguage.googleapis.com',
+    recommendedAction: '先用预设生成模型，再按需微调',
+  },
+  modelscope: {
+    defaultName: 'ModelScope',
+    summary: '适合接入 Qwen、FLUX 等阿里系图像模型。',
+    hint: '可先创建渠道，再直接套用通用生图或编辑预设。',
+    baseUrlExample: 'https://api-inference.modelscope.cn/',
+    recommendedAction: '先套预设，再补充模型 ID',
+  },
+  gitee: {
+    defaultName: 'Gitee AI',
+    summary: '适合 Z-Image、抠图、超分等偏工具型图像能力。',
+    hint: '建议按用途拆成多个模型，方便前台直接选择。',
+    baseUrlExample: 'https://ai.gitee.com/',
+    recommendedAction: '优先使用工具类预设',
+  },
+  sora: {
+    defaultName: 'Sora',
+    summary: '适合接入 Sora Image 一类图像接口。',
+    hint: '一般只需要创建一个默认模型，支持图生图时可开启参考图。',
+    recommendedAction: '先创建默认模型，再微调能力开关',
+  },
+};
+
+const MANUAL_PRESET_OPTIONS: Record<ImageAdminChannelType, ModelPresetOption[]> = {
+  'openai-compatible': [
+    { id: 'general', label: '标准生图', description: '适合常规文生图，带默认常用比例。' },
+    { id: 'edit', label: '编辑变体', description: '适合编辑、局部重绘或 variation 场景。' },
+    { id: 'hd', label: '高清多档', description: '适合需要 1K / 2K / 4K 多档分辨率的模型。' },
+  ],
+  'openai-chat': [
+    { id: 'general', label: '标准生图', description: '适合兼容聊天接口的图像生成模型。' },
+    { id: 'edit', label: '编辑变体', description: '适合参考图编辑、变体和重绘。' },
+    { id: 'hd', label: '高清多档', description: '适合支持多档分辨率映射的模型。' },
+  ],
+  gemini: [
+    { id: 'general', label: '快速生图', description: '默认填充 Gemini Flash 图像模型。' },
+    { id: 'hd', label: '高清多档', description: '默认填充 Gemini Pro 的多档分辨率配置。' },
+    { id: 'edit', label: '编辑模式', description: '适合图生图、重绘和参考图编辑。' },
+  ],
+  modelscope: [
+    { id: 'general', label: '通用生图', description: '默认填充 Qwen / FLUX 一类常规模型。' },
+    { id: 'edit', label: '编辑模式', description: '默认填充 Qwen Image Edit 一类编辑模型。' },
+  ],
+  gitee: [
+    { id: 'general', label: '通用生图', description: '默认填充 Z-Image 一类生图模型。' },
+    { id: 'matting', label: '抠图工具', description: '适合背景移除、主体分离等工具型能力。' },
+    { id: 'upscale', label: '超分工具', description: '适合放大、增强和修复等工具型能力。' },
+  ],
+  sora: [
+    { id: 'general', label: '默认生图', description: '默认填充 Sora Image 的推荐配置。' },
+  ],
+};
+
+function cloneRatioRows(rows: RatioResolutionRow[]): RatioResolutionRow[] {
+  return rows.map((row) => ({ ...row }));
+}
+
+function cloneSizeGroups(groups: SizeResolutionGroup[]): SizeResolutionGroup[] {
+  return groups.map((group) => ({
+    size: group.size,
+    rows: cloneRatioRows(group.rows),
+  }));
+}
+
+function createDefaultSizeGroups(): SizeResolutionGroup[] {
+  return [{ size: '1K', rows: cloneRatioRows(DEFAULT_RATIO_ROWS) }];
+}
+
+function isImageAdminChannelType(value: string): value is ImageAdminChannelType {
+  return CHANNEL_TYPES.some((item) => item.value === value);
+}
+
+function toImageAdminChannelType(value?: string): ImageAdminChannelType {
+  if (value && isImageAdminChannelType(value)) {
+    return value;
+  }
+  return 'openai-compatible';
+}
+
+function createEmptyChannelForm(type: ImageAdminChannelType = 'openai-compatible') {
+  return {
+    name: CHANNEL_FORM_GUIDES[type].defaultName,
+    type,
     baseUrl: '',
     apiKey: '',
     enabled: true,
-  });
+  };
+}
 
-  // Model form
-  const [editingModel, setEditingModel] = useState<string | null>(null);
-  const [modelChannelId, setModelChannelId] = useState<string | null>(null);
-
-  // Remote models
-  const [remoteModels, setRemoteModels] = useState<{ id: string; owned_by: string }[]>([]);
-  const [groupedModels, setGroupedModels] = useState<Array<{
-    baseName: string;
-    displayName: string;
-    apiModel: string;
-    aspectRatios: string[];
-    imageSizes: string[];
-    resolutions: Record<string, string | Record<string, string>>;
-    features: { textToImage: boolean; imageToImage: boolean; imageSize: boolean };
-  }>>([]);
-  const [remoteModelsChannelId, setRemoteModelsChannelId] = useState<string | null>(null);
-  const [fetchingRemoteModels, setFetchingRemoteModels] = useState(false);
-  const [selectedRemoteModels, setSelectedRemoteModels] = useState<Set<string>>(new Set());
-  const [selectedGroupedModels, setSelectedGroupedModels] = useState<Set<string>>(new Set());
-  const [addingRemoteModels, setAddingRemoteModels] = useState(false);
-  const [groupedModelOverrides, setGroupedModelOverrides] = useState<Record<string, { displayName: string; description: string }>>({});
-
-  const [modelForm, setModelForm] = useState({
+function createEmptyModelForm(): ModelFormState {
+  return {
     name: '',
     description: '',
     apiModel: '',
@@ -173,11 +295,165 @@ export default function ImageChannelsPage() {
     enabled: true,
     costPerGeneration: 10,
     sortOrder: 0,
-  });
-  const [ratioRows, setRatioRows] = useState<RatioResolutionRow[]>([...DEFAULT_RATIO_ROWS]);
-  const [sizeGroups, setSizeGroups] = useState<SizeResolutionGroup[]>([
-    { size: '1K', rows: [...DEFAULT_RATIO_ROWS] },
-  ]);
+  };
+}
+
+function buildModelPreset(channelType: ImageAdminChannelType, presetId: ModelPresetId): {
+  form: ModelFormState;
+  ratioRows: RatioResolutionRow[];
+  sizeGroups: SizeResolutionGroup[];
+} {
+  const form = createEmptyModelForm();
+  let ratioRows = cloneRatioRows(DEFAULT_RATIO_ROWS);
+  let sizeGroups = createDefaultSizeGroups();
+
+  if (presetId === 'general') {
+    form.name =
+      channelType === 'gemini'
+        ? 'Gemini Nano'
+        : channelType === 'modelscope'
+        ? 'Qwen Image'
+        : channelType === 'gitee'
+        ? 'Z-Image Gitee'
+        : channelType === 'sora'
+        ? 'Sora Image'
+        : '通用图像模型';
+    form.description = '适合常规文生图，默认带常用比例。';
+    form.apiModel =
+      channelType === 'gemini'
+        ? 'gemini-2.5-flash-image'
+        : channelType === 'modelscope'
+        ? 'Qwen/Qwen-Image'
+        : channelType === 'gitee'
+        ? 'z-image-turbo'
+        : channelType === 'sora'
+        ? 'sora-image'
+        : '';
+    form.features = {
+      textToImage: true,
+      imageToImage: channelType === 'gemini' || channelType === 'sora',
+      upscale: false,
+      matting: false,
+      multipleImages: false,
+      imageSize: false,
+    };
+  }
+
+  if (presetId === 'edit') {
+    form.name = channelType === 'modelscope' ? 'Qwen Image Edit' : '图像编辑模型';
+    form.description = '适合编辑、重绘或 variation，默认要求上传参考图。';
+    form.apiModel = channelType === 'modelscope' ? 'Qwen/Qwen-Image-Edit-2509' : '';
+    form.features = {
+      textToImage: false,
+      imageToImage: true,
+      upscale: false,
+      matting: false,
+      multipleImages: false,
+      imageSize: false,
+    };
+    form.requiresReferenceImage = true;
+  }
+
+  if (presetId === 'hd') {
+    form.name = channelType === 'gemini' ? 'Gemini Pro' : '高清图像模型';
+    form.description = '适合需要 1K / 2K / 4K 多档分辨率的模型。';
+    form.apiModel = channelType === 'gemini' ? 'gemini-3.0-pro-image-square' : '';
+    form.features = {
+      textToImage: true,
+      imageToImage: true,
+      upscale: false,
+      matting: false,
+      multipleImages: channelType === 'gemini',
+      imageSize: true,
+    };
+    form.defaultImageSize = '1K';
+    sizeGroups = cloneSizeGroups(GEMINI_PRO_SIZE_GROUPS_PIXELS);
+  }
+
+  if (presetId === 'matting') {
+    form.name = '抠图模型';
+    form.description = '适合去背景、主体分离等工具型场景。';
+    form.apiModel = channelType === 'gitee' ? 'RMBG-2.0' : '';
+    form.features = {
+      textToImage: false,
+      imageToImage: false,
+      upscale: false,
+      matting: true,
+      multipleImages: false,
+      imageSize: false,
+    };
+    form.defaultAspectRatio = 'original';
+    form.requiresReferenceImage = true;
+    form.allowEmptyPrompt = true;
+    ratioRows = cloneRatioRows(ORIGINAL_IMAGE_ROWS);
+    sizeGroups = createDefaultSizeGroups();
+  }
+
+  if (presetId === 'upscale') {
+    form.name = '超分模型';
+    form.description = '适合图片增强、放大和修复等工具型场景。';
+    form.apiModel = channelType === 'gitee' ? 'SeedVR2-3B' : '';
+    form.features = {
+      textToImage: false,
+      imageToImage: false,
+      upscale: true,
+      matting: false,
+      multipleImages: false,
+      imageSize: false,
+    };
+    form.defaultAspectRatio = 'original';
+    form.requiresReferenceImage = true;
+    form.allowEmptyPrompt = true;
+    form.highlight = true;
+    ratioRows = cloneRatioRows(ORIGINAL_IMAGE_ROWS);
+    sizeGroups = createDefaultSizeGroups();
+  }
+
+  return { form, ratioRows, sizeGroups };
+}
+
+export default function ImageChannelsPage() {
+  const [channels, setChannels] = useState<ImageChannel[]>([]);
+  const [models, setModels] = useState<ImageModel[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [migrating, setMigrating] = useState(false);
+  const [expandedChannels, setExpandedChannels] = useState<Set<string>>(new Set());
+  const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
+  
+  // Channel form
+  const [editingChannel, setEditingChannel] = useState<string | null>(null);
+  const [channelForm, setChannelForm] = useState(() => createEmptyChannelForm());
+
+  // Model form
+  const [editingModel, setEditingModel] = useState<string | null>(null);
+  const [modelChannelId, setModelChannelId] = useState<string | null>(null);
+  const [activeModelPresetId, setActiveModelPresetId] = useState<ModelPresetId | null>(null);
+
+  // Remote models
+  const [remoteModels, setRemoteModels] = useState<RemoteModelOption[]>([]);
+  const [groupedModels, setGroupedModels] = useState<GroupedRemoteModel[]>([]);
+  const [remoteModelsChannelId, setRemoteModelsChannelId] = useState<string | null>(null);
+  const [fetchingRemoteModels, setFetchingRemoteModels] = useState(false);
+  const [selectedRemoteModels, setSelectedRemoteModels] = useState<Set<string>>(new Set());
+  const [selectedGroupedModels, setSelectedGroupedModels] = useState<Set<string>>(new Set());
+  const [addingRemoteModels, setAddingRemoteModels] = useState(false);
+  const [groupedModelOverrides, setGroupedModelOverrides] = useState<Record<string, { displayName: string; description: string }>>({});
+
+  const [modelForm, setModelForm] = useState<ModelFormState>(() => createEmptyModelForm());
+  const [ratioRows, setRatioRows] = useState<RatioResolutionRow[]>(() => cloneRatioRows(DEFAULT_RATIO_ROWS));
+  const [sizeGroups, setSizeGroups] = useState<SizeResolutionGroup[]>(() => createDefaultSizeGroups());
+
+  const currentEditableChannel = useMemo(
+    () => channels.find((channel) => channel.id === modelChannelId) || null,
+    [channels, modelChannelId]
+  );
+  const channelFormGuide = CHANNEL_FORM_GUIDES[channelForm.type];
+  const manualPresetOptions = useMemo(
+    () => MANUAL_PRESET_OPTIONS[toImageAdminChannelType(currentEditableChannel?.type)],
+    [currentEditableChannel?.type]
+  );
+
   const availableRatios = useMemo(() => {
     const rows = modelForm.features.imageSize
       ? sizeGroups.flatMap((group) => group.rows)
@@ -254,23 +530,17 @@ export default function ImageChannelsPage() {
   };
 
   const resetChannelForm = () => {
-    setChannelForm({ name: '', type: 'openai-compatible', baseUrl: '', apiKey: '', enabled: true });
+    setChannelForm(createEmptyChannelForm());
     setEditingChannel(null);
   };
 
   const resetModelForm = () => {
-    setModelForm({
-      name: '', description: '', apiModel: '', baseUrl: '', apiKey: '',
-      features: { ...DEFAULT_FEATURES },
-      defaultAspectRatio: '1:1',
-      defaultImageSize: '',
-      requiresReferenceImage: false, allowEmptyPrompt: false, highlight: false,
-      enabled: true, costPerGeneration: 10, sortOrder: 0,
-    });
-    setRatioRows([...DEFAULT_RATIO_ROWS]);
-    setSizeGroups([{ size: '1K', rows: [...DEFAULT_RATIO_ROWS] }]);
+    setModelForm(createEmptyModelForm());
+    setRatioRows(cloneRatioRows(DEFAULT_RATIO_ROWS));
+    setSizeGroups(createDefaultSizeGroups());
     setEditingModel(null);
     setModelChannelId(null);
+    setActiveModelPresetId(null);
   };
 
   const buildRatioRows = (resolutions: Record<string, string> | undefined) => {
@@ -296,10 +566,51 @@ export default function ImageChannelsPage() {
     }));
   };
 
+  const getChannelModels = (channelId: string) => models.filter((model) => model.channelId === channelId);
+
+  const getExistingApiModelSet = (channelId: string | null) => {
+    if (!channelId) return new Set<string>();
+    return new Set(getChannelModels(channelId).map((model) => model.apiModel));
+  };
+
+  const handleChannelTypeChange = (nextType: ImageAdminChannelType) => {
+    setChannelForm((prev) => {
+      const knownNames = new Set(Object.values(CHANNEL_FORM_GUIDES).map((guide) => guide.defaultName));
+      const shouldReplaceName = !prev.name.trim() || knownNames.has(prev.name.trim());
+      return {
+        ...prev,
+        type: nextType,
+        name: shouldReplaceName ? CHANNEL_FORM_GUIDES[nextType].defaultName : prev.name,
+      };
+    });
+  };
+
+  const applyManualPreset = (presetId: ModelPresetId, replaceIdentity = false) => {
+    const channelType = toImageAdminChannelType(currentEditableChannel?.type);
+    const preset = buildModelPreset(channelType, presetId);
+
+    setModelForm((prev) => ({
+      ...prev,
+      name: replaceIdentity || !prev.name.trim() ? preset.form.name : prev.name,
+      description:
+        replaceIdentity || !prev.description.trim() ? preset.form.description : prev.description,
+      apiModel: replaceIdentity || !prev.apiModel.trim() ? preset.form.apiModel : prev.apiModel,
+      features: { ...preset.form.features },
+      defaultAspectRatio: preset.form.defaultAspectRatio,
+      defaultImageSize: preset.form.defaultImageSize,
+      requiresReferenceImage: preset.form.requiresReferenceImage,
+      allowEmptyPrompt: preset.form.allowEmptyPrompt,
+      highlight: replaceIdentity ? preset.form.highlight : prev.highlight,
+    }));
+    setRatioRows(cloneRatioRows(preset.ratioRows));
+    setSizeGroups(cloneSizeGroups(preset.sizeGroups));
+    setActiveModelPresetId(presetId);
+  };
+
   const startEditChannel = (channel: ImageChannel) => {
     setChannelForm({
       name: channel.name,
-      type: channel.type,
+      type: toImageAdminChannelType(channel.type),
       baseUrl: channel.baseUrl,
       apiKey: channel.apiKey,
       enabled: channel.enabled,
@@ -333,15 +644,28 @@ export default function ImageChannelsPage() {
       setRatioRows(groups[0]?.rows || [{ ratio: '', resolution: '' }]);
     } else {
       setRatioRows(buildRatioRows(model.resolutions as Record<string, string>));
-      setSizeGroups([{ size: '1K', rows: [...DEFAULT_RATIO_ROWS] }]);
+      setSizeGroups(createDefaultSizeGroups());
     }
     setEditingModel(model.id);
     setModelChannelId(model.channelId);
+    setActiveModelPresetId(null);
   };
 
   const startAddModel = (channelId: string) => {
-    resetModelForm();
+    const channel = channels.find((item) => item.id === channelId);
+    const channelType = toImageAdminChannelType(channel?.type);
+    const presetId: ModelPresetId = channelType === 'gemini' ? 'hd' : 'general';
+    const preset = buildModelPreset(channelType, presetId);
+
+    setModelForm({
+      ...preset.form,
+      sortOrder: getChannelModels(channelId).length,
+    });
+    setRatioRows(cloneRatioRows(preset.ratioRows));
+    setSizeGroups(cloneSizeGroups(preset.sizeGroups));
+    setEditingModel(null);
     setModelChannelId(channelId);
+    setActiveModelPresetId(presetId);
   };
 
   const saveChannel = async () => {
@@ -405,7 +729,7 @@ export default function ImageChannelsPage() {
     const normalizeRows = (rows: RatioResolutionRow[]) =>
       rows
         .map((row) => ({ ratio: row.ratio.trim(), resolution: row.resolution.trim() }))
-        .filter((row) => row.ratio && row.resolution);
+        .filter((row) => row.ratio && (row.resolution || row.ratio === 'original'));
 
     let aspectRatios: string[] = [];
     let resolutions: Record<string, string | Record<string, string>> = {};
@@ -559,8 +883,6 @@ export default function ImageChannelsPage() {
     });
   };
 
-  const getChannelModels = (channelId: string) => models.filter(m => m.channelId === channelId);
-
   // Fetch remote models from /v1/models
   const fetchRemoteModels = async (channelId: string) => {
     setFetchingRemoteModels(true);
@@ -574,12 +896,26 @@ export default function ImageChannelsPage() {
       const res = await fetch(`/api/admin/image-channels/models?channelId=${channelId}&group=true`);
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to fetch models');
+        throw new Error(data.error || '无法拉取远端模型');
       }
-      setGroupedModels(data.data?.grouped || []);
-      setRemoteModels(data.data?.ungrouped || []);
+      const nextGroupedModels = (data.data?.grouped || []) as GroupedRemoteModel[];
+      const nextRemoteModels = (data.data?.ungrouped || []) as RemoteModelOption[];
+      const existingApiModels = getExistingApiModelSet(channelId);
+
+      setGroupedModels(nextGroupedModels);
+      setRemoteModels(nextRemoteModels);
+      setSelectedGroupedModels(
+        new Set(nextGroupedModels.filter((group) => !existingApiModels.has(group.apiModel)).map((group) => group.baseName))
+      );
+      setSelectedRemoteModels(
+        new Set(nextRemoteModels.filter((model) => !existingApiModels.has(model.id)).map((model) => model.id))
+      );
     } catch (err) {
-      toast({ title: 'Failed to fetch remote models', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
+      toast({
+        title: '拉取远端模型失败',
+        description: err instanceof Error ? err.message : '未知错误',
+        variant: 'destructive',
+      });
       setRemoteModelsChannelId(null);
     } finally {
       setFetchingRemoteModels(false);
@@ -641,8 +977,9 @@ export default function ImageChannelsPage() {
         const group = groupedModels.find(g => g.baseName === baseName);
         if (!group) continue;
         const override = groupedModelOverrides[baseName];
-        const name = (override?.displayName || group.displayName).trim() || group.displayName;
-        const description = (override?.description || '').trim();
+        const name = (override?.displayName || group.recommendedName || group.displayName).trim() || group.displayName;
+        const description = (override?.description || group.recommendedDescription || '').trim();
+        const nextSortOrder = getChannelModels(remoteModelsChannelId).length + added;
 
         const res = await fetch('/api/admin/image-models', {
           method: 'POST',
@@ -667,7 +1004,7 @@ export default function ImageChannelsPage() {
             defaultImageSize: group.features.imageSize ? (group.imageSizes.includes('1K') ? '1K' : group.imageSizes[0]) : undefined,
             enabled: true,
             costPerGeneration: 10,
-            sortOrder: 0,
+            sortOrder: nextSortOrder,
           }),
         });
         if (res.ok) added++;
@@ -675,6 +1012,7 @@ export default function ImageChannelsPage() {
 
       // Add ungrouped models
       for (const modelId of Array.from(selectedRemoteModels)) {
+        const nextSortOrder = getChannelModels(remoteModelsChannelId).length + added;
         const res = await fetch('/api/admin/image-models', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -689,17 +1027,21 @@ export default function ImageChannelsPage() {
             defaultAspectRatio: '1:1',
             enabled: true,
             costPerGeneration: 10,
-            sortOrder: 0,
+            sortOrder: nextSortOrder,
           }),
         });
         if (res.ok) added++;
       }
 
-      toast({ title: `Added ${added} model(s)` });
+      toast({ title: '模型导入完成', description: `已新增 ${added} 个模型。` });
       closeRemoteModels();
       loadData();
     } catch (err) {
-      toast({ title: 'Failed to add models', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
+      toast({
+        title: '导入模型失败',
+        description: err instanceof Error ? err.message : '未知错误',
+        variant: 'destructive',
+      });
     } finally {
       setAddingRemoteModels(false);
     }
@@ -743,6 +1085,25 @@ export default function ImageChannelsPage() {
           </h2>
         </div>
 
+        <div className="rounded-2xl border border-border/70 bg-card/50 p-4 space-y-2">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-sm font-medium text-foreground">渠道接入建议</p>
+              <p className="text-sm text-foreground/60 mt-1">{channelFormGuide.summary}</p>
+            </div>
+            <span className="inline-flex items-center rounded-full bg-blue-500/10 px-3 py-1 text-xs text-blue-300 border border-blue-500/20">
+              推荐操作：{channelFormGuide.recommendedAction}
+            </span>
+          </div>
+          <p className="text-xs text-foreground/50">提示：{channelFormGuide.hint}</p>
+          {channelFormGuide.baseUrlExample && (
+            <p className="text-xs text-foreground/50">
+              推荐 Base URL：
+              <code className="ml-1 rounded bg-card/70 px-2 py-1 text-foreground/80">{channelFormGuide.baseUrlExample}</code>
+            </p>
+          )}
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
             <label className="text-sm text-foreground/70">名称 *</label>
@@ -758,7 +1119,7 @@ export default function ImageChannelsPage() {
             <label className="text-sm text-foreground/70">类型 *</label>
             <select
               value={channelForm.type}
-              onChange={(e) => setChannelForm({ ...channelForm, type: e.target.value as ChannelType })}
+              onChange={(e) => handleChannelTypeChange(e.target.value as ImageAdminChannelType)}
               className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border"
             >
               {CHANNEL_TYPES.map(t => (
@@ -829,16 +1190,49 @@ export default function ImageChannelsPage() {
       {/* Model Form (shown when adding/editing) */}
       {modelChannelId && (
         <div className="bg-card/60 border border-border/70 rounded-2xl p-6 space-y-4">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 bg-sky-500/20 rounded-xl flex items-center justify-center">
-              <ImageIcon className="w-5 h-5 text-sky-400" />
-            </div>
-            <h2 className="text-lg font-semibold text-foreground">
-              {editingModel ? '编辑模型' : '添加模型'}
-            </h2>
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 bg-sky-500/20 rounded-xl flex items-center justify-center">
+            <ImageIcon className="w-5 h-5 text-sky-400" />
           </div>
+          <h2 className="text-lg font-semibold text-foreground">
+            {editingModel ? '编辑模型' : '添加模型'}
+          </h2>
+        </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {currentEditableChannel && (
+          <div className="rounded-2xl border border-border/70 bg-card/50 p-4 space-y-3">
+            <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="text-sm font-medium text-foreground">快速预设</p>
+                <p className="text-xs text-foreground/50 mt-1">
+                  点一个预设就会自动填入推荐名称、模型 ID、能力开关和常用比例，后面只需要微调。
+                </p>
+              </div>
+              <span className="text-xs text-foreground/40">
+                当前渠道：{currentEditableChannel.name} / {currentEditableChannel.type}
+              </span>
+            </div>
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
+              {manualPresetOptions.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => applyManualPreset(option.id, true)}
+                  className={`rounded-xl border p-4 text-left transition-all ${
+                    activeModelPresetId === option.id
+                      ? 'border-sky-500/50 bg-sky-500/10'
+                      : 'border-border/70 bg-card/60 hover:bg-card/70'
+                  }`}
+                >
+                  <p className="text-sm font-medium text-foreground">{option.label}</p>
+                  <p className="text-xs text-foreground/50 mt-1">{option.description}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2">
               <label className="text-sm text-foreground/70">名称 *</label>
               <input
@@ -1256,7 +1650,11 @@ export default function ImageChannelsPage() {
                       >
                         {channel.enabled ? '启用' : '禁用'}
                       </button>
-                      <button onClick={() => startAddModel(channel.id)} className="p-2 text-foreground/40 hover:text-green-400 hover:bg-green-500/10 rounded-lg" title="Add model manually">
+                      <button
+                        onClick={() => startAddModel(channel.id)}
+                        className="p-2 text-foreground/40 hover:text-green-400 hover:bg-green-500/10 rounded-lg"
+                        title="手动添加模型"
+                      >
                         <Plus className="w-4 h-4" />
                       </button>
                       {(channel.type === 'openai-chat' || channel.type === 'openai-compatible') && (
@@ -1264,7 +1662,7 @@ export default function ImageChannelsPage() {
                           onClick={() => fetchRemoteModels(channel.id)}
                           disabled={fetchingRemoteModels}
                           className="p-2 text-foreground/40 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg"
-                          title="Fetch models from /v1/models"
+                          title="智能导入远端模型"
                         >
                           <Download className="w-4 h-4" />
                         </button>
@@ -1290,20 +1688,23 @@ export default function ImageChannelsPage() {
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                               <Download className="w-4 h-4 text-blue-400" />
-                              <span className="text-sm font-medium text-foreground">Remote Models</span>
+                              <span className="text-sm font-medium text-foreground">远端模型智能导入</span>
                               {fetchingRemoteModels && <Loader2 className="w-4 h-4 animate-spin text-foreground/40" />}
                             </div>
                             <button onClick={closeRemoteModels} className="text-xs text-foreground/40 hover:text-foreground">
-                              Close
+                              收起
                             </button>
                           </div>
+                          <p className="text-xs text-foreground/50">
+                            已自动按模型家族做智能分组，并默认勾选当前渠道还没导入的模型。
+                          </p>
 
                           {/* Grouped Models Section */}
                           {groupedModels.length > 0 && (
                             <div className="space-y-2">
                               <div className="flex items-center justify-between">
-                                <span className="text-xs text-foreground/60 font-medium">Smart Grouped ({groupedModels.length})</span>
-                                <button onClick={selectAllGroupedModels} className="text-xs text-blue-400 hover:text-blue-300">Select all</button>
+                                <span className="text-xs text-foreground/60 font-medium">智能分组（{groupedModels.length}）</span>
+                                <button onClick={selectAllGroupedModels} className="text-xs text-blue-400 hover:text-blue-300">全选可导入</button>
                               </div>
                               <div className="max-h-40 overflow-y-auto space-y-2">
                                 {groupedModels.map(group => {
@@ -1311,9 +1712,9 @@ export default function ImageChannelsPage() {
                                   const alreadyExists = existingApiModels.has(group.apiModel);
                                   const isSelected = selectedGroupedModels.has(group.baseName);
                                   const override = groupedModelOverrides[group.baseName];
-                                  const displayName = override?.displayName ?? group.displayName;
-                                  const description = override?.description ?? '';
-                                  const displayLabel = displayName.trim() || group.displayName;
+                                  const displayName = override?.displayName ?? group.recommendedName ?? group.displayName;
+                                  const description = override?.description ?? group.recommendedDescription ?? '';
+                                  const displayLabel = displayName.trim() || group.recommendedName || group.displayName;
 
                                   return (
                                     <div key={group.baseName} className="space-y-2">
@@ -1342,8 +1743,16 @@ export default function ImageChannelsPage() {
                                             {group.aspectRatios.join(', ')}
                                             {group.features.imageSize && ` · ${group.imageSizes.join('/')}`}
                                           </span>
+                                          <p className="mt-1 text-xs text-foreground/40 line-clamp-2">{group.recommendedDescription}</p>
+                                          <div className="mt-2 flex flex-wrap gap-1">
+                                            {group.tags.map((tag) => (
+                                              <span key={tag} className="rounded-full bg-card/70 px-2 py-0.5 text-[10px] text-foreground/50">
+                                                {tag}
+                                              </span>
+                                            ))}
+                                          </div>
                                         </div>
-                                        {alreadyExists && <span className="text-xs text-foreground/40">Added</span>}
+                                        {alreadyExists && <span className="text-xs text-foreground/40">已存在</span>}
                                       </div>
                                       {isSelected && !alreadyExists && (
                                         <div
@@ -1359,11 +1768,11 @@ export default function ImageChannelsPage() {
                                                 ...prev,
                                                 [group.baseName]: {
                                                   displayName: nextValue,
-                                                  description: prev[group.baseName]?.description || '',
+                                                  description: prev[group.baseName]?.description || group.recommendedDescription,
                                                 },
                                               }));
                                             }}
-                                            placeholder="显示名称"
+                                            placeholder="前台显示名称"
                                             className="w-full px-3 py-2 bg-card/60 border border-border/70 rounded-lg text-foreground placeholder:text-foreground/30 text-sm focus:outline-none focus:border-border"
                                           />
                                           <input
@@ -1374,12 +1783,12 @@ export default function ImageChannelsPage() {
                                               setGroupedModelOverrides(prev => ({
                                                 ...prev,
                                                 [group.baseName]: {
-                                                  displayName: prev[group.baseName]?.displayName ?? group.displayName,
+                                                  displayName: prev[group.baseName]?.displayName ?? group.recommendedName ?? group.displayName,
                                                   description: nextValue,
                                                 },
                                               }));
                                             }}
-                                            placeholder="模型介绍"
+                                            placeholder="模型说明"
                                             className="w-full px-3 py-2 bg-card/60 border border-border/70 rounded-lg text-foreground placeholder:text-foreground/30 text-sm focus:outline-none focus:border-border"
                                           />
                                         </div>
@@ -1395,8 +1804,8 @@ export default function ImageChannelsPage() {
                           {remoteModels.length > 0 && (
                             <div className="space-y-2">
                               <div className="flex items-center justify-between">
-                                <span className="text-xs text-foreground/60 font-medium">Other Models ({remoteModels.length})</span>
-                                <button onClick={selectAllRemoteModels} className="text-xs text-blue-400 hover:text-blue-300">Select all</button>
+                                <span className="text-xs text-foreground/60 font-medium">未分组模型（{remoteModels.length}）</span>
+                                <button onClick={selectAllRemoteModels} className="text-xs text-blue-400 hover:text-blue-300">全选可导入</button>
                               </div>
                               <div className="max-h-40 overflow-y-auto space-y-1">
                                 {remoteModels.map(rm => {
@@ -1425,7 +1834,7 @@ export default function ImageChannelsPage() {
                                         {(isSelected || alreadyExists) && <Check className="w-3 h-3 text-white" />}
                                       </div>
                                       <span className="text-sm text-foreground truncate">{rm.id}</span>
-                                      {alreadyExists && <span className="text-xs text-foreground/40 ml-auto">Added</span>}
+                                      {alreadyExists && <span className="text-xs text-foreground/40 ml-auto">已存在</span>}
                                     </div>
                                   );
                                 })}
@@ -1436,8 +1845,8 @@ export default function ImageChannelsPage() {
                           {(groupedModels.length > 0 || remoteModels.length > 0) && (
                             <>
                               <div className="flex items-center gap-2 text-xs pt-2 border-t border-border/50">
-                                <button onClick={deselectAllRemoteModels} className="text-foreground/50 hover:text-foreground">Deselect all</button>
-                                <span className="text-foreground/30 ml-auto">{selectedGroupedModels.size + selectedRemoteModels.size} selected</span>
+                                <button onClick={deselectAllRemoteModels} className="text-foreground/50 hover:text-foreground">清空选择</button>
+                                <span className="text-foreground/30 ml-auto">已选 {selectedGroupedModels.size + selectedRemoteModels.size} 项</span>
                               </div>
                               <button
                                 onClick={addSelectedRemoteModels}
@@ -1445,12 +1854,12 @@ export default function ImageChannelsPage() {
                                 className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-cyan-500 text-foreground rounded-lg font-medium hover:opacity-90 disabled:opacity-50"
                               >
                                 {addingRemoteModels ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                                Add {selectedGroupedModels.size + selectedRemoteModels.size} model(s)
+                                一键导入 {selectedGroupedModels.size + selectedRemoteModels.size} 个模型
                               </button>
                             </>
                           )}
                           {!fetchingRemoteModels && groupedModels.length === 0 && remoteModels.length === 0 && (
-                            <p className="text-sm text-foreground/40 text-center py-2">No models found</p>
+                            <p className="text-sm text-foreground/40 text-center py-2">未找到可导入的远端模型</p>
                           )}
                         </div>
                       )}

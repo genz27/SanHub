@@ -112,6 +112,18 @@ export default function SiteConfigPage() {
     });
   };
 
+  const updatePromptProcessing = (
+    updates: Partial<SystemConfig['promptProcessing']>
+  ) => {
+    setConfig({
+      ...config,
+      promptProcessing: {
+        ...config.promptProcessing,
+        ...updates,
+      },
+    });
+  };
+
   const blocklistMatches = config.promptProcessing.blocklistEnabled
     ? findBlockedWords(blocklistTestInput, config.promptProcessing.blocklistWords)
     : [];
@@ -281,26 +293,27 @@ export default function SiteConfigPage() {
             <Shield className="w-4 h-4 text-orange-400" />
           </div>
           <div>
-            <h2 className="font-medium text-foreground">Prompt Processing</h2>
-            <p className="text-xs text-foreground/40">Filter and translate prompt before video generation</p>
+            <h2 className="font-medium text-foreground">提示词处理</h2>
+            <p className="text-xs text-foreground/40">在视频生成前，对提示词执行净化、翻译和黑名单校验。</p>
           </div>
         </div>
 
         <div className="p-4 space-y-5">
+          <div className="rounded-xl border border-border/70 bg-card/50 p-4">
+            <p className="text-sm text-foreground">处理顺序</p>
+            <p className="text-xs text-foreground/40 mt-1">
+              先按需做提示词净化，再执行翻译，最后根据黑名单规则决定是否直接拦截请求。
+            </p>
+          </div>
+
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-sm text-foreground">Enable Prompt Filter</label>
-                <p className="text-xs text-foreground/30 mt-1">Rewrite prompt to safer content before generation</p>
+                <label className="text-sm text-foreground">启用提示词净化</label>
+                <p className="text-xs text-foreground/30 mt-1">先用大模型重写提示词，尽量保留创作意图，同时移除高风险表达。</p>
               </div>
               <button
-                onClick={() => setConfig({
-                  ...config,
-                  promptProcessing: {
-                    ...config.promptProcessing,
-                    filterEnabled: !config.promptProcessing.filterEnabled,
-                  },
-                })}
+                onClick={() => updatePromptProcessing({ filterEnabled: !config.promptProcessing.filterEnabled })}
                 className={`relative w-12 h-6 rounded-full transition-colors ${
                   config.promptProcessing.filterEnabled ? 'bg-orange-500' : 'bg-card/80'
                 }`}
@@ -314,19 +327,13 @@ export default function SiteConfigPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm text-foreground/50">Filter Model</label>
+              <label className="text-sm text-foreground/50">净化模型</label>
               <select
                 value={config.promptProcessing.filterModelId}
-                onChange={(e) => setConfig({
-                  ...config,
-                  promptProcessing: {
-                    ...config.promptProcessing,
-                    filterModelId: e.target.value,
-                  },
-                })}
+                onChange={(e) => updatePromptProcessing({ filterModelId: e.target.value })}
                 className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-lg text-foreground focus:outline-none focus:border-border"
               >
-                <option value="">Select a model</option>
+                <option value="">请选择用于净化的模型</option>
                 {chatModels.map((model) => (
                   <option key={model.id} value={model.id}>
                     {model.name} ({model.modelId})
@@ -336,20 +343,15 @@ export default function SiteConfigPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm text-foreground/50">Filter Prompt</label>
+              <label className="text-sm text-foreground/50">净化指令</label>
               <textarea
                 value={config.promptProcessing.filterPrompt}
-                onChange={(e) => setConfig({
-                  ...config,
-                  promptProcessing: {
-                    ...config.promptProcessing,
-                    filterPrompt: e.target.value,
-                  },
-                })}
+                onChange={(e) => updatePromptProcessing({ filterPrompt: e.target.value })}
                 rows={4}
-                placeholder="Instructions for prompt filtering"
+                placeholder="告诉模型应该如何改写提示词，例如保留细节、去掉违规内容、只返回最终提示词。"
                 className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-lg text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border resize-none"
               />
+              <p className="text-xs text-foreground/30">建议要求模型“只返回处理后的提示词正文”，避免输出解释性说明。</p>
             </div>
           </div>
 
@@ -360,18 +362,12 @@ export default function SiteConfigPage() {
               <div className="flex items-start gap-2">
                 <Languages className="w-4 h-4 text-sky-400 mt-0.5" />
                 <div>
-                  <label className="text-sm text-foreground">Enable Prompt Translation</label>
-                  <p className="text-xs text-foreground/30 mt-1">Translate prompt and filter translated content again</p>
+                  <label className="text-sm text-foreground">启用提示词翻译</label>
+                  <p className="text-xs text-foreground/30 mt-1">将提示词翻译为更自然的英文，并对翻译结果再做一次净化。</p>
                 </div>
               </div>
               <button
-                onClick={() => setConfig({
-                  ...config,
-                  promptProcessing: {
-                    ...config.promptProcessing,
-                    translateEnabled: !config.promptProcessing.translateEnabled,
-                  },
-                })}
+                onClick={() => updatePromptProcessing({ translateEnabled: !config.promptProcessing.translateEnabled })}
                 className={`relative w-12 h-6 rounded-full transition-colors ${
                   config.promptProcessing.translateEnabled ? 'bg-sky-500' : 'bg-card/80'
                 }`}
@@ -385,19 +381,13 @@ export default function SiteConfigPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm text-foreground/50">Translation Model</label>
+              <label className="text-sm text-foreground/50">翻译模型</label>
               <select
                 value={config.promptProcessing.translateModelId}
-                onChange={(e) => setConfig({
-                  ...config,
-                  promptProcessing: {
-                    ...config.promptProcessing,
-                    translateModelId: e.target.value,
-                  },
-                })}
+                onChange={(e) => updatePromptProcessing({ translateModelId: e.target.value })}
                 className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-lg text-foreground focus:outline-none focus:border-border"
               >
-                <option value="">Select a model</option>
+                <option value="">请选择用于翻译的模型</option>
                 {chatModels.map((model) => (
                   <option key={model.id} value={model.id}>
                     {model.name} ({model.modelId})
@@ -407,36 +397,25 @@ export default function SiteConfigPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm text-foreground/50">Translation Prompt</label>
+              <label className="text-sm text-foreground/50">翻译指令</label>
               <textarea
                 value={config.promptProcessing.translatePrompt}
-                onChange={(e) => setConfig({
-                  ...config,
-                  promptProcessing: {
-                    ...config.promptProcessing,
-                    translatePrompt: e.target.value,
-                  },
-                })}
+                onChange={(e) => updatePromptProcessing({ translatePrompt: e.target.value })}
                 rows={4}
-                placeholder="Instructions for prompt translation"
+                placeholder="告诉模型如何翻译，例如保留风格、镜头语言、限制条件，并只返回英文提示词。"
                 className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-lg text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border resize-none"
               />
+              <p className="text-xs text-foreground/30">如果只想做净化、不想改语言，可关闭翻译开关。</p>
             </div>
 
             <div className="space-y-3 pt-2 border-t border-border/60">
               <div className="flex items-center justify-between">
                 <div>
-                  <label className="text-sm text-foreground">Enable Prompt Blocklist</label>
-                  <p className="text-xs text-foreground/30 mt-1">Reject request immediately when blocked words are detected</p>
+                  <label className="text-sm text-foreground">启用黑名单拦截</label>
+                  <p className="text-xs text-foreground/30 mt-1">命中黑名单规则后立即拒绝请求，不再进入生成流程。</p>
                 </div>
                 <button
-                  onClick={() => setConfig({
-                    ...config,
-                    promptProcessing: {
-                      ...config.promptProcessing,
-                      blocklistEnabled: !config.promptProcessing.blocklistEnabled,
-                    },
-                  })}
+                  onClick={() => updatePromptProcessing({ blocklistEnabled: !config.promptProcessing.blocklistEnabled })}
                   className={`relative w-12 h-6 rounded-full transition-colors ${
                     config.promptProcessing.blocklistEnabled ? 'bg-red-500' : 'bg-card/80'
                   }`}
@@ -450,48 +429,41 @@ export default function SiteConfigPage() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm text-foreground/50">Blocked Words (one per line)</label>
+                <label className="text-sm text-foreground/50">黑名单规则（每行一条）</label>
                 <textarea
                   value={config.promptProcessing.blocklistWords}
-                  onChange={(e) => setConfig({
-                    ...config,
-                    promptProcessing: {
-                      ...config.promptProcessing,
-                      blocklistWords: e.target.value,
-                    },
-                  })}
+                  onChange={(e) => updatePromptProcessing({ blocklistWords: e.target.value })}
                   rows={6}
-                  placeholder={'word_a\nword_b\nword_c'}
+                  placeholder={'word:weapon\nsubstr:nude\nregex:/blood\\s+ritual/i'}
                   className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-lg text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border resize-none"
                 />
-                <p className="text-xs text-foreground/30">Case-insensitive matching. Each line is one blocked rule.</p>
-                <p className="text-xs text-foreground/30">Default is whole-word match. Prefix `substr:` for substring, `re:`/`regex:` for regex.</p>
+                <p className="text-xs text-foreground/30">默认按整词匹配，不区分大小写；每一行就是一条独立规则。</p>
+                <p className="text-xs text-foreground/30">可选前缀：`word:` 表示整词，`substr:` 表示包含匹配，`re:` / `regex:` 表示正则。</p>
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm text-foreground/50">Blocklist Tester</label>
+                <label className="text-sm text-foreground/50">黑名单测试器</label>
                 <textarea
                   value={blocklistTestInput}
                   onChange={(e) => setBlocklistTestInput(e.target.value)}
                   rows={4}
-                  placeholder="Enter a prompt to test against current rules"
+                  placeholder="输入一段提示词，实时检查是否会命中当前黑名单规则。"
                   className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-lg text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border resize-none"
                 />
                 {config.promptProcessing.blocklistEnabled ? (
                   blocklistMatches.length > 0 ? (
-                    <p className="text-xs text-red-400">Matched rules: {blocklistMatches.join(', ')}</p>
+                    <p className="text-xs text-red-400">命中规则：{blocklistMatches.join('，')}</p>
                   ) : (
-                    <p className="text-xs text-emerald-400">No match</p>
+                    <p className="text-xs text-emerald-400">未命中任何规则</p>
                   )
                 ) : (
-                  <p className="text-xs text-foreground/30">Blocklist is disabled</p>
+                  <p className="text-xs text-foreground/30">黑名单拦截当前未启用，测试结果仅供参考。</p>
                 )}
               </div>
             </div>
           </div>
         </div>
       </div>
-
       {/* 视频加速配置 */}
       <div className="bg-card/60 border border-border/70 rounded-xl overflow-hidden">
         <div className="p-4 border-b border-border/70 flex items-center gap-3">
@@ -667,4 +639,3 @@ export default function SiteConfigPage() {
     </div>
   );
 }
-

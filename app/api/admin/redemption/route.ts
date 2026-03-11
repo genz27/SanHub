@@ -5,6 +5,7 @@ import {
   createRedemptionCodes, 
   getRedemptionCodes, 
   getRedemptionCodesCount,
+  getRecentRedemptionBatches,
   deleteRedemptionCode,
   deleteRedemptionCodesByBatch 
 } from '@/lib/db-codes';
@@ -23,14 +24,19 @@ export async function GET(request: Request) {
     const batchId = searchParams.get('batchId') || undefined;
     const showUsed = searchParams.get('showUsed') === 'true';
 
-    const codes = await getRedemptionCodes({ limit, offset, batchId, showUsed });
-    const total = await getRedemptionCodesCount({ batchId, showUsed });
+    const [codes, total, recentBatches] = await Promise.all([
+      getRedemptionCodes({ limit, offset, batchId, showUsed }),
+      getRedemptionCodesCount({ batchId, showUsed }),
+      getRecentRedemptionBatches(),
+    ]);
 
     return NextResponse.json({
       success: true,
       data: codes,
       total,
       page,
+      activeBatchId: batchId || null,
+      recentBatches,
       hasMore: offset + codes.length < total,
     });
   } catch (error) {
@@ -56,7 +62,20 @@ export async function POST(request: Request) {
     }
 
     const codes = await createRedemptionCodes(count, points, { expiresAt, note });
-    return NextResponse.json({ success: true, data: codes });
+    const createdAt = codes[0]?.createdAt || Date.now();
+    return NextResponse.json({
+      success: true,
+      data: codes,
+      batch: codes[0]?.batchId ? {
+        batchId: codes[0].batchId,
+        createdAt,
+        count: codes.length,
+        points,
+        note: note || undefined,
+        expiresAt: expiresAt || undefined,
+        codes,
+      } : null,
+    });
   } catch (error) {
     console.error('Create redemption codes error:', error);
     return NextResponse.json({ error: '创建卡密失败' }, { status: 500 });

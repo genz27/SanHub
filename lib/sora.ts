@@ -63,6 +63,7 @@ type ExternalChatResponse = {
 
 const VIDEO_URL_PATTERN = /\.(mp4|mov|webm|mkv|m3u8)(\?|#|$)/i;
 const IMAGE_URL_PATTERN = /\.(jpg|jpeg|png|webp|gif|bmp|svg)(\?|#|$)/i;
+const GROK_MAX_VIDEO_LENGTH_SECONDS = 30;
 
 function normalizeExtractedUrl(raw: string, baseUrl?: string): string | null {
   const trimmed = raw.trim();
@@ -440,7 +441,7 @@ function normalizeDurationSeconds(duration?: string): number {
 function normalizeGrokVideoLengthSeconds(duration?: string, fallback = 10): number {
   const parsed = normalizeDurationSeconds(duration);
   const base = Number.isFinite(parsed) ? parsed : fallback;
-  return Math.max(5, Math.min(15, Math.floor(base)));
+  return Math.max(5, Math.min(GROK_MAX_VIDEO_LENGTH_SECONDS, Math.floor(base)));
 }
 
 function mapFlowModel(modelName: string, aspectRatio: string, duration: string): string {
@@ -528,12 +529,79 @@ function resolveVideoConfigObject(
 
   return {
     aspect_ratio: normalizeAspectRatioLabel(aspectRatioRaw || '16:9'),
-    video_length: Math.max(5, Math.min(15, Math.floor(videoLengthRaw))),
+    video_length: Math.max(5, Math.min(GROK_MAX_VIDEO_LENGTH_SECONDS, Math.floor(videoLengthRaw))),
     resolution: resolutionRaw === 'SD' ? 'SD' : 'HD',
     preset: presetRaw === 'fun' || presetRaw === 'spicy' ? (presetRaw as 'fun' | 'spicy') : 'normal',
   };
 }
 
+function resolveRequestedVideoLengthSeconds(request: SoraGenerateRequest, model?: VideoModel): number {
+  const requestConfig = request.videoConfigObject || request.video_config;
+  if (typeof requestConfig?.video_length === 'number' && Number.isFinite(requestConfig.video_length)) {
+    return Math.max(5, Math.min(GROK_MAX_VIDEO_LENGTH_SECONDS, Math.floor(requestConfig.video_length)));
+  }
+
+  if (request.duration && request.duration.trim()) {
+    return normalizeGrokVideoLengthSeconds(request.duration);
+  }
+
+  if (typeof model?.videoConfigObject?.video_length === 'number' && Number.isFinite(model.videoConfigObject.video_length)) {
+    return Math.max(5, Math.min(GROK_MAX_VIDEO_LENGTH_SECONDS, Math.floor(model.videoConfigObject.video_length)));
+  }
+
+  return normalizeGrokVideoLengthSeconds(model?.defaultDuration || request.model || '10s');
+}
+
+function resolveModelDurationCost(model: VideoModel, request: SoraGenerateRequest): number | null {
+  if (!Array.isArray(model.durations) || model.durations.length === 0) return null;
+
+  const requestedDurationValue = (request.duration || '').trim().toLowerCase();
+  if (requestedDurationValue) {
+    const exactValueMatch = model.durations.find(
+      (duration) => duration.value.trim().toLowerCase() === requestedDurationValue
+    );
+    if (exactValueMatch && Number.isFinite(exactValueMatch.cost)) {
+      return Math.max(0, exactValueMatch.cost);
+    }
+  }
+
+  const requestedSeconds = resolveRequestedVideoLengthSeconds(request, model);
+  const exactSecondsMatch = model.durations.find(
+    (duration) => normalizeDurationSeconds(duration.value) === requestedSeconds
+  );
+  if (exactSecondsMatch && Number.isFinite(exactSecondsMatch.cost)) {
+    return Math.max(0, exactSecondsMatch.cost);
+  }
+
+  const defaultMatch = model.durations.find(
+    (duration) => duration.value === model.defaultDuration
+  ) || model.durations[0];
+  if (defaultMatch && Number.isFinite(defaultMatch.cost)) {
+    return Math.max(0, defaultMatch.cost);
+  }
+
+  return null;
+}
+
+export function resolveVideoGenerationCost(
+  pricing: { soraVideo10s: number; soraVideo15s: number; soraVideo25s: number },
+  request: SoraGenerateRequest,
+  model?: VideoModel
+): number {
+  const modelCost = model ? resolveModelDurationCost(model, request) : null;
+  if (modelCost !== null) return modelCost;
+
+  const durationHint = `${request.duration || ''} ${request.model || ''}`.toLowerCase();
+  const requestedSeconds = resolveRequestedVideoLengthSeconds(request, model);
+
+  if (durationHint.includes('25') || requestedSeconds >= 25) {
+    return pricing.soraVideo25s;
+  }
+  if (durationHint.includes('15') || requestedSeconds >= 15) {
+    return pricing.soraVideo15s;
+  }
+  return pricing.soraVideo10s;
+}
 function getTypeAndCost(
   model: string,
   pricing: { soraVideo10s: number; soraVideo15s: number; soraVideo25s: number }
@@ -689,9 +757,9 @@ async function generateViaExternalChat(
 
   onProgress?.(100);
 
-  const { type, cost } = getTypeAndCost(request.model, (await getSystemConfig()).pricing);
+  const cost = resolveVideoGenerationCost((await getSystemConfig()).pricing, request, model);
   return {
-    type,
+    type: 'sora-video',
     url: rawUrl,
     cost,
     videoChannelId: channel.id,
