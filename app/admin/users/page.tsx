@@ -154,14 +154,14 @@ export default function UsersPage() {
   const currentPageCount = users.length;
 
   return (
-    <div className="space-y-6 h-full flex flex-col">
+    <div className="flex h-full flex-col gap-6 lg:h-[calc(100vh-170px)]">
       <div>
         <h1 className="text-3xl font-light text-foreground">用户管理</h1>
         <p className="text-foreground/50 mt-1">管理用户账号、余额和权限 · 共 {total} 条</p>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 flex-1 min-h-0 lg:grid-cols-[minmax(320px,360px)_minmax(0,1fr)]">
-        <div className="min-h-0 flex flex-col overflow-hidden rounded-3xl border border-border/70 bg-card/50 backdrop-blur-sm">
+      <div className="grid grid-cols-1 gap-6 flex-1 min-h-0 items-stretch lg:grid-cols-[minmax(320px,360px)_minmax(0,1fr)]">
+        <div className="h-full min-h-0 flex flex-col overflow-hidden rounded-3xl border border-border/70 bg-card/50 backdrop-blur-sm">
           <div className="border-b border-border/70 p-5 space-y-4">
             <div className="rounded-2xl border border-border/70 bg-card/60 px-4 py-3">
               <div className="flex items-start justify-between gap-3">
@@ -271,7 +271,7 @@ export default function UsersPage() {
           )}
         </div>
 
-        <div className="min-h-0 overflow-hidden rounded-3xl border border-border/70 bg-card/40 backdrop-blur-sm">
+        <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-3xl border border-border/70 bg-card/40 backdrop-blur-sm">
           {selectedUser ? (
             <div className="flex h-full min-h-0 flex-col">
               <div className="border-b border-border/70 p-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

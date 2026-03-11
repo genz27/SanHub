@@ -26,6 +26,8 @@ export async function GET(request: NextRequest) {
         prompt: t.prompt,
         type: t.type,
         status: t.status,
+        modelId: t.params?.modelId,
+        model: t.params?.model,
         createdAt: t.createdAt,
       })),
     });

@@ -23,7 +23,7 @@ import {
   Droplets,
 } from 'lucide-react';
 import { toast } from '@/components/ui/toaster';
-import type { Generation, CharacterCard } from '@/types';
+import type { Generation, CharacterCard, SafeImageModel, SafeVideoModel } from '@/types';
 import { formatDate } from '@/lib/utils';
 import { downloadAsset } from '@/lib/download';
 
@@ -34,25 +34,77 @@ interface Task {
   type: string;
   status: 'pending' | 'processing';
   progress?: number; // 0-100
+  modelId?: string;
+  model?: string;
   createdAt: number;
 }
+
+type Badge = {
+  label: string;
+  icon: any;
+};
 
 // 纯函数 - 移到组件外部避免重复创建
 const isVideoType = (gen: Generation) => gen.type.includes('video');
 const isTaskVideoType = (type: string) => type?.includes('video');
 
-const VIDEO_BADGE = { label: 'Sora 视频', icon: Video };
-const IMAGE_BADGE = { label: 'Sora 图像', icon: ImageIcon };
-const CHARACTER_BADGE = { label: '角色卡', icon: User };
+const CHARACTER_BADGE: Badge = { label: '角色卡', icon: User };
+const FALLBACK_VIDEO_BADGE: Badge = { label: '视频', icon: Video };
+const FALLBACK_IMAGE_BADGE: Badge = { label: '图像', icon: ImageIcon };
 
-const getTypeBadge = (type: string) => {
-  if (type === 'character-card') return CHARACTER_BADGE;
-  return isTaskVideoType(type) ? VIDEO_BADGE : IMAGE_BADGE;
+const VIDEO_CHANNEL_BADGE_LABELS: Record<string, string> = {
+  sora: 'Sora 视频',
+  grok2api: 'Grok 视频',
+  flow2api: 'Flow2API 视频',
+  'openai-compatible': 'OpenAI 视频',
 };
 
-const getGenerationBadge = (gen: Generation) => {
-  if (gen.type === 'character-card') return CHARACTER_BADGE;
-  return isVideoType(gen) ? VIDEO_BADGE : IMAGE_BADGE;
+const IMAGE_CHANNEL_BADGE_LABELS: Record<string, string> = {
+  sora: 'Sora 图像',
+  gemini: 'Gemini 图像',
+  gitee: 'Gitee 图像',
+  modelscope: 'ModelScope 图像',
+  'openai-compatible': 'OpenAI 图像',
+  'openai-chat': 'OpenAI 图像',
+};
+
+const IMAGE_TYPE_BADGE_LABELS: Record<string, string> = {
+  'sora-image': 'Sora 图像',
+  'gemini-image': 'Gemini 图像',
+  'zimage-image': 'Gitee 图像',
+  'gitee-image': 'Gitee 图像',
+};
+
+const getVideoBadge = (channelType?: string): Badge => ({
+  label: VIDEO_CHANNEL_BADGE_LABELS[channelType || ''] || FALLBACK_VIDEO_BADGE.label,
+  icon: Video,
+});
+
+const getImageBadge = (channelType?: string, fallbackType?: string): Badge => ({
+  label:
+    IMAGE_CHANNEL_BADGE_LABELS[channelType || ''] ||
+    (fallbackType ? IMAGE_TYPE_BADGE_LABELS[fallbackType] : undefined) ||
+    FALLBACK_IMAGE_BADGE.label,
+  icon: ImageIcon,
+});
+
+const inferVideoBadge = (model?: string): Badge => {
+  const lower = (model || '').toLowerCase();
+  if (lower.includes('grok')) return getVideoBadge('grok2api');
+  if (lower.startsWith('veo_') || lower.includes('veo')) return getVideoBadge('flow2api');
+  if (lower.includes('sora')) return getVideoBadge('sora');
+  return FALLBACK_VIDEO_BADGE;
+};
+
+const inferImageBadge = (type: string, model?: string): Badge => {
+  const lower = (model || '').toLowerCase();
+  if (lower.includes('gemini')) return getImageBadge('gemini');
+  if (lower.includes('sora')) return getImageBadge('sora');
+  if (lower.includes('qwen') || lower.includes('flux')) return getImageBadge('modelscope');
+  if (lower.includes('z-image') || lower.includes('tongyi') || lower.includes('rmbg') || lower.includes('seedvr')) {
+    return getImageBadge('gitee');
+  }
+  return getImageBadge(undefined, type);
 };
 
 // 骨架屏组件
@@ -120,6 +172,7 @@ function CollapsibleText({
 // Memoized 卡片组件 - 避免不必要的重渲染
 interface GenerationCardProps {
   gen: Generation;
+  badge: Badge;
   isSelected: boolean;
   selectMode: boolean;
   onSelect: (id: string) => void;
@@ -128,12 +181,12 @@ interface GenerationCardProps {
 
 const GenerationCard = memo(function GenerationCard({
   gen,
+  badge,
   isSelected,
   selectMode,
   onSelect,
   onView,
 }: GenerationCardProps) {
-  const badge = getGenerationBadge(gen);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [imageLoaded, setImageLoaded] = useState(false);
   
@@ -238,6 +291,8 @@ export default function HistoryPage() {
   const { data: session, update } = useSession();
   const [generations, setGenerations] = useState<Generation[]>([]);
   const [pendingTasks, setPendingTasks] = useState<Task[]>([]);
+  const [videoModels, setVideoModels] = useState<SafeVideoModel[]>([]);
+  const [imageModels, setImageModels] = useState<SafeImageModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -255,6 +310,74 @@ export default function HistoryPage() {
   const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
   const loadingRef = useRef(false);
   const pageSize = 50;
+
+  const videoBadgeByModelId = useMemo(
+    () =>
+      Object.fromEntries(
+        videoModels.map((model) => [model.id, getVideoBadge(model.channelType)])
+      ) as Record<string, Badge>,
+    [videoModels]
+  );
+
+  const imageBadgeByModelId = useMemo(
+    () =>
+      Object.fromEntries(
+        imageModels.map((model) => [model.id, getImageBadge(model.channelType)])
+      ) as Record<string, Badge>,
+    [imageModels]
+  );
+
+  const imageBadgeByApiModel = useMemo(
+    () =>
+      Object.fromEntries(
+        imageModels.map((model) => [model.apiModel, getImageBadge(model.channelType)])
+      ) as Record<string, Badge>,
+    [imageModels]
+  );
+
+  const resolveGenerationBadge = useCallback(
+    (gen: Generation): Badge => {
+      if (gen.type === 'character-card') return CHARACTER_BADGE;
+
+      if (isVideoType(gen)) {
+        if (gen.params?.modelId && videoBadgeByModelId[gen.params.modelId]) {
+          return videoBadgeByModelId[gen.params.modelId];
+        }
+        return inferVideoBadge(gen.params?.model);
+      }
+
+      if (gen.params?.modelId && imageBadgeByModelId[gen.params.modelId]) {
+        return imageBadgeByModelId[gen.params.modelId];
+      }
+      if (gen.params?.model && imageBadgeByApiModel[gen.params.model]) {
+        return imageBadgeByApiModel[gen.params.model];
+      }
+      return inferImageBadge(gen.type, gen.params?.model);
+    },
+    [imageBadgeByApiModel, imageBadgeByModelId, videoBadgeByModelId]
+  );
+
+  const resolveTaskBadge = useCallback(
+    (task: Task): Badge => {
+      if (task.type === 'character-card') return CHARACTER_BADGE;
+
+      if (isTaskVideoType(task.type)) {
+        if (task.modelId && videoBadgeByModelId[task.modelId]) {
+          return videoBadgeByModelId[task.modelId];
+        }
+        return inferVideoBadge(task.model);
+      }
+
+      if (task.modelId && imageBadgeByModelId[task.modelId]) {
+        return imageBadgeByModelId[task.modelId];
+      }
+      if (task.model && imageBadgeByApiModel[task.model]) {
+        return imageBadgeByApiModel[task.model];
+      }
+      return inferImageBadge(task.type, task.model);
+    },
+    [imageBadgeByApiModel, imageBadgeByModelId, videoBadgeByModelId]
+  );
 
   const loadHistory = useCallback(async (pageNum: number, append = false, force = false) => {
     if (loadingRef.current && !force) return;
@@ -290,6 +413,27 @@ export default function HistoryPage() {
       loadingRef.current = false;
       setLoading(false);
       setLoadingMore(false);
+    }
+  }, []);
+
+  const loadModelCatalogs = useCallback(async () => {
+    try {
+      const [videoRes, imageRes] = await Promise.all([
+        fetch('/api/video-models'),
+        fetch('/api/image-models'),
+      ]);
+
+      if (videoRes.ok) {
+        const videoData = await videoRes.json();
+        setVideoModels(videoData.data?.models || []);
+      }
+
+      if (imageRes.ok) {
+        const imageData = await imageRes.json();
+        setImageModels(imageData.data?.models || []);
+      }
+    } catch (err) {
+      console.error('Failed to load model catalogs:', err);
     }
   }, []);
 
@@ -391,6 +535,8 @@ export default function HistoryPage() {
           prompt: t.prompt,
           type: t.type,
           status: t.status,
+          modelId: t.modelId,
+          model: t.model,
           createdAt: t.createdAt,
         }));
         
@@ -415,6 +561,7 @@ export default function HistoryPage() {
       setGenerations([]);
       setHasMore(true);
       loadHistory(1, false, true); // force load
+      loadModelCatalogs();
       loadPendingTasks();
       loadCharacterCards();
     }
@@ -423,7 +570,7 @@ export default function HistoryPage() {
       abortControllers.forEach(controller => controller.abort());
       abortControllers.clear();
     };
-  }, [session?.user?.id, loadHistory, loadPendingTasks, loadCharacterCards]);
+  }, [session?.user?.id, loadCharacterCards, loadHistory, loadModelCatalogs, loadPendingTasks]);
 
   // 使用 ref 保存 loadHistory 函数避免闭包问题
   const loadHistoryRef = useRef(loadHistory);
@@ -855,7 +1002,7 @@ export default function HistoryPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                   {/* Pending 任务 */}
                   {filteredTasks.map((task) => {
-                    const badge = getTypeBadge(task.type);
+                    const badge = resolveTaskBadge(task);
                     return (
                       <div
                         key={task.id}
@@ -910,6 +1057,7 @@ export default function HistoryPage() {
                     <GenerationCard
                       key={gen.id}
                       gen={gen}
+                      badge={resolveGenerationBadge(gen)}
                       isSelected={selectedIds.has(gen.id)}
                       selectMode={selectMode}
                       onSelect={toggleSelect}
@@ -992,7 +1140,7 @@ export default function HistoryPage() {
                     <span className="text-foreground/40 text-xs">{selected.cost} 积分</span>
                     <span className="text-foreground/30">·</span>
                     <span className="px-2 py-0.5 bg-card/70 text-foreground/60 text-xs rounded">
-                      {getGenerationBadge(selected).label}
+                      {resolveGenerationBadge(selected).label}
                     </span>
                     {selected.resultUrl && (
                       <button

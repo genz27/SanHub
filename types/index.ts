@@ -242,6 +242,7 @@ export interface SafeImageModel {
   id: string;
   channelId: string;
   channelType: ChannelType;
+  apiModel: string;
   name: string;
   description: string;
   features: ImageModelFeatures;

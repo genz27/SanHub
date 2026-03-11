@@ -2777,6 +2777,7 @@ export async function getSafeImageModels(enabledOnly = false): Promise<SafeImage
         id: m.id,
         channelId: m.channelId,
         channelType: channel.type,
+        apiModel: m.apiModel,
         name: m.name,
         description: m.description,
         features: m.features,
