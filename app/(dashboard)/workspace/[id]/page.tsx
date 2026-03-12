@@ -26,6 +26,7 @@ import {
   Image as ImageIcon,
 } from 'lucide-react';
 import { toast } from '@/components/ui/toaster';
+import { GENERATION_POLL_TIMEOUT_MS } from '@/lib/polling-utils';
 import { cn } from '@/lib/utils';
 import type { CharacterCard, WorkspaceData, WorkspaceEdge, WorkspaceNode, WorkspaceNodeType, ChatModel, SafeImageModel, SafeVideoModel } from '@/types';
 
@@ -704,19 +705,17 @@ export default function WorkspaceEditorPage() {
       if (abortControllersRef.current.has(nodeId)) return;
       const controller = new AbortController();
       abortControllersRef.current.set(nodeId, controller);
-      let attempts = 0;
+      const startedAt = Date.now();
       let consecutiveErrors = 0;
-      const maxAttempts = 240;
       const maxConsecutiveErrors = 5;
 
       const poll = async () => {
         if (controller.signal.aborted) return;
-        if (attempts >= maxAttempts) {
+        if (Date.now() - startedAt >= GENERATION_POLL_TIMEOUT_MS) {
           updateNodeData(nodeId, { status: 'failed', errorMessage: '任务超时' });
           abortControllersRef.current.delete(nodeId);
           return;
         }
-        attempts += 1;
         try {
           const res = await fetch(`/api/generate/status/${taskId}`, {
             signal: controller.signal,
@@ -1013,7 +1012,7 @@ export default function WorkspaceEditorPage() {
   };
 
   const waitForNodeStatus = useCallback(
-    (nodeId: string, timeoutMs = 8 * 60 * 1000) =>
+    (nodeId: string, timeoutMs = GENERATION_POLL_TIMEOUT_MS) =>
       new Promise<WorkspaceNode>((resolve, reject) => {
         const startedAt = Date.now();
 

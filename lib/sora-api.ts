@@ -155,6 +155,7 @@ export async function applyVideoProxy(url: string): Promise<string> {
 }
 
 const DEFAULT_SORA_BASE_URL = 'http://localhost:8000';
+const THIRTY_MINUTES_MS = 30 * 60 * 1000;
 
 type SoraConfig = {
   apiKey: string;
@@ -210,13 +211,13 @@ async function getSoraConfig(options?: {
 // 创建自定义 Agent
 const soraAgent = new Agent({
   bodyTimeout: 0,
-  headersTimeout: 1800000, // 30分钟
-  keepAliveTimeout: 1800000, // 30分钟
-  keepAliveMaxTimeout: 1800000, // 30分钟
+  headersTimeout: THIRTY_MINUTES_MS,
+  keepAliveTimeout: THIRTY_MINUTES_MS,
+  keepAliveMaxTimeout: THIRTY_MINUTES_MS,
   pipelining: 0,
   connections: 30,
   connect: {
-    timeout: 1800000, // 30分钟
+    timeout: THIRTY_MINUTES_MS,
   },
 });
 
@@ -496,7 +497,7 @@ async function pollVideoCompletion(
 ): Promise<VideoTaskResponse> {
   let lastProgress = -1;
   let stallCount = 0;
-  const maxStallCount = 60; // 最大停滞次数（约10分钟）
+  let stalledAt: number | null = null;
   let failedCount = 0;
   const maxFailedCount = 3;
   const failedRetryDelayMs = 5000;
@@ -562,7 +563,10 @@ async function pollVideoCompletion(
     // 检测停滞
     if (status.progress === lastProgress) {
       stallCount++;
-      if (stallCount >= maxStallCount) {
+      if (stalledAt === null) {
+        stalledAt = Date.now();
+      }
+      if (Date.now() - stalledAt >= THIRTY_MINUTES_MS) {
         logError('[Sora API v5] Video stalled', {
           videoId,
           status: status.status,
@@ -572,6 +576,7 @@ async function pollVideoCompletion(
       }
     } else {
       stallCount = 0;
+      stalledAt = null;
       lastProgress = status.progress;
     }
     

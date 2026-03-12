@@ -1,8 +1,10 @@
 export type TaskType = 'image' | 'video';
 
+export const GENERATION_POLL_TIMEOUT_MS = 30 * 60 * 1000;
+
 const MAX_DURATION_MS: Record<TaskType, number> = {
-  image: 4 * 60 * 1000,
-  video: 15 * 60 * 1000,
+  image: GENERATION_POLL_TIMEOUT_MS,
+  video: GENERATION_POLL_TIMEOUT_MS,
 };
 
 export function getPollingInterval(elapsedMs: number, taskType: TaskType): number {

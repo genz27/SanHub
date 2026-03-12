@@ -1509,7 +1509,7 @@ Refresh Token 转 Access Token（仅转换，不入库）。
   "success": true,
   "config": {
     "image_timeout": 300,
-    "video_timeout": 1500
+    "video_timeout": 1800
   }
 }
 ```
@@ -1955,7 +1955,7 @@ max_poll_attempts = 300
 
 [generation]
 image_timeout = 300
-video_timeout = 1500
+video_timeout = 1800
 
 [cache]
 enabled = true
