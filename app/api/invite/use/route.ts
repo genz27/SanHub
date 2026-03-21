@@ -2,12 +2,18 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { applyInviteCode } from '@/lib/db-codes';
+import { getSystemConfig } from '@/lib/db';
 
 export async function POST(request: Request) {
   try {
     const session = await getServerSession(authOptions);
     if (!session) {
       return NextResponse.json({ error: '请先登录' }, { status: 401 });
+    }
+
+    const config = await getSystemConfig();
+    if (!config.inviteSettings.enabled) {
+      return NextResponse.json({ error: '邀请码功能未开启' }, { status: 403 });
     }
 
     const { code } = await request.json();

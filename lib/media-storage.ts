@@ -88,7 +88,7 @@ export async function saveMediaToFile(id: string, dataUrl: string): Promise<stri
 }
 
 /**
- * 保存媒体文件（异步版本，优先上传到 PicUI 图床）
+ * 保存媒体文件（异步版本，优先上传到默认图片桶）
  * @param id 唯一标识符（通常是 generation ID）
  * @param dataUrl base64 data URL
  * @returns 图床 URL、本地文件路径或原始 data URL
@@ -99,15 +99,15 @@ export async function saveMediaAsync(id: string, dataUrl: string): Promise<strin
     return dataUrl;
   }
 
-  // 优先尝试上传到 PicUI 图床
+  // 优先尝试上传到默认图片桶
   try {
     const picuiUrl = await uploadToPicUI(dataUrl, `${id}.jpg`);
     if (picuiUrl) {
-      console.log(`[MediaStorage] Uploaded to PicUI: ${picuiUrl}`);
+      console.log(`[MediaStorage] Uploaded to remote bucket: ${picuiUrl}`);
       return picuiUrl;
     }
   } catch (error) {
-    console.warn('[MediaStorage] PicUI upload failed, falling back to local storage:', error);
+    console.warn('[MediaStorage] Remote upload failed, falling back to local storage:', error);
   }
 
   // 回退到本地文件存储

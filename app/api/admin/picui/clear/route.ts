@@ -21,6 +21,42 @@ interface PicUIListResponse {
   };
 }
 
+function resolvePicuiBucket(config: Awaited<ReturnType<typeof getSystemConfig>>) {
+  const buckets = config.imageStorage?.buckets || [];
+  const enabledBuckets = buckets.filter((bucket) => bucket.enabled);
+
+  if (config.imageStorage?.defaultBucketId) {
+    const defaultBucket = enabledBuckets.find(
+      (bucket) => bucket.id === config.imageStorage.defaultBucketId
+    );
+    if (defaultBucket?.provider === 'picui' && defaultBucket.baseUrl && defaultBucket.apiKey) {
+      return {
+        baseUrl: defaultBucket.baseUrl,
+        apiKey: defaultBucket.apiKey,
+      };
+    }
+  }
+
+  const firstPicuiBucket = enabledBuckets.find(
+    (bucket) => bucket.provider === 'picui' && bucket.baseUrl && bucket.apiKey
+  );
+  if (firstPicuiBucket) {
+    return {
+      baseUrl: firstPicuiBucket.baseUrl,
+      apiKey: firstPicuiBucket.apiKey,
+    };
+  }
+
+  if (config.picuiBaseUrl && config.picuiApiKey) {
+    return {
+      baseUrl: config.picuiBaseUrl,
+      apiKey: config.picuiApiKey,
+    };
+  }
+
+  return null;
+}
+
 // POST /api/admin/picui/clear - 清空 PicUI 图床所有图片
 export async function POST() {
   try {
@@ -30,11 +66,13 @@ export async function POST() {
     }
 
     const config = await getSystemConfig();
-    if (!config.picuiApiKey) {
-      return NextResponse.json({ error: 'PicUI API Token 未配置' }, { status: 400 });
+    const picuiBucket = resolvePicuiBucket(config);
+    if (!picuiBucket) {
+      return NextResponse.json({ error: '未找到可用的 PicUI 桶配置' }, { status: 400 });
     }
 
-    const baseUrl = config.picuiBaseUrl.replace(/\/$/, '');
+    const baseUrl = picuiBucket.baseUrl.replace(/\/$/, '');
+    const apiKey = picuiBucket.apiKey;
     let deleted = 0;
     let page = 1;
     let hasMore = true;
@@ -43,7 +81,7 @@ export async function POST() {
       // 获取图片列表
       const listRes = await undiciFetch(`${baseUrl}/images?page=${page}&per_page=100`, {
         headers: {
-          'Authorization': `Bearer ${config.picuiApiKey}`,
+          'Authorization': `Bearer ${apiKey}`,
           'Accept': 'application/json',
         },
       });
@@ -67,7 +105,7 @@ export async function POST() {
           const delRes = await undiciFetch(`${baseUrl}/images/${image.key}`, {
             method: 'DELETE',
             headers: {
-              'Authorization': `Bearer ${config.picuiApiKey}`,
+              'Authorization': `Bearer ${apiKey}`,
               'Accept': 'application/json',
             },
           });

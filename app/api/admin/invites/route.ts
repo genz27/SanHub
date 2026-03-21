@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { createInviteBatch, getInviteCodes, getInviteCodesCount, deleteInviteCode } from '@/lib/db-codes';
+import { getSystemConfig } from '@/lib/db';
 
 export async function GET(request: Request) {
   try {
@@ -41,8 +42,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '无权限' }, { status: 403 });
     }
 
-    const { count = 1, bonusPoints = 0, creatorBonus = 0, expiresAt } = await request.json();
+    const config = await getSystemConfig();
+    if (!config.inviteSettings.enabled) {
+      return NextResponse.json({ error: '邀请码功能未开启' }, { status: 400 });
+    }
+
+    const { count = 1, expiresAt } = await request.json();
     const safeCount = Math.max(1, Math.min(100, Math.floor(Number(count) || 1)));
+    const bonusPoints = config.inviteSettings.rewardEnabled
+      ? config.inviteSettings.inviteeBonusPoints
+      : 0;
+    const creatorBonus = config.inviteSettings.rewardEnabled
+      ? config.inviteSettings.inviterBonusPoints
+      : 0;
 
     const batch = await createInviteBatch(session.user.id, safeCount, bonusPoints, creatorBonus, expiresAt);
     return NextResponse.json({ success: true, data: batch.codes, batch });

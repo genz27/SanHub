@@ -16,6 +16,7 @@ import {
   Download,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useSiteConfig } from '@/components/providers/site-config-provider';
 
 interface Profile {
   user_id: string;
@@ -152,6 +153,7 @@ const FeedCard = memo(function FeedCard({ item, onVideoClick }: FeedCardProps) {
 export default function UserProfilePage() {
   const params = useParams();
   const router = useRouter();
+  const siteConfig = useSiteConfig();
   const username = params.username as string;
 
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -163,6 +165,12 @@ export default function UserProfilePage() {
   const [error, setError] = useState('');
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const [selectedVideo, setSelectedVideo] = useState<FeedItem | null>(null);
+
+  useEffect(() => {
+    if (!siteConfig.squareEnabled) {
+      router.replace('/image');
+    }
+  }, [router, siteConfig.squareEnabled]);
 
   // 加载用户资料和内容
   const loadProfile = useCallback(async (cursorParam?: string) => {
@@ -261,6 +269,8 @@ export default function UserProfilePage() {
       console.error('Download failed', err);
     }
   }, [selectedVideo]);
+
+  if (!siteConfig.squareEnabled) return null;
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">

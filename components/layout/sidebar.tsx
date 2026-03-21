@@ -49,6 +49,9 @@ export function Sidebar({ user }: SidebarProps) {
   const siteConfig = useSiteConfig();
   const [pendingCount, setPendingCount] = useState<number | null>(null);
   const [pendingUpdatedAt, setPendingUpdatedAt] = useState<number | null>(null);
+  const visibleNavItems = navItems.filter(
+    (item) => item.href !== '/square' || siteConfig.squareEnabled
+  );
 
   const fetchPendingTasks = useCallback(async () => {
     try {
@@ -77,7 +80,7 @@ export function Sidebar({ user }: SidebarProps) {
         <p className="text-[10px] font-medium text-foreground/40 uppercase tracking-[0.2em] px-3 py-2">
           创作工具
         </p>
-        {navItems.map((item) => {
+        {visibleNavItems.map((item) => {
           const isActive = pathname === item.href;
           return (
             <Link

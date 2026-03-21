@@ -1,5 +1,5 @@
 /* eslint-disable no-console */
-import type { User, Generation, SystemConfig, SafeUser, PricingConfig, ChatModel, ChatSession, ChatMessage, CharacterCard, Workspace, WorkspaceData, WorkspaceSummary } from '@/types';
+import type { User, Generation, SystemConfig, SafeUser, PricingConfig, ChatModel, ChatSession, ChatMessage, CharacterCard, Workspace, WorkspaceData, WorkspaceSummary, ImageBucketConfig, ImageStorageConfig } from '@/types';
 import { generateId } from './utils';
 import bcrypt from 'bcryptjs';
 import { createDatabaseAdapter, type DatabaseAdapter } from './db-adapter';
@@ -72,6 +72,13 @@ CREATE TABLE IF NOT EXISTS system_config (
   gitee_base_url VARCHAR(500) DEFAULT 'https://ai.gitee.com/',
   picui_api_key VARCHAR(500) DEFAULT '',
   picui_base_url VARCHAR(500) DEFAULT 'https://picui.cn/api/v1',
+  square_enabled TINYINT(1) DEFAULT 1,
+  invite_enabled TINYINT(1) DEFAULT 1,
+  invite_reward_enabled TINYINT(1) DEFAULT 1,
+  invite_invitee_bonus INT DEFAULT 100,
+  invite_inviter_bonus INT DEFAULT 50,
+  image_storage_buckets LONGTEXT,
+  image_storage_default_bucket_id VARCHAR(64) DEFAULT '',
   sora_backend_url VARCHAR(500) DEFAULT '',
   sora_backend_username VARCHAR(100) DEFAULT '',
   sora_backend_password VARCHAR(100) DEFAULT '',
@@ -229,10 +236,10 @@ export async function initializeDatabase(): Promise<void> {
   // 添加 generations 表的新字段（如果不存在）
   try {
     if (dbType === 'mysql') {
-      await db.execute('ALTER TABLE generations ADD COLUMN status ENUM("pending", "processing", "completed", "failed") DEFAULT "pending"');
+      await db.execute("ALTER TABLE generations ADD COLUMN status ENUM('pending', 'processing', 'completed', 'failed') DEFAULT 'pending'");
     } else {
       // SQLite: ENUM 转为 TEXT
-      await db.execute('ALTER TABLE generations ADD COLUMN status TEXT DEFAULT "pending"');
+      await db.execute("ALTER TABLE generations ADD COLUMN status TEXT DEFAULT 'pending'");
     }
   } catch {
     // 字段已存在，忽略错误
@@ -280,7 +287,7 @@ export async function initializeDatabase(): Promise<void> {
 
   // 为已存在的记录设置默认值
   try {
-    await db.execute('UPDATE generations SET status = "completed" WHERE status IS NULL OR status = ""');
+    await db.execute("UPDATE generations SET status = 'completed' WHERE status IS NULL OR status = ''");
     await db.execute('UPDATE generations SET updated_at = created_at WHERE updated_at = 0 OR updated_at IS NULL');
     await db.execute("UPDATE generations SET params = '{}' WHERE params IS NULL OR params = ''");
   } catch {
@@ -306,12 +313,12 @@ export async function initializeDatabase(): Promise<void> {
 
   // 添加 Gitee 配置字段（如果不存在）
   try {
-    await db.execute("ALTER TABLE system_config ADD COLUMN gitee_api_key TEXT DEFAULT ''");
+    await db.execute('ALTER TABLE system_config ADD COLUMN gitee_api_key TEXT');
   } catch {
     // 字段已存在，忽略错误
   }
   try {
-    await db.execute("ALTER TABLE system_config ADD COLUMN gitee_free_api_key TEXT DEFAULT ''");
+    await db.execute('ALTER TABLE system_config ADD COLUMN gitee_free_api_key TEXT');
   } catch {
     // 字段已存在，忽略错误
   }
@@ -385,6 +392,43 @@ export async function initializeDatabase(): Promise<void> {
   }
   try {
     await db.execute("ALTER TABLE system_config ADD COLUMN picui_base_url VARCHAR(500) DEFAULT 'https://picui.cn/api/v1'");
+  } catch {
+    // 字段已存在，忽略错误
+  }
+
+  // 添加功能开关与邀请码配置字段
+  try {
+    await db.execute("ALTER TABLE system_config ADD COLUMN square_enabled TINYINT(1) DEFAULT 1");
+  } catch {
+    // 字段已存在，忽略错误
+  }
+  try {
+    await db.execute("ALTER TABLE system_config ADD COLUMN invite_enabled TINYINT(1) DEFAULT 1");
+  } catch {
+    // 字段已存在，忽略错误
+  }
+  try {
+    await db.execute("ALTER TABLE system_config ADD COLUMN invite_reward_enabled TINYINT(1) DEFAULT 1");
+  } catch {
+    // 字段已存在，忽略错误
+  }
+  try {
+    await db.execute("ALTER TABLE system_config ADD COLUMN invite_invitee_bonus INT DEFAULT 100");
+  } catch {
+    // 字段已存在，忽略错误
+  }
+  try {
+    await db.execute("ALTER TABLE system_config ADD COLUMN invite_inviter_bonus INT DEFAULT 50");
+  } catch {
+    // 字段已存在，忽略错误
+  }
+  try {
+    await db.execute("ALTER TABLE system_config ADD COLUMN image_storage_buckets LONGTEXT");
+  } catch {
+    // 字段已存在，忽略错误
+  }
+  try {
+    await db.execute("ALTER TABLE system_config ADD COLUMN image_storage_default_bucket_id VARCHAR(64) DEFAULT ''");
   } catch {
     // 字段已存在，忽略错误
   }
@@ -1243,6 +1287,111 @@ export async function getUserDailyUsage(userId: string): Promise<DailyUsageStats
   return { imageCount, videoCount, characterCardCount };
 }
 
+const LEGACY_IMAGE_BUCKET_ID = 'legacy-picui-default';
+
+function sanitizeImageBucket(
+  value: unknown,
+  index: number
+): ImageBucketConfig | null {
+  if (!value || typeof value !== 'object') return null;
+
+  const bucket = value as Record<string, unknown>;
+  const provider =
+    bucket.provider === 's3-compatible' ? 's3-compatible' : 'picui';
+  const id =
+    typeof bucket.id === 'string' && bucket.id.trim()
+      ? bucket.id.trim()
+      : `bucket-${index + 1}`;
+
+  return {
+    id,
+    name:
+      typeof bucket.name === 'string' && bucket.name.trim()
+        ? bucket.name.trim()
+        : `Bucket ${index + 1}`,
+    provider,
+    baseUrl: typeof bucket.baseUrl === 'string' ? bucket.baseUrl.trim() : '',
+    apiKey: typeof bucket.apiKey === 'string' ? bucket.apiKey.trim() : '',
+    secretKey:
+      typeof bucket.secretKey === 'string' ? bucket.secretKey.trim() : undefined,
+    bucketName:
+      typeof bucket.bucketName === 'string' ? bucket.bucketName.trim() : undefined,
+    region: typeof bucket.region === 'string' ? bucket.region.trim() : undefined,
+    publicBaseUrl:
+      typeof bucket.publicBaseUrl === 'string'
+        ? bucket.publicBaseUrl.trim()
+        : undefined,
+    pathPrefix:
+      typeof bucket.pathPrefix === 'string' ? bucket.pathPrefix.trim() : undefined,
+    forcePathStyle: bucket.forcePathStyle !== false,
+    enabled: bucket.enabled !== false,
+  };
+}
+
+function parseImageStorageBuckets(raw: unknown): ImageBucketConfig[] {
+  if (!raw) return [];
+
+  let parsed: unknown = raw;
+  if (typeof raw === 'string') {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+
+  if (!Array.isArray(parsed)) return [];
+
+  return parsed
+    .map((value, index) => sanitizeImageBucket(value, index))
+    .filter((bucket): bucket is ImageBucketConfig => Boolean(bucket));
+}
+
+function buildLegacyPicuiBucket(
+  baseUrl: string,
+  apiKey: string
+): ImageBucketConfig | null {
+  if (!baseUrl && !apiKey) return null;
+
+  return {
+    id: LEGACY_IMAGE_BUCKET_ID,
+    name: 'Legacy PicUI',
+    provider: 'picui',
+    baseUrl: baseUrl.trim(),
+    apiKey: apiKey.trim(),
+    enabled: true,
+    forcePathStyle: true,
+  };
+}
+
+function resolveImageStorageConfig(row?: Record<string, unknown>): ImageStorageConfig {
+  const buckets = parseImageStorageBuckets(row?.image_storage_buckets);
+  const defaultBucketId =
+    typeof row?.image_storage_default_bucket_id === 'string'
+      ? row.image_storage_default_bucket_id.trim()
+      : '';
+
+  if (buckets.length > 0) {
+    return {
+      defaultBucketId:
+        defaultBucketId ||
+        buckets.find((bucket) => bucket.enabled)?.id ||
+        buckets[0]?.id,
+      buckets,
+    };
+  }
+
+  const legacyBucket = buildLegacyPicuiBucket(
+    typeof row?.picui_base_url === 'string' ? row.picui_base_url : '',
+    typeof row?.picui_api_key === 'string' ? row.picui_api_key : ''
+  );
+
+  return {
+    defaultBucketId: legacyBucket?.id,
+    buckets: legacyBucket ? [legacyBucket] : [],
+  };
+}
+
 // ========================================
 // 系统配置操作
 // ========================================
@@ -1268,11 +1417,32 @@ export async function getSystemConfig(): Promise<SystemConfig> {
         geminiBaseUrl: process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com',
       zimageApiKey: process.env.ZIMAGE_API_KEY || '',
       zimageBaseUrl: process.env.ZIMAGE_BASE_URL || 'https://api-inference.modelscope.cn/',
-      giteeFreeApiKey: process.env.GITEE_FREE_API_KEY || '',
-      giteeApiKey: process.env.GITEE_API_KEY || '',
-      giteeBaseUrl: process.env.GITEE_BASE_URL || 'https://ai.gitee.com/',
+        giteeFreeApiKey: process.env.GITEE_FREE_API_KEY || '',
+        giteeApiKey: process.env.GITEE_API_KEY || '',
+        giteeBaseUrl: process.env.GITEE_BASE_URL || 'https://ai.gitee.com/',
         picuiApiKey: process.env.PICUI_API_KEY || '',
         picuiBaseUrl: process.env.PICUI_BASE_URL || 'https://picui.cn/api/v1',
+        imageStorage: {
+          defaultBucketId:
+            process.env.PICUI_API_KEY || process.env.PICUI_BASE_URL
+              ? LEGACY_IMAGE_BUCKET_ID
+              : undefined,
+          buckets:
+            process.env.PICUI_API_KEY || process.env.PICUI_BASE_URL
+              ? [
+                  {
+                    id: LEGACY_IMAGE_BUCKET_ID,
+                    name: 'Legacy PicUI',
+                    provider: 'picui',
+                    baseUrl:
+                      process.env.PICUI_BASE_URL || 'https://picui.cn/api/v1',
+                    apiKey: process.env.PICUI_API_KEY || '',
+                    enabled: true,
+                    forcePathStyle: true,
+                  },
+                ]
+              : [],
+        },
         pricing: {
           soraVideo10s: 100,
           soraVideo15s: 150,
@@ -1285,6 +1455,15 @@ export async function getSystemConfig(): Promise<SystemConfig> {
         },
         registerEnabled: true,
         defaultBalance: 100,
+        featureFlags: {
+          squareEnabled: true,
+        },
+        inviteSettings: {
+          enabled: true,
+          rewardEnabled: true,
+          inviteeBonusPoints: 100,
+          inviterBonusPoints: 50,
+        },
         announcement: {
           title: '',
           content: '',
@@ -1337,6 +1516,7 @@ export async function getSystemConfig(): Promise<SystemConfig> {
     }
 
     const row = configs[0];
+    const imageStorage = resolveImageStorageConfig(row);
     return {
       soraApiKey: row.sora_api_key || '',
       soraBaseUrl: row.sora_base_url || 'http://localhost:8000',
@@ -1353,6 +1533,7 @@ export async function getSystemConfig(): Promise<SystemConfig> {
     giteeBaseUrl: row.gitee_base_url || 'https://ai.gitee.com/',
       picuiApiKey: row.picui_api_key || '',
       picuiBaseUrl: row.picui_base_url || 'https://picui.cn/api/v1',
+      imageStorage,
       pricing: {
         soraVideo10s: row.pricing_sora_video_10s || 100,
         soraVideo15s: row.pricing_sora_video_15s || 150,
@@ -1365,6 +1546,15 @@ export async function getSystemConfig(): Promise<SystemConfig> {
       },
       registerEnabled: Boolean(row.register_enabled),
       defaultBalance: row.default_balance || 100,
+      featureFlags: {
+        squareEnabled: row.square_enabled !== 0,
+      },
+      inviteSettings: {
+        enabled: row.invite_enabled !== 0,
+        rewardEnabled: row.invite_reward_enabled !== 0,
+        inviteeBonusPoints: Number(row.invite_invitee_bonus) || 100,
+        inviterBonusPoints: Number(row.invite_inviter_bonus) || 50,
+      },
       announcement: {
         title: row.announcement_title || '',
         content: row.announcement_content || '',
@@ -1528,6 +1718,63 @@ export async function updateSystemConfig(
   if (updates.defaultBalance !== undefined) {
     fields.push('default_balance = ?');
     values.push(updates.defaultBalance);
+  }
+  if (updates.featureFlags) {
+    const featureFlags = updates.featureFlags;
+    if (featureFlags.squareEnabled !== undefined) {
+      fields.push('square_enabled = ?');
+      values.push(featureFlags.squareEnabled ? 1 : 0);
+    }
+  }
+  if (updates.inviteSettings) {
+    const inviteSettings = updates.inviteSettings;
+    if (inviteSettings.enabled !== undefined) {
+      fields.push('invite_enabled = ?');
+      values.push(inviteSettings.enabled ? 1 : 0);
+    }
+    if (inviteSettings.rewardEnabled !== undefined) {
+      fields.push('invite_reward_enabled = ?');
+      values.push(inviteSettings.rewardEnabled ? 1 : 0);
+    }
+    if (inviteSettings.inviteeBonusPoints !== undefined) {
+      fields.push('invite_invitee_bonus = ?');
+      values.push(inviteSettings.inviteeBonusPoints);
+    }
+    if (inviteSettings.inviterBonusPoints !== undefined) {
+      fields.push('invite_inviter_bonus = ?');
+      values.push(inviteSettings.inviterBonusPoints);
+    }
+  }
+  if (updates.imageStorage) {
+    const imageStorage = updates.imageStorage;
+    const buckets = (imageStorage.buckets || []).map((bucket, index) =>
+      sanitizeImageBucket(bucket, index)
+    ).filter((bucket): bucket is ImageBucketConfig => Boolean(bucket));
+
+    const defaultBucketId =
+      typeof imageStorage.defaultBucketId === 'string'
+        ? imageStorage.defaultBucketId
+        : '';
+    const defaultBucket =
+      buckets.find((bucket) => bucket.id === defaultBucketId) ||
+      buckets.find((bucket) => bucket.enabled);
+
+    fields.push('image_storage_buckets = ?');
+    values.push(JSON.stringify(buckets));
+    fields.push('image_storage_default_bucket_id = ?');
+    values.push(defaultBucket?.id || '');
+
+    if (defaultBucket?.provider === 'picui') {
+      fields.push('picui_base_url = ?');
+      values.push(defaultBucket.baseUrl);
+      fields.push('picui_api_key = ?');
+      values.push(defaultBucket.apiKey);
+    } else {
+      fields.push('picui_base_url = ?');
+      values.push('');
+      fields.push('picui_api_key = ?');
+      values.push('');
+    }
   }
   // 公告配置
   if (updates.announcement) {

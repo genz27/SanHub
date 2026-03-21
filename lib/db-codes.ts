@@ -1,6 +1,7 @@
 import type { InviteBatchResult, InviteCode, RedemptionBatchSummary, RedemptionCode, StatsOverview, DailyStats } from '@/types';
 import { generateId } from './utils';
 import { createDatabaseAdapter, type DatabaseAdapter } from './db-adapter';
+import { getSystemConfig } from './db';
 
 // ========================================
 // Database adapter
@@ -132,9 +133,16 @@ export async function createUserInviteCode(userId: string): Promise<string> {
   await initializeCodesTables();
   const db = getAdapter();
 
-  // Get default bonus from site settings or use defaults
-  const bonusPoints = 100; // Default bonus for invitee
-  const creatorBonus = 50; // Default bonus for inviter
+  const config = await getSystemConfig();
+  if (!config.inviteSettings.enabled) {
+    throw new Error('邀请码功能未启用');
+  }
+  const bonusPoints = config.inviteSettings.rewardEnabled
+    ? config.inviteSettings.inviteeBonusPoints
+    : 0;
+  const creatorBonus = config.inviteSettings.rewardEnabled
+    ? config.inviteSettings.inviterBonusPoints
+    : 0;
 
   // Retry up to 5 times in case of code collision
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -162,12 +170,23 @@ export async function createUserInviteCode(userId: string): Promise<string> {
 
 export async function createInviteCode(
   creatorId: string,
-  bonusPoints = 0,
-  creatorBonus = 0,
+  bonusPoints?: number,
+  creatorBonus?: number,
   expiresAt?: number
 ): Promise<InviteCode> {
   await initializeCodesTables();
   const db = getAdapter();
+  const config = await getSystemConfig();
+  const resolvedBonusPoints = typeof bonusPoints === 'number'
+    ? bonusPoints
+    : config.inviteSettings.rewardEnabled
+      ? config.inviteSettings.inviteeBonusPoints
+      : 0;
+  const resolvedCreatorBonus = typeof creatorBonus === 'number'
+    ? creatorBonus
+    : config.inviteSettings.rewardEnabled
+      ? config.inviteSettings.inviterBonusPoints
+      : 0;
 
   // Retry up to 5 times in case of code collision
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -175,8 +194,8 @@ export async function createInviteCode(
       id: generateId(),
       code: generateInviteCode(),
       creatorId,
-      bonusPoints,
-      creatorBonus,
+      bonusPoints: resolvedBonusPoints,
+      creatorBonus: resolvedCreatorBonus,
       expiresAt,
       createdAt: Date.now(),
     };
@@ -203,23 +222,31 @@ export async function createInviteCode(
 export async function createInviteBatch(
   creatorId: string,
   count: number,
-  bonusPoints = 0,
-  creatorBonus = 0,
+  bonusPoints?: number,
+  creatorBonus?: number,
   expiresAt?: number
 ): Promise<InviteBatchResult> {
   const safeCount = Math.max(1, Math.min(100, Math.floor(count || 1)));
   const codes: InviteCode[] = [];
+  let resolvedInviteeBonus = bonusPoints;
+  let resolvedInviterBonus = creatorBonus;
 
   for (let index = 0; index < safeCount; index += 1) {
     const invite = await createInviteCode(creatorId, bonusPoints, creatorBonus, expiresAt);
+    if (resolvedInviteeBonus === undefined) {
+      resolvedInviteeBonus = invite.bonusPoints;
+    }
+    if (resolvedInviterBonus === undefined) {
+      resolvedInviterBonus = invite.creatorBonus;
+    }
     codes.push(invite);
   }
 
   return {
     createdAt: Date.now(),
     count: codes.length,
-    bonusPoints,
-    creatorBonus,
+    bonusPoints: resolvedInviteeBonus ?? 0,
+    creatorBonus: resolvedInviterBonus ?? 0,
     expiresAt,
     codes,
   };
@@ -250,6 +277,12 @@ export async function getInviteCodeByCode(code: string): Promise<InviteCode | nu
 export async function applyInviteCode(code: string, userId: string): Promise<{ success: boolean; error?: string; bonusPoints?: number }> {
   await initializeCodesTables();
   const db = getAdapter();
+  const config = await getSystemConfig();
+  const inviteSettings = config.inviteSettings;
+
+  if (!inviteSettings.enabled) {
+    return { success: false, error: '邀请码功能已关闭' };
+  }
 
   const invite = await getInviteCodeByCode(code);
   if (!invite) return { success: false, error: '邀请码不存在' };
@@ -270,23 +303,45 @@ export async function applyInviteCode(code: string, userId: string): Promise<{ s
     return { success: false, error: '邀请码已被使用' };
   }
 
+  const inviteeBonus = inviteSettings.rewardEnabled
+    ? Math.max(0, inviteSettings.inviteeBonusPoints)
+    : 0;
+  const inviterBonus = inviteSettings.rewardEnabled
+    ? Math.max(0, inviteSettings.inviterBonusPoints)
+    : 0;
+
   // Update user balance (bonus points)
-  if (invite.bonusPoints > 0) {
+  if (inviteeBonus > 0) {
     await db.execute(
       'UPDATE users SET balance = balance + ?, updated_at = ? WHERE id = ?',
-      [invite.bonusPoints, now, userId]
+      [inviteeBonus, now, userId]
     );
   }
 
   // Update creator balance (creator bonus)
-  if (invite.creatorBonus > 0) {
+  if (inviterBonus > 0) {
     await db.execute(
       'UPDATE users SET balance = balance + ?, updated_at = ? WHERE id = ?',
-      [invite.creatorBonus, now, invite.creatorId]
+      [inviterBonus, now, invite.creatorId]
     );
   }
 
-  return { success: true, bonusPoints: invite.bonusPoints };
+  return { success: true, bonusPoints: inviteeBonus };
+}
+
+export async function syncUnusedInviteCodeBonuses(
+  bonusPoints: number,
+  creatorBonus: number
+): Promise<number> {
+  await initializeCodesTables();
+  const db = getAdapter();
+
+  const [result] = await db.execute(
+    'UPDATE invite_codes SET bonus_points = ?, creator_bonus = ? WHERE used_by IS NULL',
+    [Math.max(0, bonusPoints), Math.max(0, creatorBonus)]
+  );
+
+  return (result as any).affectedRows ?? (result as any).changes ?? 0;
 }
 
 export async function getInviteCodes(options: {

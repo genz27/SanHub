@@ -26,6 +26,16 @@ import { toast } from '@/components/ui/toaster';
 import type { Generation, CharacterCard, SafeImageModel, SafeVideoModel } from '@/types';
 import { formatDate } from '@/lib/utils';
 import { downloadAsset } from '@/lib/download';
+import {
+  fetchPendingGenerationTasks,
+  isTerminalGenerationStatus,
+  mergeGenerationsById,
+  pollGenerationTask,
+  replaceActiveTasks,
+} from '@/lib/generation-client';
+import {
+  getFriendlyErrorMessage,
+} from '@/lib/polling-utils';
 
 // 任务类型
 interface Task {
@@ -37,6 +47,7 @@ interface Task {
   modelId?: string;
   model?: string;
   createdAt: number;
+  updatedAt?: number;
 }
 
 type Badge = {
@@ -398,11 +409,23 @@ export default function HistoryPage() {
       if (res.ok) {
         const data = await res.json();
         const newGenerations = data.data || [];
+        const terminalIds = new Set<string>(
+          newGenerations
+            .filter((generation: Generation) => isTerminalGenerationStatus(generation.status))
+            .map((generation: Generation) => generation.id)
+        );
         
         if (append) {
-          setGenerations(prev => [...prev, ...newGenerations]);
+          setGenerations((prev) => mergeGenerationsById(prev, newGenerations));
         } else {
-          setGenerations(newGenerations);
+          setPage(pageNum);
+          setGenerations(mergeGenerationsById([], newGenerations));
+        }
+
+        if (terminalIds.size > 0) {
+          setPendingTasks((prev) =>
+            prev.filter((task) => !terminalIds.has(task.id))
+          );
         }
         
         setHasMore(newGenerations.length === pageSize);
@@ -450,101 +473,90 @@ export default function HistoryPage() {
     }
   }, []);
 
-  const pollTaskStatus = useCallback(async (taskId: string) => {
+  const pollTaskStatus = useCallback(async (task: Task) => {
     // 防止重复轮询
-    if (abortControllersRef.current.has(taskId)) return;
+    if (abortControllersRef.current.has(task.id)) return;
 
     const controller = new AbortController();
-    abortControllersRef.current.set(taskId, controller);
+    abortControllersRef.current.set(task.id, controller);
+    const taskType = isTaskVideoType(task.type) ? 'video' : 'image';
 
-    const maxConsecutiveErrors = 5;
-    let consecutiveErrors = 0;
+    try {
+      await pollGenerationTask({
+        taskId: task.id,
+        taskPrompt: task.prompt || '',
+        taskType,
+        signal: controller.signal,
+        onProgress: (payload) => {
+          const nextStatus =
+            payload.status === 'pending' || payload.status === 'processing'
+              ? payload.status
+              : 'processing';
 
-    const poll = async () => {
-      if (controller.signal.aborted) return;
-
-      try {
-        const res = await fetch(`/api/generate/status/${taskId}`, {
-          signal: controller.signal,
-        });
-        const data = await res.json();
-
-        if (!res.ok) {
-          // 请求失败时移除控制器，允许稍后重试
-          abortControllersRef.current.delete(taskId);
-          return;
-        }
-
-        // Reset error counter on success
-        consecutiveErrors = 0;
-        const status = data.data.status;
-
-        if (status === 'completed' || status === 'failed' || status === 'cancelled') {
-          // 任务结束，清理状态
-          setPendingTasks(prev => prev.filter(t => t.id !== taskId));
-          abortControllersRef.current.delete(taskId);
-          if (status === 'completed') {
-            await update();
-            // 强制刷新列表，忽略 loading 状态
-            loadHistoryRef.current(1, false, true);
-          }
-        } else {
-          // 更新任务状态和进度
-          setPendingTasks(prev => prev.map(t => 
-            t.id === taskId ? { 
-              ...t, 
-              status: status as 'pending' | 'processing',
-              progress: typeof data.data.progress === 'number' ? data.data.progress : t.progress,
-            } : t
-          ));
-          // 继续轮询
-          setTimeout(poll, 5000);
-        }
-      } catch (err) {
-        if ((err as Error).name === 'AbortError') return;
-        consecutiveErrors++;
-        const errMsg = (err as Error).message || '网络错误';
-        // Retry on transient network errors
-        const isTransientError =
-          errMsg.includes('socket') ||
-          errMsg.includes('Socket') ||
-          errMsg.includes('ECONNRESET') ||
-          errMsg.includes('ETIMEDOUT') ||
-          errMsg.includes('network') ||
-          errMsg.includes('fetch');
-        if (isTransientError && consecutiveErrors < maxConsecutiveErrors) {
-          console.warn(`[Poll] Transient error (${consecutiveErrors}/${maxConsecutiveErrors}), retrying...`, errMsg);
-          const delay = Math.min(5000 * Math.pow(2, consecutiveErrors - 1), 60000);
-          setTimeout(poll, delay);
-          return;
-        }
-        abortControllersRef.current.delete(taskId);
-      }
-    };
-
-    await poll();
+          setPendingTasks((prev) =>
+            prev.map((task) =>
+              task.id === payload.id
+                ? {
+                    ...task,
+                    status: nextStatus,
+                    progress:
+                      typeof payload.progress === 'number'
+                        ? payload.progress
+                        : task.progress,
+                    updatedAt: payload.updatedAt,
+                  }
+                : task
+            )
+          );
+        },
+        onCompleted: async () => {
+          setPendingTasks((prev) => prev.filter((pendingTask) => pendingTask.id !== task.id));
+          await update();
+          await Promise.allSettled([
+            loadPendingTasksRef.current(),
+            loadHistoryRef.current(1, false, true),
+          ]);
+        },
+        onFailed: async (errorMessage) => {
+          console.error('History polling failed:', getFriendlyErrorMessage(errorMessage));
+          setPendingTasks((prev) => prev.filter((pendingTask) => pendingTask.id !== task.id));
+          await Promise.allSettled([
+            loadPendingTasksRef.current(),
+            loadHistoryRef.current(1, false, true),
+          ]);
+        },
+        onTimeout: async () => {
+          setPendingTasks((prev) => prev.filter((pendingTask) => pendingTask.id !== task.id));
+          await Promise.allSettled([
+            loadPendingTasksRef.current(),
+            loadHistoryRef.current(1, false, true),
+          ]);
+        },
+      });
+    } finally {
+      abortControllersRef.current.delete(task.id);
+    }
   }, [update]);
 
   const loadPendingTasks = useCallback(async () => {
     try {
-      const res = await fetch('/api/user/tasks?limit=200');
-      if (res.ok) {
-        const data = await res.json();
-        const tasks: Task[] = (data.data || []).map((t: any) => ({
-          id: t.id,
-          prompt: t.prompt,
-          type: t.type,
-          status: t.status,
-          modelId: t.modelId,
-          model: t.model,
-          createdAt: t.createdAt,
-        }));
-        
-        if (tasks.length > 0) {
-          setPendingTasks(tasks);
-          tasks.forEach(task => pollTaskStatus(task.id));
-        }
-      }
+      const tasks: Task[] = (await fetchPendingGenerationTasks(200)).map((task) => ({
+        id: task.id,
+        prompt: task.prompt,
+        type: task.type,
+        status: task.status as 'pending' | 'processing',
+        progress: typeof task.progress === 'number' ? task.progress : 0,
+        modelId: task.modelId,
+        model: task.model,
+        createdAt: task.createdAt,
+        updatedAt: task.updatedAt,
+      }));
+
+      setPendingTasks((prev) => replaceActiveTasks(prev, tasks));
+
+      tasks.forEach((task) => {
+        void pollTaskStatus(task);
+      });
     } catch (err) {
       console.error('Failed to load pending tasks:', err);
     }
@@ -577,6 +589,33 @@ export default function HistoryPage() {
   useEffect(() => {
     loadHistoryRef.current = loadHistory;
   }, [loadHistory]);
+
+  const loadPendingTasksRef = useRef(loadPendingTasks);
+  useEffect(() => {
+    loadPendingTasksRef.current = loadPendingTasks;
+  }, [loadPendingTasks]);
+
+  useEffect(() => {
+    if (!session?.user?.id || !initialLoadRef.current) return;
+
+    const resync = () => {
+      void loadPendingTasks();
+      void loadHistory(1, false, true);
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        resync();
+      }
+    };
+
+    window.addEventListener('focus', resync);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('focus', resync);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [loadHistory, loadPendingTasks, session?.user?.id]);
 
   const downloadFile = async (url: string, id: string, type: string) => {
     if (!url) {
@@ -742,18 +781,14 @@ export default function HistoryPage() {
   };
 
   
-  // 使用 useMemo 缓存计算结果，避免每次渲染重复计算
-  const pendingTaskIds = useMemo(() => new Set(pendingTasks.map(t => t.id)), [pendingTasks]);
-  
   // 缓存已完成作品的过滤结果
   const completedGenerations = useMemo(() => 
     generations.filter(g => 
       g.resultUrl && 
       g.status !== 'pending' && 
-      g.status !== 'processing' &&
-      !pendingTaskIds.has(g.id)
+      g.status !== 'processing'
     ), 
-    [generations, pendingTaskIds]
+    [generations]
   );
   
   // 缓存过滤后的作品列表

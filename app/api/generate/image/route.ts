@@ -58,14 +58,29 @@ async function processGenerationTask(
   generationId: string,
   userId: string,
   request: ImageGenerateRequest,
-  prechargedCost: number
+  prechargedCost: number,
+  generationParams: Generation['params']
 ) {
   try {
     console.log(`[Task ${generationId}] 开始处理图像生成任务`);
 
-    await updateGeneration(generationId, { status: 'processing' });
+    await updateGeneration(generationId, {
+      status: 'processing',
+      params: {
+        ...generationParams,
+        progress: 10,
+      },
+    });
 
     const result = await generateImage(request);
+
+    await updateGeneration(generationId, {
+      status: 'processing',
+      params: {
+        ...generationParams,
+        progress: 80,
+      },
+    });
 
     // 保存到图床或本地
     const savedUrl = await saveMediaAsync(generationId, result.url);
@@ -75,6 +90,10 @@ async function processGenerationTask(
     await updateGeneration(generationId, {
       status: 'completed',
       resultUrl: savedUrl,
+      params: {
+        ...generationParams,
+        progress: 100,
+      },
     });
 
     console.log(`[Task ${generationId}] 任务完成`);
@@ -167,19 +186,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    try {
-      await updateUserBalance(user.id, -model.costPerGeneration, 'strict');
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Insufficient balance';
-      if (message.includes('Insufficient balance')) {
-        return NextResponse.json(
-          { error: `余额不足，需要至少 ${model.costPerGeneration} 积分` },
-          { status: 402 }
-        );
-      }
-      throw err;
-    }
-
     // 处理参考图
     const origin = new URL(request.url).origin;
     const imageList: Array<{ mimeType: string; data: string }> = [];
@@ -226,19 +232,36 @@ export async function POST(request: NextRequest) {
       images: imageList.length > 0 ? imageList : undefined,
     };
 
+    try {
+      await updateUserBalance(user.id, -model.costPerGeneration, 'strict');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Insufficient balance';
+      if (message.includes('Insufficient balance')) {
+        return NextResponse.json(
+          { error: `余额不足，需要至少 ${model.costPerGeneration} 积分` },
+          { status: 402 }
+        );
+      }
+      throw err;
+    }
+
     // 保存生成记录
     let generation: Generation;
+    const generationParams: Generation['params'] = {
+      model: model.apiModel,
+      modelId,
+      aspectRatio,
+      imageSize,
+      imageCount: imageList.length,
+      progress: 0,
+    };
+
     try {
       generation = await saveGeneration({
         userId: user.id,
         type: IMAGE_TYPE_BY_CHANNEL[channel.type] || 'gemini-image',
         prompt: prompt || '',
-        params: {
-          model: model.apiModel,
-          aspectRatio,
-          imageSize,
-          imageCount: imageList.length,
-        },
+        params: generationParams,
         resultUrl: '',
         cost: model.costPerGeneration,
         status: 'pending',
@@ -261,7 +284,13 @@ export async function POST(request: NextRequest) {
     });
 
     // 后台处理
-    processGenerationTask(generation.id, user.id, generateRequest, model.costPerGeneration).catch((err) => {
+    processGenerationTask(
+      generation.id,
+      user.id,
+      generateRequest,
+      model.costPerGeneration,
+      generationParams
+    ).catch((err) => {
       console.error('[API] 后台任务启动失败:', err);
     });
 

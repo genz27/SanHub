@@ -1,132 +1,230 @@
 /* eslint-disable no-console */
+import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import type { ImageBucketConfig } from '@/types';
 import { getSystemConfig } from './db';
-import { fetch as undiciFetch, FormData, File } from 'undici';
+import { fetch as undiciFetch, File, FormData } from 'undici';
 import { fetchWithRetry } from './http-retry';
 
-// ========================================
-// PicUI 图床 API
-// https://picui.cn/api/v1
-// ========================================
+type UploadPayload = {
+  buffer: Buffer;
+  extension: string;
+  filename: string;
+  mimeType: string;
+  objectKey: string;
+};
+
+const EXTENSION_BY_MIME: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/png': 'png',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+  'image/bmp': 'bmp',
+};
+
+const s3Clients = new Map<string, S3Client>();
 
 export interface PicUIUploadResponse {
   status: boolean;
   message: string;
   data?: {
-    key: string;
-    name: string;
-    pathname: string;
-    origin_name: string;
-    size: number;
-    mimetype: string;
-    extension: string;
-    md5: string;
-    sha1: string;
-    links: {
-      url: string;
-      html: string;
-      bbcode: string;
-      markdown: string;
-      markdown_with_link: string;
-      thumbnail_url: string;
-      delete_url: string;
+    links?: {
+      url?: string;
     };
   };
 }
 
-/**
- * 将 base64 图片上传到 PicUI 图床
- * @param base64Data base64 编码的图片数据（可以带 data:image/xxx;base64, 前缀，也可以不带）
- * @param filename 可选的文件名
- * @returns 上传成功返回图片 URL，失败返回 null
- */
-export async function uploadToPicUI(
-  base64Data: string,
-  filename?: string
-): Promise<string | null> {
-  const config = await getSystemConfig();
+function normalizeSegment(value: string): string {
+  return value
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/^\/+|\/+$/g, '');
+}
 
-  // 如果没有配置 PicUI API Key，返回 null（保持原有 base64 存储方式）
-  if (!config.picuiApiKey) {
-    console.log('[PicUI] API Key 未配置，跳过上传');
-    return null;
+function buildObjectKey(bucket: ImageBucketConfig, filename: string): string {
+  const normalizedFilename = normalizeSegment(filename).split('/').pop() || filename;
+  const prefix = normalizeSegment(bucket.pathPrefix || '');
+  return prefix ? `${prefix}/${normalizedFilename}` : normalizedFilename;
+}
+
+function encodeObjectKey(key: string): string {
+  return key
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+}
+
+function parseUploadPayload(base64Data: string, filename?: string, bucket?: ImageBucketConfig): UploadPayload {
+  let mimeType = 'image/jpeg';
+  let pureBase64 = base64Data;
+
+  if (base64Data.startsWith('data:')) {
+    const matches = base64Data.match(/^data:([^;]+);base64,(.+)$/);
+    if (matches) {
+      mimeType = matches[1];
+      pureBase64 = matches[2];
+    }
   }
 
-  try {
-    // 解析 base64 数据
-    let mimeType = 'image/jpeg';
-    let pureBase64 = base64Data;
+  const extension = EXTENSION_BY_MIME[mimeType] || 'jpg';
+  const safeFilename = filename?.trim() || `image_${Date.now()}.${extension}`;
+  const objectKey = buildObjectKey(bucket || { pathPrefix: '' } as ImageBucketConfig, safeFilename);
 
-    if (base64Data.startsWith('data:')) {
-      const matches = base64Data.match(/^data:([^;]+);base64,(.+)$/);
-      if (matches) {
-        mimeType = matches[1];
-        pureBase64 = matches[2];
-      }
-    }
+  return {
+    buffer: Buffer.from(pureBase64, 'base64'),
+    extension,
+    filename: safeFilename,
+    mimeType,
+    objectKey,
+  };
+}
 
-    // 确定文件扩展名
-    const extMap: Record<string, string> = {
-      'image/jpeg': 'jpg',
-      'image/jpg': 'jpg',
-      'image/png': 'png',
-      'image/gif': 'gif',
-      'image/webp': 'webp',
-      'image/bmp': 'bmp',
-    };
-    const ext = extMap[mimeType] || 'jpg';
-    const finalFilename = filename || `image_${Date.now()}.${ext}`;
-
-    // 转换为 Buffer
-    const buffer = Buffer.from(pureBase64, 'base64');
-
-    const baseUrl = config.picuiBaseUrl.replace(/\/$/, '');
-    const apiUrl = `${baseUrl}/upload`;
-
-    console.log('[PicUI] 上传图片:', { filename: finalFilename, size: buffer.length });
-
-    const buildFormData = () => {
-      const formData = new FormData();
-      const file = new File([buffer], finalFilename, { type: mimeType });
-      formData.append('file', file);
-      formData.append('permission', '1');
-      return formData;
-    };
-
-    const response = await fetchWithRetry(undiciFetch, apiUrl, () => ({
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${config.picuiApiKey}`,
-        'Accept': 'application/json',
-      },
-      body: buildFormData(),
-    }));
-
-    const data = await response.json() as PicUIUploadResponse;
-
-    if (!response.ok || !data.status) {
-      console.error('[PicUI] 上传失败:', data.message);
+function resolveDefaultBucket(): Promise<ImageBucketConfig | null> {
+  return getSystemConfig().then((config) => {
+    const buckets = config.imageStorage?.buckets || [];
+    const enabledBuckets = buckets.filter((bucket) => bucket.enabled);
+    if (enabledBuckets.length === 0) {
       return null;
     }
 
-    const imageUrl = data.data?.links?.url;
-    console.log('[PicUI] 上传成功:', imageUrl);
-    return imageUrl || null;
+    if (config.imageStorage?.defaultBucketId) {
+      const matched = enabledBuckets.find(
+        (bucket) => bucket.id === config.imageStorage.defaultBucketId
+      );
+      if (matched) return matched;
+    }
+
+    return enabledBuckets[0] || null;
+  });
+}
+
+async function uploadToPicuiBucket(
+  bucket: ImageBucketConfig,
+  payload: UploadPayload
+): Promise<string | null> {
+  if (!bucket.baseUrl || !bucket.apiKey) return null;
+
+  const buildFormData = () => {
+    const formData = new FormData();
+    formData.append('file', new File([payload.buffer], payload.filename, { type: payload.mimeType }));
+    formData.append('permission', '1');
+    return formData;
+  };
+
+  const apiUrl = `${bucket.baseUrl.replace(/\/$/, '')}/upload`;
+  const response = await fetchWithRetry(undiciFetch, apiUrl, () => ({
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${bucket.apiKey}`,
+      Accept: 'application/json',
+    },
+    body: buildFormData(),
+  }));
+
+  const data = (await response.json()) as PicUIUploadResponse;
+  if (!response.ok || !data.status) {
+    console.error('[ImageBucket] PicUI upload failed:', data.message);
+    return null;
+  }
+
+  return data.data?.links?.url || null;
+}
+
+function getS3Client(bucket: ImageBucketConfig): S3Client {
+  const cacheKey = [
+    bucket.id,
+    bucket.baseUrl,
+    bucket.region,
+    bucket.apiKey,
+    bucket.secretKey,
+    bucket.forcePathStyle,
+  ].join('|');
+
+  const cached = s3Clients.get(cacheKey);
+  if (cached) return cached;
+
+  const client = new S3Client({
+    region: bucket.region || 'us-east-1',
+    endpoint: bucket.baseUrl,
+    forcePathStyle: bucket.forcePathStyle !== false,
+    credentials: {
+      accessKeyId: bucket.apiKey,
+      secretAccessKey: bucket.secretKey || '',
+    },
+  });
+
+  s3Clients.set(cacheKey, client);
+  return client;
+}
+
+function buildS3PublicUrl(bucket: ImageBucketConfig, objectKey: string): string {
+  const encodedKey = encodeObjectKey(objectKey);
+  const publicBaseUrl = bucket.publicBaseUrl?.trim();
+
+  if (publicBaseUrl) {
+    return `${publicBaseUrl.replace(/\/$/, '')}/${encodedKey}`;
+  }
+
+  const baseUrl = bucket.baseUrl.replace(/\/$/, '');
+  return `${baseUrl}/${bucket.bucketName}/${encodedKey}`;
+}
+
+async function uploadToS3Bucket(
+  bucket: ImageBucketConfig,
+  payload: UploadPayload
+): Promise<string | null> {
+  if (!bucket.baseUrl || !bucket.apiKey || !bucket.secretKey || !bucket.bucketName) {
+    return null;
+  }
+
+  const client = getS3Client(bucket);
+  await client.send(
+    new PutObjectCommand({
+      Bucket: bucket.bucketName,
+      Key: payload.objectKey,
+      Body: payload.buffer,
+      ContentType: payload.mimeType,
+      CacheControl: 'public, max-age=31536000, immutable',
+    })
+  );
+
+  return buildS3PublicUrl(bucket, payload.objectKey);
+}
+
+export async function uploadToImageBucket(
+  base64Data: string,
+  filename?: string
+): Promise<string | null> {
+  const bucket = await resolveDefaultBucket();
+  if (!bucket) {
+    console.log('[ImageBucket] No enabled bucket configured, skip upload');
+    return null;
+  }
+
+  const payload = parseUploadPayload(base64Data, filename, bucket);
+
+  try {
+    if (bucket.provider === 's3-compatible') {
+      return await uploadToS3Bucket(bucket, payload);
+    }
+    return await uploadToPicuiBucket(bucket, payload);
   } catch (error) {
-    console.error('[PicUI] 上传异常:', error);
+    console.error('[ImageBucket] Upload failed:', error);
     return null;
   }
 }
 
-/**
- * 尝试上传图片到 PicUI，如果失败则返回原始 base64
- * @param base64Data base64 编码的图片数据
- * @param filename 可选的文件名
- * @returns 图片 URL 或原始 base64
- */
+export async function uploadToPicUI(
+  base64Data: string,
+  filename?: string
+): Promise<string | null> {
+  return uploadToImageBucket(base64Data, filename);
+}
+
 export async function uploadImageOrKeepBase64(
   base64Data: string,
   filename?: string
 ): Promise<string> {
-  const url = await uploadToPicUI(base64Data, filename);
+  const url = await uploadToImageBucket(base64Data, filename);
   return url || base64Data;
 }

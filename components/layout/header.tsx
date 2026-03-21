@@ -25,6 +25,9 @@ export function Header({ user }: HeaderProps) {
   const pathname = usePathname();
   const siteConfig = useSiteConfig();
   const isAdmin = user.role === 'admin' || user.role === 'moderator';
+  const visibleMobileNavItems = mobileNavItems.filter(
+    (item) => item.href !== '/square' || siteConfig.squareEnabled
+  );
 
   return (
     <>
@@ -72,7 +75,7 @@ export function Header({ user }: HeaderProps) {
       {/* Mobile Bottom Tab Navigation */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-2xl border-t border-border/50 pb-[env(safe-area-inset-bottom)]">
         <div className="flex justify-around items-center h-14">
-          {mobileNavItems.map((item) => {
+          {visibleMobileNavItems.map((item) => {
             const isActive = pathname === item.href || 
               (item.href !== '/' && pathname.startsWith(item.href));
             return (

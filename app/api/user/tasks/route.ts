@@ -26,9 +26,11 @@ export async function GET(request: NextRequest) {
         prompt: t.prompt,
         type: t.type,
         status: t.status,
+        progress: typeof t.params?.progress === 'number' ? t.params.progress : 0,
         modelId: t.params?.modelId,
         model: t.params?.model,
         createdAt: t.createdAt,
+        updatedAt: t.updatedAt,
       })),
     });
   } catch (error) {

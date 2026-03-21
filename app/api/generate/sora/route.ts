@@ -132,7 +132,13 @@ async function processGenerationTask(
     } = {};
     
     // 更新状态为 processing
-    await updateGeneration(generationId, { status: 'processing' }).catch(err => {
+    await updateGeneration(generationId, {
+      status: 'processing',
+      params: {
+        ...baseParams,
+        progress: 0,
+      },
+    }).catch(err => {
       console.error(`[Task ${generationId}] 更新状态失败:`, err);
     });
 
@@ -200,6 +206,7 @@ async function processGenerationTask(
         videoChannelId: result.videoChannelId,
         permalink: result.permalink,
         revised_prompt: result.revised_prompt,
+        progress: 100,
       },
     }).catch(err => {
       console.error(`[Task ${generationId}] 更新完成状态失败:`, err);
@@ -342,6 +349,7 @@ export async function POST(request: NextRequest) {
           aspectRatio: body.aspectRatio,
           duration: body.duration,
           videoConfigObject: normalizedVideoConfigObject,
+          progress: 0,
         },
         resultUrl: '',
         cost: estimatedCost,

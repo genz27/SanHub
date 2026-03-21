@@ -47,12 +47,19 @@ async function processGenerationTask(
   generationId: string,
   userId: string,
   body: SoraImageRequest,
-  prechargedCost: number
+  prechargedCost: number,
+  generationParams: Generation['params']
 ): Promise<void> {
   try {
     console.log(`[Task ${generationId}] 开始处理 Sora 图像生成任务`);
 
-    await updateGeneration(generationId, { status: 'processing' });
+    await updateGeneration(generationId, {
+      status: 'processing',
+      params: {
+        ...generationParams,
+        progress: 15,
+      },
+    });
 
     // 调用非流式 API
     const result = await generateImage({
@@ -68,8 +75,15 @@ async function processGenerationTask(
     }
 
     const first = result.data[0];
-    const config = await getSystemConfig();
-    const cost = config.pricing.soraImage || 1;
+
+    await updateGeneration(generationId, {
+      status: 'processing',
+      params: {
+        ...generationParams,
+        revised_prompt: first.revised_prompt,
+        progress: 85,
+      },
+    });
 
     console.log(`[Task ${generationId}] 生成成功:`, first.url);
 
@@ -77,9 +91,9 @@ async function processGenerationTask(
       status: 'completed',
       resultUrl: first.url,
       params: {
-        model: body.model,
-        size: body.size,
+        ...generationParams,
         revised_prompt: first.revised_prompt,
+        progress: 100,
       },
     });
 
@@ -167,16 +181,19 @@ export async function POST(request: NextRequest) {
       throw err;
     }
 
+    const generationParams: Generation['params'] = {
+      model: normalizedBody.model,
+      size: normalizedBody.size,
+      progress: 0,
+    };
+
     let generation: Generation;
     try {
       generation = await saveGeneration({
         userId: user.id,
         type: 'sora-image',
         prompt: normalizedBody.prompt,
-        params: {
-          model: normalizedBody.model,
-          size: normalizedBody.size,
-        },
+        params: generationParams,
         resultUrl: '',
         cost: estimatedCost,
         status: 'pending',
@@ -190,7 +207,13 @@ export async function POST(request: NextRequest) {
       throw saveErr;
     }
 
-    processGenerationTask(generation.id, user.id, normalizedBody, estimatedCost).catch((err) => {
+    processGenerationTask(
+      generation.id,
+      user.id,
+      normalizedBody,
+      estimatedCost,
+      generationParams
+    ).catch((err) => {
       console.error('[API] Sora Image 后台任务启动失败:', err);
     });
 

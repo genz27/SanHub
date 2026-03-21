@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { getFeed } from '@/lib/sora-api';
+import { getSystemConfig } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,6 +48,11 @@ export async function GET(request: NextRequest) {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
       return NextResponse.json({ error: '请先登录' }, { status: 401 });
+    }
+
+    const config = await getSystemConfig();
+    if (!config.featureFlags.squareEnabled) {
+      return NextResponse.json({ error: '广场功能未开启' }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);

@@ -28,6 +28,11 @@ async function getSiteConfig(): Promise<ExtendedSiteConfig> {
     copyright: config.siteConfig?.copyright || 'Copyright © 2025 SANHUB',
     poweredBy: config.siteConfig?.poweredBy || 'Powered by OpenAI Sora & Google Gemini',
     defaultBalance: config.defaultBalance ?? 100,
+    squareEnabled: config.featureFlags?.squareEnabled ?? true,
+    inviteEnabled: config.inviteSettings?.enabled ?? true,
+    inviteRewardEnabled: config.inviteSettings?.rewardEnabled ?? true,
+    inviteeBonusPoints: config.inviteSettings?.inviteeBonusPoints ?? 100,
+    inviterBonusPoints: config.inviteSettings?.inviterBonusPoints ?? 50,
   };
 }
 

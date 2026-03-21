@@ -3,7 +3,7 @@
  * 根据渠道类型动态选择请求方式
  */
 
-import { getImageModelWithChannel, getSystemConfig } from './db';
+import { getImageModelWithChannel } from './db';
 import { uploadToPicUI } from './picui';
 import { fetchWithRetry } from './http-retry';
 import type { GenerateResult } from '@/types';
@@ -48,14 +48,10 @@ async function uploadImageForApi(
   imageData: string,
   index: number
 ): Promise<string> {
-  const config = await getSystemConfig();
-  if (!config.picuiApiKey) {
-    throw new Error('参考图需要配置 PicUI 图床');
-  }
   const filename = `input_${Date.now()}_${index}.jpg`;
   const url = await uploadToPicUI(imageData, filename);
   if (!url) {
-    throw new Error('参考图上传失败');
+    throw new Error('参考图上传失败，请检查默认图床桶配置');
   }
   return url;
 }

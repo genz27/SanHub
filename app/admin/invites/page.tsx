@@ -15,6 +15,7 @@ import type { InviteBatchResult, InviteCode } from '@/types';
 import { formatDate } from '@/lib/utils';
 import { toast } from '@/components/ui/toaster';
 import { PaginationControls } from '@/components/admin/pagination';
+import { useSiteConfig } from '@/components/providers/site-config-provider';
 
 const INVITE_PAGE_SIZE = 50;
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
@@ -74,6 +75,7 @@ function downloadTextFile(filename: string, content: string) {
 }
 
 export default function InvitesPage() {
+  const siteConfig = useSiteConfig();
   const [codes, setCodes] = useState<InviteCode[]>([]);
   const [latestBatch, setLatestBatch] = useState<InviteBatchResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -86,8 +88,6 @@ export default function InvitesPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const [count, setCount] = useState(10);
-  const [bonusPoints, setBonusPoints] = useState(50);
-  const [creatorBonus, setCreatorBonus] = useState(20);
   const [expiresInDays, setExpiresInDays] = useState(0);
 
   const exportableCurrentCodes = useMemo(() => getExportableCodes(codes), [codes]);
@@ -137,8 +137,6 @@ export default function InvitesPage() {
 
   const resetCreateForm = () => {
     setCount(10);
-    setBonusPoints(50);
-    setCreatorBonus(20);
     setExpiresInDays(0);
   };
 
@@ -151,8 +149,6 @@ export default function InvitesPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           count,
-          bonusPoints,
-          creatorBonus,
           expiresAt,
         }),
       });
@@ -266,7 +262,13 @@ export default function InvitesPage() {
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div>
           <h1 className="text-3xl font-light text-foreground">邀请码管理</h1>
-          <p className="text-foreground/50 mt-1">统一按“最近创建结果 + 当前列表”来管理邀请码，减少发放时的混乱。</p>
+          <p className="text-foreground/50 mt-1">
+            {siteConfig.inviteEnabled
+              ? siteConfig.inviteRewardEnabled
+                ? `当前全局奖励：被邀请人 +${siteConfig.inviteeBonusPoints}，邀请人 +${siteConfig.inviterBonusPoints}`
+                : '邀请码功能已启用，但当前全局奖励已关闭'
+              : '邀请码功能当前已关闭，无法创建新邀请码'}
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-2 text-sm text-foreground/60">
@@ -294,6 +296,7 @@ export default function InvitesPage() {
           </button>
           <button
             onClick={() => setShowCreate(true)}
+            disabled={!siteConfig.inviteEnabled}
             className="inline-flex items-center gap-2 px-4 py-2 bg-foreground text-background rounded-xl hover:bg-foreground/90 transition-all"
           >
             <Plus className="w-4 h-4" />
@@ -301,6 +304,12 @@ export default function InvitesPage() {
           </button>
         </div>
       </div>
+
+      {!siteConfig.inviteEnabled && (
+        <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-200">
+          邀请码功能已在站点配置中关闭。历史邀请码仍可查看，但无法继续创建新邀请码。
+        </div>
+      )}
 
       {latestBatch && (
         <div className="bg-card/60 border border-border/70 rounded-2xl p-5 space-y-4">
@@ -473,26 +482,6 @@ export default function InvitesPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm text-foreground/60 mb-2">被邀请人奖励积分</label>
-                <input
-                  type="number"
-                  value={bonusPoints}
-                  onChange={(e) => setBonusPoints(Math.max(0, Number(e.target.value)))}
-                  min={0}
-                  className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border/70"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-foreground/60 mb-2">邀请人奖励积分</label>
-                <input
-                  type="number"
-                  value={creatorBonus}
-                  onChange={(e) => setCreatorBonus(Math.max(0, Number(e.target.value)))}
-                  min={0}
-                  className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border/70"
-                />
-              </div>
-              <div>
                 <label className="block text-sm text-foreground/60 mb-2">有效期（天）</label>
                 <input
                   type="number"
@@ -510,6 +499,12 @@ export default function InvitesPage() {
                 <CalendarClock className="w-4 h-4 text-sky-300" />
                 <span>创建后会立即展示最近生成结果，方便直接发放或导出存档。</span>
               </div>
+              <p>
+                当前全局策略：
+                {siteConfig.inviteRewardEnabled
+                  ? ` 被邀请人 +${siteConfig.inviteeBonusPoints}，邀请人 +${siteConfig.inviterBonusPoints}`
+                  : ' 不发放积分奖励'}
+              </p>
               <p>本次将生成 {count} 个邀请码。</p>
             </div>
 
@@ -522,7 +517,7 @@ export default function InvitesPage() {
               </button>
               <button
                 onClick={handleCreate}
-                disabled={creating}
+                disabled={creating || !siteConfig.inviteEnabled}
                 className="flex-1 py-3 bg-foreground text-background rounded-xl hover:bg-foreground/90 disabled:opacity-50 transition-all"
               >
                 {creating ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : '创建并展示结果'}

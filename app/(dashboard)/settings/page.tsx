@@ -5,9 +5,11 @@ import { useSession, signOut } from 'next-auth/react';
 import { User, Key, LogOut, Loader2, Check, Mail, Shield, Coins, Gift, UserPlus, Copy, Ticket } from 'lucide-react';
 import { toast } from '@/components/ui/toaster';
 import { formatBalance } from '@/lib/utils';
+import { useSiteConfig } from '@/components/providers/site-config-provider';
 
 export default function SettingsPage() {
   const { data: session, update: updateSession } = useSession();
+  const siteConfig = useSiteConfig();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -24,8 +26,13 @@ export default function SettingsPage() {
   const [inviteCodeLoading, setInviteCodeLoading] = useState(false);
 
   useEffect(() => {
+    if (!siteConfig.inviteEnabled) {
+      setMyInviteCode(null);
+      return;
+    }
+
     loadMyInviteCode();
-  }, []);
+  }, [siteConfig.inviteEnabled]);
 
   const loadMyInviteCode = async () => {
     try {
@@ -130,7 +137,14 @@ export default function SettingsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
 
-      toast({ title: '使用成功', description: `获得 ${formatBalance(data.bonusPoints)} 积分` });
+      toast({
+        title: '使用成功',
+        description:
+          data.message ||
+          (data.bonusPoints
+            ? `获得 ${formatBalance(data.bonusPoints)} 积分`
+            : '邀请码已绑定'),
+      });
       setInviteCode('');
       updateSession();
     } catch (err) {
@@ -252,6 +266,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Invite Code Card */}
+      {siteConfig.inviteEnabled && (
       <div className="surface overflow-hidden">
         <div className="p-6 border-b border-border/70">
           <div className="flex items-center gap-3">
@@ -260,7 +275,11 @@ export default function SettingsPage() {
             </div>
             <div>
               <h2 className="text-lg font-medium text-foreground">邀请码</h2>
-              <p className="text-sm text-foreground/40">邀请好友或使用他人邀请码获取积分</p>
+              <p className="text-sm text-foreground/40">
+                {siteConfig.inviteRewardEnabled
+                  ? `邀请好友可获得积分奖励，当前奖励：被邀请人 ${formatBalance(siteConfig.inviteeBonusPoints)}，邀请人 ${formatBalance(siteConfig.inviterBonusPoints)}`
+                  : '可绑定邀请关系，当前不发放积分奖励'}
+              </p>
             </div>
           </div>
         </div>
@@ -287,7 +306,11 @@ export default function SettingsPage() {
                 </button>
               )}
             </div>
-            <p className="text-xs text-foreground/40">分享给好友，好友使用后双方都可获得积分奖励</p>
+            <p className="text-xs text-foreground/40">
+              {siteConfig.inviteRewardEnabled
+                ? `分享给好友后，双方将分别获得 ${formatBalance(siteConfig.inviterBonusPoints)} / ${formatBalance(siteConfig.inviteeBonusPoints)} 积分`
+                : '分享邀请码可建立邀请关系，但不会发放积分奖励'}
+            </p>
           </div>
           
           {/* Use invite code */}
@@ -313,6 +336,7 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
+      )}
 
       {/* Change Password Card */}
       <div className="surface overflow-hidden">

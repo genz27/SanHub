@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { saveCharacterCard, updateCharacterCard, deleteCharacterCard, getUserById } from '@/lib/db';
+import { saveCharacterCard, updateCharacterCard, getUserById } from '@/lib/db';
 import { createCharacterCard } from '@/lib/sora-api';
 import { uploadToPicUI } from '@/lib/picui';
 import { checkRateLimit, RateLimitConfig } from '@/lib/rate-limit';
@@ -142,7 +142,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '用户不存在' }, { status: 401 });
     }
 
-    // 尝试上传头像到 PicUI 图床
+    // Try to upload avatar to the configured bucket
     // 图生角色卡模式使用 inputImage，视频模式使用 firstFrameBase64
     const avatarSource = isImageMode ? body.inputImage : body.firstFrameBase64;
     let avatarUrl = avatarSource || '';
@@ -151,10 +151,10 @@ export async function POST(request: NextRequest) {
         const picuiUrl = await uploadToPicUI(avatarSource, `avatar_${Date.now()}.jpg`);
         if (picuiUrl) {
           avatarUrl = picuiUrl;
-          console.log('[API] 角色卡头像已上传到 PicUI:', picuiUrl);
+          console.log('[API] Character card avatar uploaded:', picuiUrl);
         }
       } catch (err) {
-        console.warn('[API] PicUI 上传失败，使用 base64:', err);
+        console.warn('[API] Character card avatar upload failed, keeping source:', err);
       }
     }
 

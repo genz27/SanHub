@@ -161,13 +161,14 @@ npm run dev
 # SQLite（默认）
 DB_TYPE=sqlite
 
-# MySQL
+# MySQL（推荐使用 MYSQL_*，同时兼容旧的 DB_* 别名）
 DB_TYPE=mysql
-DB_HOST=localhost
-DB_PORT=3306
-DB_USER=root
-DB_PASSWORD=password
-DB_NAME=sanhub
+MYSQL_HOST=localhost
+MYSQL_PORT=3306
+MYSQL_USER=root
+MYSQL_PASSWORD=password
+MYSQL_DATABASE=sanhub
+# MYSQL_SSL=false
 ```
 
 ## 📁 项目结构

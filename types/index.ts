@@ -359,6 +359,39 @@ export interface SiteConfig {
   poweredBy: string;          // 技术支持信息
 }
 
+export interface FeatureFlagsConfig {
+  squareEnabled: boolean;
+}
+
+export interface InviteSettingsConfig {
+  enabled: boolean;
+  rewardEnabled: boolean;
+  inviteeBonusPoints: number;
+  inviterBonusPoints: number;
+}
+
+export type ImageBucketProvider = 'picui' | 's3-compatible';
+
+export interface ImageBucketConfig {
+  id: string;
+  name: string;
+  provider: ImageBucketProvider;
+  baseUrl: string;
+  apiKey: string;
+  secretKey?: string;
+  bucketName?: string;
+  region?: string;
+  publicBaseUrl?: string;
+  pathPrefix?: string;
+  forcePathStyle?: boolean;
+  enabled: boolean;
+}
+
+export interface ImageStorageConfig {
+  defaultBucketId?: string;
+  buckets: ImageBucketConfig[];
+}
+
 // Prompt processing configuration
 export interface PromptProcessingConfig {
   filterEnabled: boolean;
@@ -398,12 +431,15 @@ export interface SystemConfig {
   // PicUI 图床配置
   picuiApiKey: string;
   picuiBaseUrl: string;
+  imageStorage: ImageStorageConfig;
   // 视频加速配置
   videoProxyEnabled: boolean;
   videoProxyBaseUrl: string;
   pricing: PricingConfig;
   registerEnabled: boolean;
   defaultBalance: number;
+  featureFlags: FeatureFlagsConfig;
+  inviteSettings: InviteSettingsConfig;
   // 公告配置
   announcement: AnnouncementConfig;
   // 渠道启用配置

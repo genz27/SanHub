@@ -1,9 +1,10 @@
 'use client';
 /* eslint-disable @next/next/no-img-element */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, User, Loader2 } from 'lucide-react';
+import { useSiteConfig } from '@/components/providers/site-config-provider';
 
 interface SearchResult {
   user_id: string;
@@ -15,11 +16,20 @@ interface SearchResult {
 
 export default function SquarePage() {
   const router = useRouter();
+  const siteConfig = useSiteConfig();
   const [searchQuery, setSearchQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!siteConfig.squareEnabled) {
+      router.replace('/image');
+    }
+  }, [router, siteConfig.squareEnabled]);
+
+  if (!siteConfig.squareEnabled) return null;
 
   // 搜索用户
   const handleSearch = async (e: React.FormEvent) => {

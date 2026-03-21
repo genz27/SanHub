@@ -6,6 +6,11 @@ import type { SiteConfig } from '@/types';
 // Extended config that includes runtime settings
 export interface ExtendedSiteConfig extends SiteConfig {
   defaultBalance: number;
+  squareEnabled: boolean;
+  inviteEnabled: boolean;
+  inviteRewardEnabled: boolean;
+  inviteeBonusPoints: number;
+  inviterBonusPoints: number;
 }
 
 const defaultSiteConfig: ExtendedSiteConfig = {
@@ -17,6 +22,11 @@ const defaultSiteConfig: ExtendedSiteConfig = {
   copyright: 'Copyright © 2025 SANHUB',
   poweredBy: 'Powered by OpenAI Sora & Google Gemini',
   defaultBalance: 100,
+  squareEnabled: true,
+  inviteEnabled: true,
+  inviteRewardEnabled: true,
+  inviteeBonusPoints: 100,
+  inviterBonusPoints: 50,
 };
 
 interface SiteConfigContextType {
@@ -55,6 +65,11 @@ export function SiteConfigProvider({ children, initialConfig }: SiteConfigProvid
         setConfig({
           ...data.data,
           defaultBalance: data.data.defaultBalance ?? 100,
+          squareEnabled: data.data.squareEnabled ?? true,
+          inviteEnabled: data.data.inviteEnabled ?? true,
+          inviteRewardEnabled: data.data.inviteRewardEnabled ?? true,
+          inviteeBonusPoints: data.data.inviteeBonusPoints ?? 100,
+          inviterBonusPoints: data.data.inviterBonusPoints ?? 50,
         });
       }
     } catch (error) {

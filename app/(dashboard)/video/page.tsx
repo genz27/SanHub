@@ -3,6 +3,7 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
+import { useSession } from 'next-auth/react';
 import {
   Video,
   Sparkles,
@@ -22,7 +23,16 @@ import { toast } from '@/components/ui/toaster';
 import { CustomSelect } from '@/components/ui/select-custom';
 import type { Task } from '@/components/generator/result-gallery';
 import type { Generation, CharacterCard, SafeVideoModel, DailyLimitConfig } from '@/types';
-import { getPollingInterval, shouldContinuePolling, isTransientError, getFriendlyErrorMessage } from '@/lib/polling-utils';
+import {
+  fetchPendingGenerationTasks,
+  fetchRecentUserGenerations,
+  filterGenerationsByKind,
+  filterTasksByKind,
+  isTerminalGenerationStatus,
+  mergeGenerationsById,
+  pollGenerationTask,
+  replaceActiveTasks,
+} from '@/lib/generation-client';
 
 const ResultGallery = dynamic(
   () => import('@/components/generator/result-gallery').then((mod) => mod.ResultGallery),
@@ -50,8 +60,11 @@ const CREATION_MODES = [
 ] as const;
 
 export default function VideoGenerationPage() {
+  const { update } = useSession();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
+  const filesRef = useRef<Array<{ file: File; preview: string }>>([]);
+  const refreshGenerationFeedRef = useRef<() => Promise<void>>(async () => {});
 
   // 模型列表（从 API 获取）
   const [availableModels, setAvailableModels] = useState<SafeVideoModel[]>([]);
@@ -99,6 +112,10 @@ export default function VideoGenerationPage() {
 
 
   const [showCharacterMenu, setShowCharacterMenu] = useState(false);
+
+  useEffect(() => {
+    filesRef.current = files;
+  }, [files]);
 
   // 获取当前选中的模型配置
   const currentModel = useMemo(() => {
@@ -240,7 +257,7 @@ export default function VideoGenerationPage() {
     setIsDragging(false);
   };
 
-  const handleDrop = async (e: React.DragEvent) => {
+  const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
@@ -278,190 +295,169 @@ export default function VideoGenerationPage() {
     }
   };
 
+  const loadRecentGenerations = useCallback(async () => {
+    try {
+      const recentGenerations = await fetchRecentUserGenerations(24);
+      const completedVideoGenerations = filterGenerationsByKind(
+        recentGenerations.filter(
+          (generation) =>
+            generation.resultUrl &&
+            generation.status === 'completed' &&
+            isTerminalGenerationStatus(generation.status)
+        ),
+        'video'
+      );
+
+      setGenerations((prev) =>
+        mergeGenerationsById(prev, completedVideoGenerations)
+      );
+    } catch (err) {
+      console.error('Failed to load recent video generations:', err);
+    }
+  }, []);
+
   // 轮询任务状态
   const pollTaskStatus = useCallback(
     async (taskId: string, taskPrompt: string): Promise<void> => {
       if (abortControllersRef.current.has(taskId)) return;
 
       const controller = new AbortController();
+      let shouldResyncAfterPoll = false;
       abortControllersRef.current.set(taskId, controller);
 
-      const startTime = Date.now();
-      const maxConsecutiveErrors = 5;
-      let consecutiveErrors = 0;
+      try {
+        await pollGenerationTask({
+          taskId,
+          taskPrompt,
+          taskType: 'video',
+          signal: controller.signal,
+          onProgress: (payload) => {
+            const nextStatus =
+              payload.status === 'pending' || payload.status === 'processing'
+                ? payload.status
+                : 'processing';
 
-      const poll = async (): Promise<void> => {
-        if (controller.signal.aborted) return;
-
-        const elapsed = Date.now() - startTime;
-        if (!shouldContinuePolling(elapsed, 'video')) {
-          setTasks((prev) =>
-            prev.map((t) =>
-              t.id === taskId
-                ? { ...t, status: 'failed' as const, errorMessage: '任务超时' }
-                : t
-            )
-          );
-          abortControllersRef.current.delete(taskId);
-          return;
-        }
-
-        try {
-          const res = await fetch(`/api/generate/status/${taskId}`, {
-            signal: controller.signal,
-          });
-
-          // 检查是否为 5xx 错误（可能返回 HTML）
-          if (res.status >= 500) {
-            throw new Error(`Server Error: ${res.status}`);
-          }
-
-          // 安全解析 JSON
-          let data;
-          const contentType = res.headers.get('content-type');
-          if (contentType && contentType.includes('application/json')) {
-            data = await res.json();
-          } else {
-            const text = await res.text();
-            console.warn('[Poll] Non-JSON response:', text.slice(0, 100));
-            throw new Error('Invalid response format');
-          }
-
-          if (!res.ok) {
-            throw new Error(data.error || `Request failed: ${res.status}`);
-          }
-
-          // Reset error counter on success
-          consecutiveErrors = 0;
-          const status = data.data.status;
-          const resultUrl = typeof data.data.url === 'string' ? data.data.url : '';
-          const isCompletedStatus = status === 'completed' || status === 'succeeded';
-
-          if (status === 'failed' || status === 'cancelled') {
             setTasks((prev) =>
-              prev.map((t) =>
-                t.id === taskId
+              prev.map((task) =>
+                task.id === taskId
                   ? {
-                      ...t,
-                      status: 'failed' as const,
-                      errorMessage: data.data.errorMessage || '生成失败',
+                      ...task,
+                      status: nextStatus,
+                      progress:
+                        typeof payload.progress === 'number'
+                          ? payload.progress
+                          : task.progress,
                     }
-                  : t
+                  : task
               )
             );
-            abortControllersRef.current.delete(taskId);
-          } else if (isCompletedStatus || resultUrl) {
-            const generation: Generation = {
-              id: data.data.id,
-              userId: '',
-              type: data.data.type,
-              prompt: taskPrompt,
-              params: {},
-              resultUrl: resultUrl || `/api/media/${data.data.id || taskId}`,
-              cost: data.data.cost,
-              status: 'completed',
-              createdAt: data.data.createdAt,
-              updatedAt: data.data.updatedAt,
-            };
-
-            setTasks((prev) => prev.filter((t) => t.id !== taskId));
-            setGenerations((prev) => [generation, ...prev]);
+          },
+          onCompleted: async (generation) => {
+            await update();
+            setTasks((prev) => prev.filter((task) => task.id !== taskId));
+            setGenerations((prev) => mergeGenerationsById(prev, [generation]));
+            void loadRecentGenerations();
 
             toast({
               title: '生成成功',
-              description: `消耗 ${data.data.cost} 积分`,
+              description: `消耗 ${generation.cost} 积分`,
             });
+          },
+          onFailed: async (errorMessage, payload) => {
+            if (!payload) {
+              shouldResyncAfterPoll = true;
+              return;
+            }
 
-            abortControllersRef.current.delete(taskId);
-          } else {
-            const nextStatus =
-              status === 'pending' || status === 'processing'
-                ? status
-                : 'processing';
             setTasks((prev) =>
-              prev.map((t) =>
-                t.id === taskId
-                  ? { 
-                      ...t, 
-                      status: nextStatus as 'pending' | 'processing',
-                      progress: typeof data.data.progress === 'number' ? data.data.progress : t.progress,
+              prev.map((task) =>
+                task.id === taskId
+                  ? {
+                      ...task,
+                      status: 'failed' as const,
+                      errorMessage,
                     }
-                  : t
+                  : task
               )
             );
-            const interval = getPollingInterval(elapsed, 'video');
-            setTimeout(poll, interval);
-          }
-        } catch (err) {
-          if ((err as Error).name === 'AbortError') return;
-          consecutiveErrors++;
-          const errMsg = (err as Error).message || '网络错误';
-          // Retry on transient network errors or JSON parse failures
-          if (isTransientError(err) && consecutiveErrors < maxConsecutiveErrors) {
-            console.warn(`[Poll] Transient error (${consecutiveErrors}/${maxConsecutiveErrors}), retrying...`, errMsg);
-            const delay = Math.min(5000 * Math.pow(2, consecutiveErrors - 1), 60000);
-            setTimeout(poll, delay);
-            return;
-          }
-          setTasks((prev) =>
-            prev.map((t) =>
-              t.id === taskId
-                ? {
-                    ...t,
-                    status: 'failed' as const,
-                    errorMessage: getFriendlyErrorMessage(errMsg),
-                  }
-                : t
-            )
-          );
-          abortControllersRef.current.delete(taskId);
+          },
+          onTimeout: async () => {
+            shouldResyncAfterPoll = true;
+          },
+        });
+      } finally {
+        abortControllersRef.current.delete(taskId);
+        if (shouldResyncAfterPoll) {
+          await refreshGenerationFeedRef.current();
         }
-      };
-
-      await poll();
+      }
     },
-    []
+    [loadRecentGenerations, update]
   );
 
-  // 加载 pending 任务
+  const loadPendingTasks = useCallback(async () => {
+    try {
+      const videoTasks = filterTasksByKind(
+        await fetchPendingGenerationTasks(200),
+        'video'
+      ).map(
+        (task) =>
+          ({
+            ...task,
+            status: task.status === 'processing' ? 'processing' : 'pending',
+            progress: typeof task.progress === 'number' ? task.progress : 0,
+          }) satisfies Task
+      );
+
+      setTasks((prev) => replaceActiveTasks(prev, videoTasks));
+
+      videoTasks.forEach((task) => {
+        void pollTaskStatus(task.id, task.prompt);
+      });
+    } catch (err) {
+      console.error('Failed to load pending video tasks:', err);
+    }
+  }, [pollTaskStatus]);
+
+  const refreshGenerationFeed = useCallback(async () => {
+    await Promise.allSettled([loadRecentGenerations(), loadPendingTasks()]);
+  }, [loadPendingTasks, loadRecentGenerations]);
+
+  useEffect(() => {
+    refreshGenerationFeedRef.current = refreshGenerationFeed;
+  }, [refreshGenerationFeed]);
+
   useEffect(() => {
     const abortControllers = abortControllersRef.current;
-    const loadPendingTasks = async () => {
-      try {
-        const res = await fetch('/api/user/tasks?limit=200');
-        if (res.ok) {
-          const data = await res.json();
-          const videoTasks: Task[] = (data.data || [])
-            .filter((t: any) => t.type?.includes('video') || t.type?.includes('sora'))
-            .map((t: any) => ({
-              id: t.id,
-              prompt: t.prompt,
-              type: t.type,
-              status: t.status as 'pending' | 'processing',
-              createdAt: t.createdAt,
-            }));
-
-          if (videoTasks.length > 0) {
-            setTasks(videoTasks);
-            videoTasks.forEach((task) => {
-              pollTaskStatus(task.id, task.prompt);
-            });
-          }
-        }
-      } catch (err) {
-        console.error('Failed to load pending tasks:', err);
+    const handleWindowFocus = () => {
+      void refreshGenerationFeed();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void refreshGenerationFeed();
       }
     };
 
-    loadPendingTasks();
+    void refreshGenerationFeed();
+    window.addEventListener('focus', handleWindowFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
+      window.removeEventListener('focus', handleWindowFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       abortControllers.forEach((controller) => controller.abort());
       abortControllers.clear();
     };
-  }, [pollTaskStatus]);
+  }, [refreshGenerationFeed]);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  useEffect(() => {
+    return () => {
+      filesRef.current.forEach((file) => URL.revokeObjectURL(file.preview));
+      filesRef.current = [];
+    };
+  }, []);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(e.target.files || []);
     for (const file of selectedFiles) {
       // 只允许图片，禁止视频
@@ -647,7 +643,7 @@ export default function VideoGenerationPage() {
       createdAt: Date.now(),
     };
     setTasks((prev) => [newTask, ...prev]);
-    pollTaskStatus(data.data.id, taskPrompt);
+    void pollTaskStatus(data.data.id, taskPrompt);
 
     return data.data.id;
   };

@@ -1,13 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getSystemConfig } from '@/lib/db';
-import { cache, CacheKeys } from '@/lib/cache';
 
 export const dynamic = 'force-dynamic';
 
 // GET /api/disabled-models - 获取禁用的模型列表
 export async function GET() {
   try {
-    cache.delete(CacheKeys.SYSTEM_CONFIG);
     const config = await getSystemConfig();
     return NextResponse.json({
       success: true,

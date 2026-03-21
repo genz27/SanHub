@@ -9,7 +9,6 @@ import {
   Loader2,
   AlertCircle,
   Sparkles,
-  ChevronDown,
   Dices,
   Info,
   X,
@@ -19,8 +18,17 @@ import { compressImageToWebP, fileToBase64 } from '@/lib/image-compression';
 import type { Generation, SafeImageModel, DailyLimitConfig } from '@/types';
 import { toast } from '@/components/ui/toaster';
 import type { Task } from '@/components/generator/result-gallery';
-import { getPollingInterval, shouldContinuePolling, isTransientError, getFriendlyErrorMessage } from '@/lib/polling-utils';
 import { CustomSelect } from '@/components/ui/select-custom';
+import {
+  fetchPendingGenerationTasks,
+  fetchRecentUserGenerations,
+  filterGenerationsByKind,
+  filterTasksByKind,
+  isTerminalGenerationStatus,
+  mergeGenerationsById,
+  pollGenerationTask,
+  replaceActiveTasks,
+} from '@/lib/generation-client';
 
 const ResultGallery = dynamic(
   () => import('@/components/generator/result-gallery').then((mod) => mod.ResultGallery),
@@ -67,6 +75,7 @@ export default function ImageGenerationPage() {
   const { update } = useSession();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
+  const refreshGenerationFeedRef = useRef<() => Promise<void>>(async () => {});
 
   // 模型列表（从 API 获取）
   const [availableModels, setAvailableModels] = useState<SafeImageModel[]>([]);
@@ -164,7 +173,7 @@ export default function ImageGenerationPage() {
     }
   }, [selectedModelId, availableModels]);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(e.target.files || []);
 
     for (const file of selectedFiles) {
@@ -195,198 +204,157 @@ export default function ImageGenerationPage() {
     setCompressedCache(new Map()); // 清理压缩缓存
   };
 
+  const loadRecentGenerations = useCallback(async () => {
+    try {
+      const recentGenerations = await fetchRecentUserGenerations(24);
+      const completedImageGenerations = filterGenerationsByKind(
+        recentGenerations.filter(
+          (generation) =>
+            generation.resultUrl &&
+            generation.status === 'completed' &&
+            isTerminalGenerationStatus(generation.status)
+        ),
+        'image'
+      );
+
+      setGenerations((prev) =>
+        mergeGenerationsById(prev, completedImageGenerations)
+      );
+    } catch (err) {
+      console.error('Failed to load recent image generations:', err);
+    }
+  }, []);
+
   // 轮询任务状态
   const pollTaskStatus = useCallback(
     async (taskId: string, taskPrompt: string): Promise<void> => {
       if (abortControllersRef.current.has(taskId)) return;
 
       const controller = new AbortController();
+      let shouldResyncAfterPoll = false;
       abortControllersRef.current.set(taskId, controller);
 
-      const startTime = Date.now();
-      const maxConsecutiveErrors = 5;
-      let consecutiveErrors = 0;
-
-      const poll = async (): Promise<void> => {
-        if (controller.signal.aborted) return;
-
-        const elapsed = Date.now() - startTime;
-        if (!shouldContinuePolling(elapsed, 'image')) {
-          setTasks((prev) =>
-            prev.map((t) =>
-              t.id === taskId
-                ? { ...t, status: 'failed' as const, errorMessage: '任务超时' }
-                : t
-            )
-          );
-          abortControllersRef.current.delete(taskId);
-          return;
-        }
-
-        try {
-          const res = await fetch(`/api/generate/status/${taskId}`, {
-            signal: controller.signal,
-          });
-
-          // 检查是否为 5xx 错误（可能返回 HTML）
-          if (res.status >= 500) {
-            throw new Error(`Server Error: ${res.status}`);
-          }
-
-          // 安全解析 JSON
-          let data;
-          const contentType = res.headers.get('content-type');
-          if (contentType && contentType.includes('application/json')) {
-            data = await res.json();
-          } else {
-            const text = await res.text();
-            console.warn('[Poll] Non-JSON response:', text.slice(0, 100));
-            throw new Error('Invalid response format');
-          }
-
-          if (!res.ok) {
-            throw new Error(data.error || `Request failed: ${res.status}`);
-          }
-
-          // Reset error count on success
-          consecutiveErrors = 0;
-          const status = data.data.status;
-          const rawUrl = typeof data.data.url === 'string' ? data.data.url : '';
-          const isCompletedStatus = status === 'completed' || status === 'succeeded';
-
-          if (status === 'failed' || status === 'cancelled') {
+      try {
+        await pollGenerationTask({
+          taskId,
+          taskPrompt,
+          taskType: 'image',
+          signal: controller.signal,
+          onProgress: (payload) => {
+            const nextStatus = payload.status === 'processing' ? 'processing' : 'pending';
             setTasks((prev) =>
-              prev.map((t) =>
-                t.id === taskId
+              prev.map((task) =>
+                task.id === taskId
                   ? {
-                      ...t,
-                      status: 'failed' as const,
-                      errorMessage: data.data.errorMessage || '生成失败',
-                  }
-                  : t
+                      ...task,
+                      status: nextStatus,
+                      progress:
+                        typeof payload.progress === 'number'
+                          ? payload.progress
+                          : task.progress,
+                    }
+                  : task
               )
             );
-            abortControllersRef.current.delete(taskId);
-          } else if (isCompletedStatus || rawUrl) {
+          },
+          onCompleted: async (generation) => {
             await update();
-
-            const generation: Generation = {
-              id: data.data.id,
-              userId: '',
-              type: data.data.type,
-              prompt: taskPrompt,
-              params: {},
-              resultUrl: rawUrl || `/api/media/${data.data.id || taskId}`,
-              cost: data.data.cost,
-              status: 'completed',
-              createdAt: data.data.createdAt,
-              updatedAt: data.data.updatedAt,
-            };
-
-            setTasks((prev) => prev.filter((t) => t.id !== taskId));
-            // 避免重复添加（如果已经存在于历史记录中）
-            setGenerations((prev) => {
-              if (prev.some(g => g.id === generation.id)) {
-                return prev;
-              }
-              return [generation, ...prev];
-            });
+            setTasks((prev) => prev.filter((task) => task.id !== taskId));
+            setGenerations((prev) => mergeGenerationsById(prev, [generation]));
+            void loadRecentGenerations();
 
             toast({
               title: '生成成功',
-              description: `消耗 ${data.data.cost} 积分`,
+              description: `消耗 ${generation.cost} 积分`,
             });
+          },
+          onFailed: async (errorMessage, payload) => {
+            if (!payload) {
+              shouldResyncAfterPoll = true;
+              return;
+            }
 
-            abortControllersRef.current.delete(taskId);
-          } else {
             setTasks((prev) =>
-              prev.map((t) =>
-                t.id === taskId
+              prev.map((task) =>
+                task.id === taskId
                   ? {
-                      ...t,
-                      status: status as 'pending' | 'processing',
-                      progress: typeof data.data.progress === 'number' ? data.data.progress : t.progress,
+                      ...task,
+                      status: 'failed' as const,
+                      errorMessage,
                     }
-                  : t
+                  : task
               )
             );
-            const interval = getPollingInterval(elapsed, 'image');
-            setTimeout(poll, interval);
-          }
-        } catch (err) {
-          if ((err as Error).name === 'AbortError') return;
-          consecutiveErrors++;
-          const errMsg = (err as Error).message || '网络错误';
-          // Retry on transient network errors or JSON parse failures
-          if (isTransientError(err) && consecutiveErrors < maxConsecutiveErrors) {
-            console.warn(`[Poll] Transient error (${consecutiveErrors}/${maxConsecutiveErrors}), retrying...`, errMsg);
-            const delay = Math.min(5000 * Math.pow(2, consecutiveErrors - 1), 60000);
-            setTimeout(poll, delay);
-            return;
-          }
-          setTasks((prev) =>
-            prev.map((t) =>
-              t.id === taskId
-                ? {
-                    ...t,
-                    status: 'failed' as const,
-                    errorMessage: getFriendlyErrorMessage(errMsg),
-                  }
-                : t
-            )
-          );
-          abortControllersRef.current.delete(taskId);
+          },
+          onTimeout: async () => {
+            shouldResyncAfterPoll = true;
+          },
+        });
+      } finally {
+        abortControllersRef.current.delete(taskId);
+        if (shouldResyncAfterPoll) {
+          await refreshGenerationFeedRef.current();
         }
-      };
-
-      await poll();
+      }
     },
-    [update]
+    [loadRecentGenerations, update]
   );
 
-  // Load pending tasks
+  const loadPendingTasks = useCallback(async () => {
+    try {
+      const imageTasks = filterTasksByKind(
+        await fetchPendingGenerationTasks(200),
+        'image'
+      ).map(
+        (task) =>
+          ({
+            ...task,
+            status: task.status === 'processing' ? 'processing' : 'pending',
+            progress:
+              typeof task.progress === 'number' ? task.progress : 0,
+          }) satisfies Task
+      );
+
+      setTasks((prev) => replaceActiveTasks(prev, imageTasks));
+
+      imageTasks.forEach((task) => {
+        void pollTaskStatus(task.id, task.prompt);
+      });
+    } catch (err) {
+      console.error('Failed to load pending image tasks:', err);
+    }
+  }, [pollTaskStatus]);
+
+  const refreshGenerationFeed = useCallback(async () => {
+    await Promise.allSettled([loadRecentGenerations(), loadPendingTasks()]);
+  }, [loadPendingTasks, loadRecentGenerations]);
+
+  useEffect(() => {
+    refreshGenerationFeedRef.current = refreshGenerationFeed;
+  }, [refreshGenerationFeed]);
+
   useEffect(() => {
     const abortControllers = abortControllersRef.current;
-    const loadPendingTasks = async () => {
-      try {
-        const res = await fetch('/api/user/tasks?limit=200');
-        if (res.ok) {
-          const data = await res.json();
-          // Filter pending image tasks (sora, gemini, zimage)
-          const imageTasks: Task[] = (data.data || [])
-            .filter((t: any) =>
-              t.type?.includes('sora-image') ||
-              t.type?.includes('gemini') ||
-              t.type?.includes('zimage') ||
-              t.type?.includes('gitee')
-            )
-            .map((t: any) => ({
-              id: t.id,
-              prompt: t.prompt,
-              type: t.type,
-              status: t.status as 'pending' | 'processing',
-              createdAt: t.createdAt,
-            }));
-
-          if (imageTasks.length > 0) {
-            setTasks(imageTasks);
-            imageTasks.forEach((task) => {
-              pollTaskStatus(task.id, task.prompt);
-            });
-          }
-        }
-      } catch (err) {
-        console.error('Failed to load pending tasks:', err);
+    const handleWindowFocus = () => {
+      void refreshGenerationFeed();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void refreshGenerationFeed();
       }
     };
 
-    loadPendingTasks();
+    void refreshGenerationFeed();
+    window.addEventListener('focus', handleWindowFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
+      window.removeEventListener('focus', handleWindowFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       abortControllers.forEach((controller) => controller.abort());
       abortControllers.clear();
     };
-  }, [pollTaskStatus]);
+  }, [refreshGenerationFeed]);
 
   const handleRemoveTask = useCallback(async (taskId: string) => {
     const controller = abortControllersRef.current.get(taskId);
@@ -500,7 +468,7 @@ export default function ImageGenerationPage() {
       createdAt: Date.now(),
     };
     setTasks((prev) => [newTask, ...prev]);
-    pollTaskStatus(data.data.id, taskPrompt);
+    void pollTaskStatus(data.data.id, taskPrompt);
 
     return data.data.id;
   };
