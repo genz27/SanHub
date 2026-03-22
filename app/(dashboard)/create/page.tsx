@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Image as ImageIcon, Video } from 'lucide-react';
 import type { Generation } from '@/types';
@@ -48,11 +48,9 @@ export default function CreatePage() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const searchParamsString = searchParams.toString();
 
-  const initialMode = useMemo(
-    () => normalizeMode(searchParams.get('mode')),
-    [searchParams]
-  );
+  const initialMode = normalizeMode(searchParams.get('mode'));
   const initialReferenceId = searchParams.get('referenceId');
 
   const [mode, setMode] = useState<CreateMode>(initialMode);
@@ -67,42 +65,45 @@ export default function CreatePage() {
     mode === 'image' ? imageReference?.generationId ?? null : videoReference?.generationId ?? null;
 
   useEffect(() => {
-    const nextMode = normalizeMode(searchParams.get('mode'));
-    const nextReferenceId = searchParams.get('referenceId');
+    const params = new URLSearchParams(searchParamsString);
+    const nextMode = normalizeMode(params.get('mode'));
+    const nextReferenceId = params.get('referenceId');
 
-    if (nextMode !== mode) {
-      setMode(nextMode);
-    }
-
-    if (!nextReferenceId) {
-      return;
-    }
+    setMode((current) => (current === nextMode ? current : nextMode));
 
     if (nextMode === 'image') {
-      setImageReference((current) =>
-        current?.generationId === nextReferenceId
+      setImageReference((current) => {
+        if (!nextReferenceId) {
+          return current ? null : current;
+        }
+
+        return current?.generationId === nextReferenceId
           ? current
-          : buildReusableImageReferenceFromId(nextReferenceId)
-      );
+          : buildReusableImageReferenceFromId(nextReferenceId);
+      });
       return;
     }
 
-    setVideoReference((current) =>
-      current?.generationId === nextReferenceId
+    setVideoReference((current) => {
+      if (!nextReferenceId) {
+        return current ? null : current;
+      }
+
+      return current?.generationId === nextReferenceId
         ? current
-        : buildReusableImageReferenceFromId(nextReferenceId)
-    );
-  }, [mode, searchParams]);
+        : buildReusableImageReferenceFromId(nextReferenceId);
+    });
+  }, [searchParamsString]);
 
   useEffect(() => {
-    const currentMode = normalizeMode(searchParams.get('mode'));
-    const currentReferenceId = searchParams.get('referenceId');
+    const params = new URLSearchParams(searchParamsString);
+    const currentMode = normalizeMode(params.get('mode'));
+    const currentReferenceId = params.get('referenceId');
 
     if (currentMode === mode && (currentReferenceId ?? null) === activeReferenceId) {
       return;
     }
 
-    const params = new URLSearchParams(searchParams.toString());
     params.set('mode', mode);
 
     if (activeReferenceId) {
@@ -113,7 +114,7 @@ export default function CreatePage() {
 
     const query = params.toString();
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
-  }, [activeReferenceId, mode, pathname, router, searchParams]);
+  }, [activeReferenceId, mode, pathname, router, searchParamsString]);
 
   const handleTabChange = useCallback((nextMode: CreateMode) => {
     setMode(nextMode);

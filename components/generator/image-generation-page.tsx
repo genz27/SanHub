@@ -13,6 +13,7 @@ import {
   Dices,
   Info,
   X,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { compressImageToWebP, fileToBase64 } from '@/lib/image-compression';
@@ -694,6 +695,14 @@ export function ImageGenerationPage({
           (availableModels.length === 0 || isImageLimitReached) && 'opacity-50 pointer-events-none'
         )}
       >
+        {embedded && (
+          <div className="flex border-b border-border/70">
+            <div className="flex items-center gap-2 px-4 py-3 text-sm font-medium transition-all border-b-2 -mb-[1px] border-sky-500 text-foreground">
+              <ImageIcon className="w-4 h-4" />
+              <span>图片创作</span>
+            </div>
+          </div>
+        )}
         <div className="p-4">
           <div className="flex gap-4 mb-4">
             {currentModel?.features.imageToImage && (
