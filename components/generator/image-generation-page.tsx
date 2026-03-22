@@ -1,7 +1,7 @@
 'use client';
 /* eslint-disable @next/next/no-img-element */
 
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
@@ -52,6 +52,7 @@ interface DailyUsage {
 
 export interface ImageGenerationPageProps {
   embedded?: boolean;
+  createModeSwitcher?: ReactNode;
   externalReference?: ReusableImageReference | null;
   onClearExternalReference?: () => void;
   onReuseGeneration?: (generation: Generation, target: 'image' | 'video') => void;
@@ -84,6 +85,7 @@ function getImageResolution(
 
 export function ImageGenerationPage({
   embedded = false,
+  createModeSwitcher,
   externalReference = null,
   onClearExternalReference,
   onReuseGeneration,
@@ -714,11 +716,13 @@ export function ImageGenerationPage({
         )}
       >
         {embedded && (
-          <div className="flex border-b border-border/70">
-            <div className="flex items-center gap-2 px-4 py-3 text-sm font-medium transition-all border-b-2 -mb-[1px] border-sky-500 text-foreground">
-              <ImageIcon className="w-4 h-4" />
-              <span>图片创作</span>
-            </div>
+          <div className="border-b border-border/70 px-3 py-3">
+            {createModeSwitcher ?? (
+              <div className="flex items-center gap-2 px-1 text-sm font-medium text-foreground">
+                <ImageIcon className="w-4 h-4" />
+                <span>图片创作</span>
+              </div>
+            )}
           </div>
         )}
         <div className="p-4">

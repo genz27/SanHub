@@ -44,6 +44,39 @@ function buildReferenceFromQuery(referenceId: string | null): ReusableImageRefer
   return buildReusableImageReferenceFromId(referenceId);
 }
 
+function CreateModeSwitcher({
+  mode,
+  onChange,
+}: {
+  mode: CreateMode;
+  onChange: (mode: CreateMode) => void;
+}) {
+  return (
+    <div className="inline-flex w-full flex-wrap items-center gap-1 rounded-xl border border-border/70 bg-card/50 p-1 sm:w-auto sm:flex-nowrap">
+      {CREATE_TABS.map((tab) => {
+        const isActive = mode === tab.id;
+
+        return (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => onChange(tab.id)}
+            className={cn(
+              'flex h-10 min-w-0 flex-1 items-center justify-center gap-2 rounded-lg px-3 text-xs font-medium transition-colors sm:min-w-[124px]',
+              isActive
+                ? 'bg-background/80 text-foreground shadow-sm'
+                : 'text-foreground/55 hover:bg-background/50 hover:text-foreground/80'
+            )}
+          >
+            <tab.icon className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{tab.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function CreatePage() {
   const router = useRouter();
   const pathname = usePathname();
@@ -184,48 +217,16 @@ export default function CreatePage() {
   }, []);
 
   return (
-    <div className="max-w-7xl mx-auto flex h-[calc(100vh-100px)] flex-col gap-4">
-      <div className="surface p-2 flex flex-wrap gap-2">
-        {CREATE_TABS.map((tab) => {
-          const isActive = mode === tab.id;
-
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => handleTabChange(tab.id)}
-              className={cn(
-                'flex min-w-[220px] flex-1 items-center gap-3 rounded-xl border px-4 py-3 text-left transition-colors',
-                isActive
-                  ? 'border-border/80 bg-card/80 text-foreground'
-                  : 'border-transparent bg-transparent text-foreground/60 hover:bg-card/60 hover:text-foreground/80'
-              )}
-            >
-              <div
-                className={cn(
-                  'flex h-10 w-10 items-center justify-center rounded-lg border',
-                  isActive
-                    ? 'border-border/70 bg-foreground/5'
-                    : 'border-border/40 bg-card/40'
-                )}
-              >
-                <tab.icon className="h-4 w-4" />
-              </div>
-              <div className="min-w-0">
-                <div className="text-sm font-medium">{tab.label}</div>
-                <div className="text-xs text-foreground/45">{tab.description}</div>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
+    <div className="max-w-7xl mx-auto flex h-[calc(100vh-100px)] flex-col">
       <div className="min-h-0 flex-1 overflow-hidden">
         {mountedModes.image && (
           <div className={cn('h-full min-h-0', mode === 'image' ? 'block' : 'hidden')}>
             <ImageGenerationPage
               embedded
               isActive={mode === 'image'}
+              createModeSwitcher={
+                <CreateModeSwitcher mode={mode} onChange={handleTabChange} />
+              }
               externalReference={imageReference}
               onClearExternalReference={() => setImageReference(null)}
               onReuseGeneration={handleReuseGeneration}
@@ -238,6 +239,9 @@ export default function CreatePage() {
             <VideoGenerationView
               embedded
               isActive={mode === 'video'}
+              createModeSwitcher={
+                <CreateModeSwitcher mode={mode} onChange={handleTabChange} />
+              }
               externalReference={videoReference}
               onExternalReferenceChange={setVideoReference}
             />

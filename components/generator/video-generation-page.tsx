@@ -1,7 +1,7 @@
 'use client';
 /* eslint-disable @next/next/no-img-element */
 
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import dynamic from 'next/dynamic';
 import { useSession } from 'next-auth/react';
 import {
@@ -63,6 +63,7 @@ const CREATION_MODES = [
 
 export interface VideoGenerationPageProps {
   embedded?: boolean;
+  createModeSwitcher?: ReactNode;
   externalReference?: ReusableImageReference | null;
   onExternalReferenceChange?: (reference: ReusableImageReference | null) => void;
   isActive?: boolean;
@@ -70,6 +71,7 @@ export interface VideoGenerationPageProps {
 
 export function VideoGenerationView({
   embedded = false,
+  createModeSwitcher,
   externalReference: controlledExternalReference,
   onExternalReferenceChange,
   isActive = true,
@@ -950,22 +952,29 @@ export function VideoGenerationView({
         (availableModels.length === 0 || isVideoLimitReached) && "opacity-50 pointer-events-none"
       )}>
         {/* Tab 切换创作模式 */}
-        <div className="flex border-b border-border/70">
-          {CREATION_MODES.map((mode) => (
-            <button
-              key={mode.id}
-              onClick={() => setCreationMode(mode.id as CreationMode)}
-              className={cn(
-                'flex items-center gap-2 px-4 py-3 text-sm font-medium transition-all border-b-2 -mb-[1px]',
-                creationMode === mode.id
-                  ? 'border-sky-500 text-foreground'
-                  : 'border-transparent text-foreground/50 hover:text-foreground/70'
-              )}
-            >
-              <mode.icon className="w-4 h-4" />
-              <span>{mode.label}</span>
-            </button>
-          ))}
+        <div className="flex flex-col gap-3 border-b border-border/70 px-3 py-3 xl:flex-row xl:items-center xl:justify-between">
+          {createModeSwitcher && (
+            <div className="w-full xl:w-auto xl:shrink-0">
+              {createModeSwitcher}
+            </div>
+          )}
+          <div className="flex min-w-0 overflow-x-auto">
+            {CREATION_MODES.map((mode) => (
+              <button
+                key={mode.id}
+                onClick={() => setCreationMode(mode.id as CreationMode)}
+                className={cn(
+                  'flex shrink-0 items-center gap-2 px-4 py-1.5 text-sm font-medium transition-all border-b-2 -mb-[1px]',
+                  creationMode === mode.id
+                    ? 'border-sky-500 text-foreground'
+                    : 'border-transparent text-foreground/50 hover:text-foreground/70'
+                )}
+              >
+                <mode.icon className="w-4 h-4" />
+                <span>{mode.label}</span>
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="p-4">
