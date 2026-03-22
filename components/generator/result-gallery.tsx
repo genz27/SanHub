@@ -1,8 +1,20 @@
 'use client';
 /* eslint-disable @next/next/no-img-element */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Download, Maximize2, X, Play, Image as ImageIcon, Sparkles, Loader2, AlertCircle, Copy, ExternalLink } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import {
+  Download,
+  Maximize2,
+  X,
+  Play,
+  Image as ImageIcon,
+  Sparkles,
+  Loader2,
+  AlertCircle,
+  Copy,
+  ExternalLink,
+  Trash2,
+} from 'lucide-react';
 import type { Generation } from '@/types';
 import { formatDate, truncate } from '@/lib/utils';
 import { downloadAsset } from '@/lib/download';
@@ -26,9 +38,19 @@ interface ResultGalleryProps {
   generations: Generation[];
   tasks?: Task[];
   onRemoveTask?: (taskId: string) => void;
+  onRemoveGeneration?: (generation: Generation) => void;
+  onReuseGeneration?: (generation: Generation, target: 'image' | 'video') => void;
+  busyGenerationId?: string | null;
 }
 
-export function ResultGallery({ generations, tasks = [], onRemoveTask }: ResultGalleryProps) {
+export function ResultGallery({
+  generations,
+  tasks = [],
+  onRemoveTask,
+  onRemoveGeneration,
+  onReuseGeneration,
+  busyGenerationId = null,
+}: ResultGalleryProps) {
   const [selected, setSelected] = useState<Generation | null>(null);
   const [selectedFailedTask, setSelectedFailedTask] = useState<Task | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -57,7 +79,14 @@ export function ResultGallery({ generations, tasks = [], onRemoveTask }: ResultG
   };
 
   const isVideo = (gen: Generation) => gen.type.includes('video');
+  const canReuse = (gen: Generation) => !isVideo(gen) && typeof onReuseGeneration === 'function';
   const isTaskVideo = (task: Task) => task.type?.includes('video') || task.model?.includes('video');
+  const handleRemoveGeneration = (generation: Generation) => {
+    if (!onRemoveGeneration) return;
+    const confirmed = window.confirm('确定删除这个作品吗？删除后将无法恢复。');
+    if (!confirmed) return;
+    void onRemoveGeneration(generation);
+  };
 
   // 过滤出正在进行的任务（不包括已完成的，已完成的会在 generations 中显示）
   // 同时排除已经存在于 generations 中的任务（通过 id 匹配）
@@ -77,6 +106,14 @@ export function ResultGallery({ generations, tasks = [], onRemoveTask }: ResultG
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [selectedFailedTask]);
+
+  useEffect(() => {
+    if (!selected) return;
+    const stillExists = generations.some((generation) => generation.id === selected.id);
+    if (!stillExists) {
+      setSelected(null);
+    }
+  }, [generations, selected]);
 
   return (
     <>
@@ -257,19 +294,57 @@ export function ResultGallery({ generations, tasks = [], onRemoveTask }: ResultG
                     className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        downloadFile(gen.resultUrl, gen.id, gen.type);
-                      }}
-                      className="w-8 h-8 bg-card/70 border border-border/70 backdrop-blur-sm rounded-lg flex items-center justify-center text-foreground hover:bg-card/90 transition-colors"
-                      title="Download"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          downloadFile(gen.resultUrl, gen.id, gen.type);
+                        }}
+                        className="w-8 h-8 bg-card/70 border border-border/70 backdrop-blur-sm rounded-lg flex items-center justify-center text-foreground hover:bg-card/90 transition-colors"
+                        title="Download"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                      </button>
+                      {onRemoveGeneration && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveGeneration(gen);
+                          }}
+                          disabled={busyGenerationId === gen.id}
+                          className="w-8 h-8 bg-card/70 border border-border/70 backdrop-blur-sm rounded-lg flex items-center justify-center text-foreground hover:bg-red-500/40 transition-colors disabled:cursor-not-allowed disabled:opacity-70"
+                          title="删除作品"
+                        >
+                          {busyGenerationId === gen.id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-background/80 via-background/30 to-transparent">
                     <p className="text-xs text-foreground/80 truncate">{gen.prompt || '无提示词'}</p>
+                    {canReuse(gen) && (
+                      <div
+                        className="mt-2 flex flex-wrap gap-1.5 opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          onClick={() => void onReuseGeneration?.(gen, 'image')}
+                          className="px-2.5 py-1 rounded-md bg-card/80 border border-border/70 text-[10px] text-foreground/80 hover:bg-card/90 transition-colors"
+                        >
+                          用于图片创作
+                        </button>
+                        <button
+                          onClick={() => void onReuseGeneration?.(gen, 'video')}
+                          className="px-2.5 py-1 rounded-md bg-card/80 border border-border/70 text-[10px] text-foreground/80 hover:bg-card/90 transition-colors"
+                        >
+                          用于视频创作
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -379,7 +454,25 @@ export function ResultGallery({ generations, tasks = [], onRemoveTask }: ResultG
                     )}
                   </div>
                 </div>
-                <div className="flex gap-2 shrink-0 w-full md:w-auto">
+                <div className="flex flex-wrap gap-2 shrink-0 w-full md:w-auto">
+                  {canReuse(selected) && (
+                    <>
+                      <button
+                        onClick={() => void onReuseGeneration?.(selected, 'image')}
+                        className="flex-1 md:flex-initial flex items-center justify-center gap-2 px-5 py-2.5 bg-card/60 text-foreground border border-border/70 rounded-xl hover:bg-card/80 transition-colors text-sm font-medium"
+                      >
+                        <ImageIcon className="w-4 h-4" />
+                        图片创作
+                      </button>
+                      <button
+                        onClick={() => void onReuseGeneration?.(selected, 'video')}
+                        className="flex-1 md:flex-initial flex items-center justify-center gap-2 px-5 py-2.5 bg-card/60 text-foreground border border-border/70 rounded-xl hover:bg-card/80 transition-colors text-sm font-medium"
+                      >
+                        <Play className="w-4 h-4" />
+                        视频创作
+                      </button>
+                    </>
+                  )}
                   <button
                     onClick={() => downloadFile(selected.resultUrl, selected.id, selected.type)}
                     className="flex-1 md:flex-initial flex items-center justify-center gap-2 px-5 py-2.5 bg-foreground text-background rounded-xl hover:opacity-90 transition-colors text-sm font-medium"
@@ -387,6 +480,20 @@ export function ResultGallery({ generations, tasks = [], onRemoveTask }: ResultG
                     <Download className="w-4 h-4" />
                     下载
                   </button>
+                  {onRemoveGeneration && (
+                    <button
+                      onClick={() => handleRemoveGeneration(selected)}
+                      disabled={busyGenerationId === selected.id}
+                      className="flex-1 md:flex-initial flex items-center justify-center gap-2 px-5 py-2.5 bg-red-500/10 text-red-300 border border-red-500/30 rounded-xl hover:bg-red-500/20 transition-colors text-sm font-medium disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      {busyGenerationId === selected.id ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
+                      删除
+                    </button>
+                  )}
                   <button
                     onClick={() => setSelected(null)}
                     className="flex items-center justify-center gap-2 px-5 py-2.5 bg-card/60 text-foreground border border-border/70 rounded-xl hover:bg-card/80 transition-colors text-sm font-medium"

@@ -22,6 +22,13 @@ export type PendingGenerationTask = {
   updatedAt?: number;
 };
 
+export type ReusableImageReference = {
+  generationId: string;
+  sourceUrl: string;
+  previewUrl: string;
+  prompt: string;
+};
+
 export type GenerationStatusPayload = {
   id: string;
   status: Generation['status'] | 'succeeded';
@@ -50,6 +57,35 @@ export function isVideoGenerationType(type?: string): boolean {
 
 export function isImageGenerationType(type?: string): boolean {
   return Boolean(type && !isVideoGenerationType(type) && type.endsWith('-image'));
+}
+
+export function buildReusableImageReference(
+  generation: Pick<Generation, 'id' | 'type' | 'prompt'>
+): ReusableImageReference | null {
+  if (!isImageGenerationType(generation.type)) {
+    return null;
+  }
+
+  const mediaUrl = `/api/media/${generation.id}`;
+  return {
+    generationId: generation.id,
+    sourceUrl: mediaUrl,
+    previewUrl: mediaUrl,
+    prompt: generation.prompt || '',
+  };
+}
+
+export function buildReusableImageReferenceFromId(
+  generationId: string,
+  prompt = ''
+): ReusableImageReference {
+  const mediaUrl = `/api/media/${generationId}`;
+  return {
+    generationId,
+    sourceUrl: mediaUrl,
+    previewUrl: mediaUrl,
+    prompt,
+  };
 }
 
 export function filterGenerationsByKind(
@@ -287,4 +323,20 @@ export async function fetchRecentUserGenerations(limit = 24): Promise<Generation
   }
 
   return (payload.data || []) as Generation[];
+}
+
+export async function deleteGenerationRecord(generationId: string): Promise<void> {
+  const response = await fetch('/api/user/history/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'single',
+      id: generationId,
+    }),
+  });
+  const payload = await parseJsonResponse(response);
+
+  if (!response.ok) {
+    throw new Error(payload.error || '删除作品失败');
+  }
 }

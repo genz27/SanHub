@@ -4,13 +4,12 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { 
-  Video, 
   History, 
   Settings,
   Shield,
-  Image,
   User,
   LayoutGrid,
+  Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { SafeUser } from '@/types';
@@ -32,8 +31,7 @@ function formatRelativeTime(timestamp: number | null): string {
 }
 
 const navItems = [
-  { href: '/image', icon: Image, label: '图像生成', description: 'Gemini / Z-Image', badge: 'AI', isAI: true },
-  { href: '/video', icon: Video, label: '视频生成', description: 'Sora / Remix / 分镜', badge: 'AI', isAI: true },
+  { href: '/create', icon: Sparkles, label: '创作', description: '图片 / 视频统一入口', badge: 'AI', isAI: true },
   { href: '/video/character-card', icon: User, label: '角色卡生成', description: '从视频提取角色', badge: 'NEW', isAI: true },
   { href: '/square', icon: LayoutGrid, label: '广场', description: '探索社区创作', badge: 'HOT', isAI: false },
   { href: '/history', icon: History, label: '历史', description: '作品记录', badge: null, isAI: false },
@@ -81,7 +79,10 @@ export function Sidebar({ user }: SidebarProps) {
           创作工具
         </p>
         {visibleNavItems.map((item) => {
-          const isActive = pathname === item.href;
+          const isCreateEntry = item.href === '/create';
+          const isActive = isCreateEntry
+            ? pathname === '/create' || pathname === '/image' || pathname === '/video'
+            : pathname === item.href;
           return (
             <Link
               key={item.href}

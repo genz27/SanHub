@@ -33,7 +33,7 @@ const ANNOUNCEMENT_TEMPLATES: AnnouncementTemplate[] = [
     title: '新功能已上线',
     description: '适合发布新模型、新页面和交互升级，强调“新增了什么”。',
     content:
-      '<p><b>本次更新</b>：新增 <span style="color:#38bdf8">多渠道视频生成</span> 与更稳定的任务轮询。</p>\n<p>现在可以在视频页直接切换模型，并在历史页统一查看结果。</p>\n<p><a href="/video">立即体验</a></p>',
+      '<p><b>本次更新</b>：新增 <span style="color:#38bdf8">统一创作页</span> 与更稳定的任务轮询。</p>\n<p>现在可以在创作页统一切换图片和视频模式，并在历史页统一查看结果。</p>\n<p><a href="/create">立即体验</a></p>',
   },
   {
     id: 'campaign',

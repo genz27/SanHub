@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut } from 'next-auth/react';
-import { LogOut, Settings, Video, Image, History, Shield, LayoutGrid, Sparkles, User } from 'lucide-react';
+import { LogOut, History, Shield, LayoutGrid, Sparkles, User } from 'lucide-react';
 import type { SafeUser } from '@/types';
 import { cn } from '@/lib/utils';
 import { useSiteConfig } from '@/components/providers/site-config-provider';
@@ -15,8 +15,7 @@ interface HeaderProps {
 // 移动端底部导航项
 const mobileNavItems = [
   { href: '/square', icon: LayoutGrid, label: '广场' },
-  { href: '/image', icon: Image, label: '图像' },
-  { href: '/video', icon: Video, label: '视频' },
+  { href: '/create', icon: Sparkles, label: '创作' },
   { href: '/history', icon: History, label: '历史' },
   { href: '/settings', icon: User, label: '我的' },
 ];
@@ -76,8 +75,10 @@ export function Header({ user }: HeaderProps) {
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-2xl border-t border-border/50 pb-[env(safe-area-inset-bottom)]">
         <div className="flex justify-around items-center h-14">
           {visibleMobileNavItems.map((item) => {
-            const isActive = pathname === item.href || 
-              (item.href !== '/' && pathname.startsWith(item.href));
+            const isCreateEntry = item.href === '/create';
+            const isActive = isCreateEntry
+              ? pathname === '/create' || pathname === '/image' || pathname === '/video'
+              : pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
             return (
               <Link
                 key={item.href}

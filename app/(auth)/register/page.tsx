@@ -28,7 +28,7 @@ export default function RegisterPage() {
   // 已登录用户自动跳转
   useEffect(() => {
     if (status === 'authenticated' && session) {
-      router.replace('/image');
+      router.replace('/create');
     }
   }, [status, session, router]);
 

@@ -65,7 +65,7 @@ export function AdminSidebar() {
     <>
       {/* Logo */}
       <div className="p-5 border-b border-border/70">
-        <Link href="/image" className="flex items-center gap-2 text-foreground/60 hover:text-foreground transition-colors text-sm">
+        <Link href="/create" className="flex items-center gap-2 text-foreground/60 hover:text-foreground transition-colors text-sm">
           <ArrowLeft className="w-4 h-4" />
           <span>返回首页</span>
         </Link>

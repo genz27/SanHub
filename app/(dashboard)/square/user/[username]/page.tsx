@@ -168,7 +168,7 @@ export default function UserProfilePage() {
 
   useEffect(() => {
     if (!siteConfig.squareEnabled) {
-      router.replace('/image');
+      router.replace('/create');
     }
   }, [router, siteConfig.squareEnabled]);
 

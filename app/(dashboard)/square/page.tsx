@@ -25,7 +25,7 @@ export default function SquarePage() {
 
   useEffect(() => {
     if (!siteConfig.squareEnabled) {
-      router.replace('/image');
+      router.replace('/create');
     }
   }, [router, siteConfig.squareEnabled]);
 

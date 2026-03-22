@@ -7,7 +7,7 @@ export default function GalleryPage() {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace("/image");
+    router.replace("/create");
   }, [router]);
 
   return null;

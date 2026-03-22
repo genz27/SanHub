@@ -28,7 +28,7 @@ export default function LoginPage() {
     if ((status === 'authenticated' && session) || loginSuccess) {
       if (redirectingRef.current) return;
       redirectingRef.current = true;
-      router.push('/image');
+      router.push('/create');
       router.refresh();
     }
   }, [status, session, loginSuccess, router]);
