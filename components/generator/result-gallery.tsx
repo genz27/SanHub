@@ -155,7 +155,7 @@ export function ResultGallery({
               <p className="text-foreground/30 text-sm mt-1">开始创作你的第一个作品</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 md:gap-5">
               {/* 正在进行的任务 */}
               {activeTasks.map((task) => (
                 <div
