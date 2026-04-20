@@ -1,5 +1,6 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Image as ImageIcon, Video } from 'lucide-react';
@@ -10,10 +11,30 @@ import {
   type ReusableImageReference,
 } from '@/lib/generation-client';
 import { cn } from '@/lib/utils';
-import { ImageGenerationPage } from '@/components/generator/image-generation-page';
-import { VideoGenerationView } from '@/components/generator/video-generation-page';
 
 type CreateMode = 'image' | 'video';
+
+const CreatePanelFallback = () => (
+  <div className="surface flex h-full min-h-[24rem] items-center justify-center text-sm text-foreground/50">
+    正在加载创作面板...
+  </div>
+);
+
+const ImageGenerationPage = dynamic(
+  () => import('@/components/generator/image-generation-page').then((mod) => mod.ImageGenerationPage),
+  {
+    ssr: false,
+    loading: CreatePanelFallback,
+  }
+);
+
+const VideoGenerationView = dynamic(
+  () => import('@/components/generator/video-generation-page').then((mod) => mod.VideoGenerationView),
+  {
+    ssr: false,
+    loading: CreatePanelFallback,
+  }
+);
 
 const CREATE_TABS: Array<{
   id: CreateMode;
@@ -30,7 +51,7 @@ const CREATE_TABS: Array<{
   {
     id: 'video',
     label: '视频创作',
-    description: '普通生成、Remix、分镜',
+    description: '视频生成',
     icon: Video,
   },
 ];
@@ -86,10 +107,6 @@ export default function CreatePage() {
   const initialMode = normalizeMode(searchParams.get('mode'));
   const initialReferenceId = searchParams.get('referenceId');
   const mode = initialMode;
-  const [mountedModes, setMountedModes] = useState<Record<CreateMode, boolean>>(() => ({
-    image: initialMode === 'image',
-    video: initialMode === 'video',
-  }));
   const [imageReference, setImageReference] = useState<ReusableImageReference | null>(() =>
     initialMode === 'image' ? buildReferenceFromQuery(initialReferenceId) : null
   );
@@ -99,12 +116,6 @@ export default function CreatePage() {
 
   const activeReferenceId =
     mode === 'image' ? imageReference?.generationId ?? null : videoReference?.generationId ?? null;
-
-  useEffect(() => {
-    setMountedModes((current) =>
-      current[mode] ? current : { ...current, [mode]: true }
-    );
-  }, [mode]);
 
   useEffect(() => {
     const params = new URLSearchParams(searchParamsString);
@@ -168,10 +179,6 @@ export default function CreatePage() {
         return;
       }
 
-      setMountedModes((current) =>
-        current[nextMode] ? current : { ...current, [nextMode]: true }
-      );
-
       const nextReferenceId =
         nextMode === 'image'
           ? imageReference?.generationId ?? null
@@ -191,17 +198,11 @@ export default function CreatePage() {
 
       if (target === 'image') {
         setImageReference(reusableReference);
-        setMountedModes((current) =>
-          current.image ? current : { ...current, image: true }
-        );
         updateRoute('image', reusableReference.generationId);
         return;
       }
 
       setVideoReference(reusableReference);
-      setMountedModes((current) =>
-        current.video ? current : { ...current, video: true }
-      );
       updateRoute('video', reusableReference.generationId);
     },
     [updateRoute]
@@ -219,11 +220,11 @@ export default function CreatePage() {
   return (
     <div className="max-w-7xl mx-auto flex h-[calc(100vh-100px)] flex-col">
       <div className="min-h-0 flex-1 overflow-hidden">
-        {mountedModes.image && (
-          <div className={cn('h-full min-h-0', mode === 'image' ? 'block' : 'hidden')}>
+        <div className={cn('h-full min-h-0')}>
+          {mode === 'image' ? (
             <ImageGenerationPage
               embedded
-              isActive={mode === 'image'}
+              isActive
               createModeSwitcher={
                 <CreateModeSwitcher mode={mode} onChange={handleTabChange} />
               }
@@ -232,21 +233,18 @@ export default function CreatePage() {
               onReuseGeneration={handleReuseGeneration}
               onGenerationDeleted={clearReferenceForGeneration}
             />
-          </div>
-        )}
-        {mountedModes.video && (
-          <div className={cn('h-full min-h-0', mode === 'video' ? 'block' : 'hidden')}>
+          ) : (
             <VideoGenerationView
               embedded
-              isActive={mode === 'video'}
+              isActive
               createModeSwitcher={
                 <CreateModeSwitcher mode={mode} onChange={handleTabChange} />
               }
               externalReference={videoReference}
               onExternalReferenceChange={setVideoReference}
             />
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );

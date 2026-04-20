@@ -5,12 +5,9 @@ import { useState, useRef, useEffect, useCallback, useMemo, type ReactNode } fro
 import dynamic from 'next/dynamic';
 import { useSession } from 'next-auth/react';
 import {
-  Video,
   Sparkles,
   Loader2,
   AlertCircle,
-  Wand2,
-  Film,
   Dices,
   User,
   X,
@@ -47,20 +44,12 @@ const ResultGallery = dynamic(
   }
 );
 
-type CreationMode = 'normal' | 'remix' | 'storyboard';
-
 // 每日使用量类型
 interface DailyUsage {
   imageCount: number;
   videoCount: number;
   characterCardCount: number;
 }
-
-const CREATION_MODES = [
-  { id: 'normal', label: '普通生成', icon: Video, description: '文本/图片生成视频' },
-  { id: 'remix', label: '视频Remix', icon: Wand2, description: '基于已有视频继续创作' },
-  { id: 'storyboard', label: '视频分镜', icon: Film, description: '多镜头分段生成' },
-] as const;
 
 export interface VideoGenerationPageProps {
   embedded?: boolean;
@@ -95,25 +84,16 @@ export function VideoGenerationView({
   const [dailyUsage, setDailyUsage] = useState<DailyUsage>({ imageCount: 0, videoCount: 0, characterCardCount: 0 });
   const [dailyLimits, setDailyLimits] = useState<DailyLimitConfig>({ imageLimit: 0, videoLimit: 0, characterCardLimit: 0 });
 
-  // 创作模式
-  const [creationMode, setCreationMode] = useState<CreationMode>('normal');
-
   // 模型选择
   const [selectedModelId, setSelectedModelId] = useState<string>('');
 
   // 参数状态
   const [aspectRatio, setAspectRatio] = useState<string>('landscape');
-  const [duration, setDuration] = useState<string>('10s');
+  const [duration, setDuration] = useState<string>('8s');
   const [prompt, setPrompt] = useState('');
   const [files, setFiles] = useState<Array<{ file: File; preview: string }>>([]);
   const [compressing, setCompressing] = useState(false);
   const [compressedCache, setCompressedCache] = useState<Map<File, string>>(new Map());
-
-  // Remix 模式
-  const [remixUrl, setRemixUrl] = useState('');
-
-  // 分镜模式
-  const [storyboardPrompt, setStoryboardPrompt] = useState('');
 
   // 任务状态
   const [generations, setGenerations] = useState<Generation[]>([]);
@@ -127,7 +107,6 @@ export function VideoGenerationView({
   // 角色卡选择
   const [characterCards, setCharacterCards] = useState<CharacterCard[]>([]);
   const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
-  const remixPromptRef = useRef<HTMLTextAreaElement>(null);
 
   // 新增：拖拽上传状态
   const [isDragging, setIsDragging] = useState(false);
@@ -278,7 +257,6 @@ export function VideoGenerationView({
 
   useEffect(() => {
     if (!activeExternalReference) return;
-    setCreationMode('normal');
     if (files.length > 0) {
       clearFiles();
     }
@@ -290,16 +268,7 @@ export function VideoGenerationView({
   // };
 
   // 实时计算是否包含中文（暂时禁用）
-  // const hasChinese = useMemo(() => {
-  //   switch (creationMode) {
-  //     case 'storyboard':
-  //       return containsChinese(storyboardPrompt);
-  //     case 'remix':
-  //       return containsChinese(prompt);
-  //     default:
-  //       return containsChinese(prompt);
-  //   }
-  // }, [creationMode, prompt, storyboardPrompt]);
+  // const hasChinese = containsChinese(prompt);
   const hasChinese = false; // 暂时禁用中文检测
 
   // 处理提示词输入
@@ -349,7 +318,6 @@ export function VideoGenerationView({
     }
 
     if (nextFiles.length > 0) {
-      setCreationMode('normal');
       if (activeExternalReference) {
         setActiveExternalReference(null);
       }
@@ -561,7 +529,6 @@ export function VideoGenerationView({
 
     if (nextFiles.length > 0) {
       setError('');
-      setCreationMode('normal');
       if (activeExternalReference) {
         setActiveExternalReference(null);
       }
@@ -618,28 +585,12 @@ export function VideoGenerationView({
 
   // 构建提示词
   const buildPrompt = (): string => {
-    switch (creationMode) {
-      case 'remix':
-        return prompt.trim(); // remix_target_id 单独传递
-      case 'storyboard':
-        return storyboardPrompt.trim();
-      default:
-        return prompt.trim();
-    }
-  };
-
-  // 提取 Remix Target ID
-  const extractRemixTargetId = (): string | undefined => {
-    if (creationMode !== 'remix' || !remixUrl.trim()) return undefined;
-    const url = remixUrl.trim();
-    // 支持完整 URL 或纯 ID
-    const match = url.match(/s_[a-f0-9]+/i);
-    return match ? match[0] : url;
+    return prompt.trim();
   };
 
   // 压缩并构建 files 数组
   const compressFilesIfNeeded = async (): Promise<{ mimeType: string; data: string }[]> => {
-    if (files.length === 0 || creationMode !== 'normal' || !currentModel?.features.imageToVideo) {
+    if (files.length === 0 || !currentModel?.features.imageToVideo) {
       return [];
     }
 
@@ -692,30 +643,14 @@ export function VideoGenerationView({
     if (isVideoLimitReached) {
       return `今日视频生成次数已达上限 (${dailyLimits.videoLimit} 次)`;
     }
-    switch (creationMode) {
-      case 'remix':
-        if (!remixUrl.trim()) return '请输入视频分享链接或ID';
-        // 检测中文（暂时禁用）
-        // if (containsChinese(prompt)) return '提示词禁止使用中文，请使用英文输入';
-        break;
-      case 'storyboard':
-        if (!storyboardPrompt.trim()) return '请输入分镜提示词';
-        if (!storyboardPrompt.includes('[') || !storyboardPrompt.includes(']')) {
-          return '分镜格式错误，请使用 [时长]描述 格式，如 [5.0s]猫猫跳舞';
-        }
-        // 检测中文（暂时禁用）
-        // if (containsChinese(storyboardPrompt)) return '提示词禁止使用中文，请使用英文输入';
-        break;
-      default:
-        if (activeExternalReference && !currentModel.features.imageToVideo) {
-          return '当前模型不支持参考图，请切换支持图生视频的模型';
-        }
-        if (!prompt.trim() && files.length === 0 && !activeExternalReference) {
-          return '请输入提示词或上传参考素材';
-        }
-        // 检测中文（暂时禁用）
-        // if (containsChinese(prompt)) return '提示词禁止使用中文，请使用英文输入';
+    if (activeExternalReference && !currentModel.features.imageToVideo) {
+      return '当前模型不支持参考图，请切换支持图生视频的模型';
     }
+    if (!prompt.trim() && files.length === 0 && !activeExternalReference) {
+      return '请输入提示词或上传参考素材';
+    }
+    // 检测中文（暂时禁用）
+    // if (containsChinese(prompt)) return '提示词禁止使用中文，请使用英文输入';
     return null;
   };
 
@@ -731,7 +666,6 @@ export function VideoGenerationView({
       aspectRatio: string;
       duration: string;
       files: { mimeType: string; data: string }[];
-      remixTargetId?: string;
       referenceImageUrl?: string;
     }
   ) => {
@@ -740,13 +674,12 @@ export function VideoGenerationView({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: currentModel?.apiModel || fallbackModel,
+        model: fallbackModel,
         modelId,
         aspectRatio: config.aspectRatio,
         duration: config.duration,
         prompt: taskPrompt,
         files: config.files,
-        remix_target_id: config.remixTargetId,
         referenceImageUrl: config.referenceImageUrl,
       }),
     });
@@ -760,7 +693,7 @@ export function VideoGenerationView({
     const newTask: Task = {
       id: data.data.id,
       prompt: taskPrompt,
-      model: currentModel?.apiModel || fallbackModel,
+      model: currentModel?.name || fallbackModel,
       modelId,
       type: 'sora-video',
       status: 'pending',
@@ -783,8 +716,6 @@ export function VideoGenerationView({
     setSubmitting(true);
 
     const taskPrompt = buildPrompt();
-    const remixTargetId = extractRemixTargetId();
-
 
     try {
       // 处理图片压缩
@@ -794,9 +725,7 @@ export function VideoGenerationView({
         aspectRatio,
         duration,
         files: taskFiles,
-        remixTargetId,
-        referenceImageUrl:
-          creationMode === 'normal' ? activeExternalReference?.sourceUrl : undefined,
+        referenceImageUrl: activeExternalReference?.sourceUrl,
       });
 
       toast({
@@ -809,19 +738,9 @@ export function VideoGenerationView({
 
       // 清空输入（如果勾选了保留提示词则不清空）
       if (!keepPrompt) {
-        switch (creationMode) {
-          case 'remix':
-            setRemixUrl('');
-            setPrompt('');
-            break;
-          case 'storyboard':
-            setStoryboardPrompt('');
-            break;
-          default:
-            setPrompt('');
-            clearFiles();
-            setActiveExternalReference(null);
-        }
+        setPrompt('');
+        clearFiles();
+        setActiveExternalReference(null);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : '生成失败');
@@ -843,7 +762,6 @@ export function VideoGenerationView({
     setSubmitting(true);
 
     const taskPrompt = buildPrompt();
-    const remixTargetId = extractRemixTargetId();
 
     try {
       // 处理图片压缩 (只执行一次)
@@ -855,9 +773,7 @@ export function VideoGenerationView({
           aspectRatio,
           duration,
           files: taskFiles,
-          remixTargetId,
-          referenceImageUrl:
-            creationMode === 'normal' ? activeExternalReference?.sourceUrl : undefined,
+          referenceImageUrl: activeExternalReference?.sourceUrl,
         });
       }
 
@@ -866,19 +782,9 @@ export function VideoGenerationView({
 
       // 清空输入（如果勾选了保留提示词则不清空）
       if (!keepPrompt) {
-        switch (creationMode) {
-          case 'remix':
-            setRemixUrl('');
-            setPrompt('');
-            break;
-          case 'storyboard':
-            setStoryboardPrompt('');
-            break;
-          default:
-            setPrompt('');
-            clearFiles();
-            setActiveExternalReference(null);
-        }
+        setPrompt('');
+        clearFiles();
+        setActiveExternalReference(null);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : '生成失败');
@@ -901,7 +807,7 @@ export function VideoGenerationView({
           <div>
             <h1 className="text-2xl lg:text-3xl font-light text-foreground">视频生成</h1>
             <p className="text-foreground/50 text-sm lg:text-base mt-0.5 font-light">
-              支持普通生成、Remix、分镜等多种创作模式
+              支持文本与参考图生成视频
             </p>
           </div>
           {dailyLimits.videoLimit > 0 && (
@@ -953,38 +859,25 @@ export function VideoGenerationView({
         embedded && "min-h-[15rem]",
         (availableModels.length === 0 || isVideoLimitReached) && "opacity-50 pointer-events-none"
       )}>
-        {/* Tab 切换创作模式 */}
         <div className="flex flex-col gap-3 border-b border-border/70 px-3 py-3 xl:flex-row xl:items-center xl:justify-between">
           {createModeSwitcher && (
             <div className="w-full xl:w-auto xl:shrink-0">
               {createModeSwitcher}
             </div>
           )}
-          <div className="grid min-w-0 flex-1 grid-cols-2 gap-1 sm:grid-cols-3">
-            {CREATION_MODES.map((mode) => (
-              <button
-                key={mode.id}
-                onClick={() => setCreationMode(mode.id as CreationMode)}
-                className={cn(
-                  'flex min-w-0 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all border-b-2 -mb-[1px]',
-                  creationMode === mode.id
-                    ? 'border-sky-500 text-foreground'
-                    : 'border-transparent text-foreground/50 hover:text-foreground/70'
-                )}
-              >
-                <mode.icon className="w-4 h-4" />
-                <span className="truncate whitespace-nowrap">{mode.label}</span>
-              </button>
-            ))}
+          <div className="flex min-w-0 flex-1 items-center justify-end">
+            <div className="inline-flex items-center gap-2 rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-sm font-medium text-foreground">
+              <Sparkles className="w-4 h-4 text-sky-300" />
+              <span>生成</span>
+            </div>
           </div>
         </div>
 
         <div className="p-4">
           {/* 输入区域：图片上传 + 文本输入 */}
           <div className="flex gap-4 mb-4">
-            {/* 图片上传区 - 仅普通模式显示 */}
-            {creationMode === 'normal' &&
-              (currentModel?.features.imageToVideo || activeExternalReference) && (
+            {/* 图片上传区 */}
+            {(currentModel?.features.imageToVideo || activeExternalReference) && (
               <div
                 onClick={() => fileInputRef.current?.click()}
                 onDragOver={handleDragOver}
@@ -1049,41 +942,14 @@ export function VideoGenerationView({
 
             {/* 文本输入区 */}
             <div className="flex-1 relative">
-              {creationMode === 'remix' ? (
-                <div className="space-y-2">
-                  <input
-                    type="text"
-                    value={remixUrl}
-                    onChange={(e) => setRemixUrl(e.target.value)}
-                    placeholder="输入视频分享链接或ID (如 s_xxx)"
-                    className="w-full px-3 py-2 bg-input/70 border border-border/70 text-foreground rounded-lg text-sm focus:outline-none focus:border-border focus:ring-2 focus:ring-ring/30"
-                  />
-                  <textarea
-                    ref={remixPromptRef}
-                    value={prompt}
-                    onChange={(e) => handlePromptChange(e, setPrompt)}
-                    onKeyUp={canMentionCharacterCards ? handlePromptKeyUp : undefined}
-                    placeholder={isSoraChannel ? '描述你想要的修改，输入 @ 引用角色卡' : '描述你想要的修改，如：改成水墨画风格'}
-                    className="w-full h-14 px-3 py-2 bg-input/70 border border-border/70 text-foreground rounded-lg resize-none text-sm focus:outline-none focus:border-border focus:ring-2 focus:ring-ring/30"
-                  />
-                </div>
-              ) : creationMode === 'storyboard' ? (
-                <textarea
-                  value={storyboardPrompt}
-                  onChange={(e) => handlePromptChange(e, setStoryboardPrompt)}
-                  placeholder="[5.0s]A cat skydiving from plane&#10;[5.0s]Cat landing"
-                  className="w-full h-20 px-3 py-2 bg-input/70 border border-border/70 text-foreground rounded-lg resize-none text-sm font-mono focus:outline-none focus:border-border focus:ring-2 focus:ring-ring/30"
-                />
-              ) : (
-                <textarea
-                  ref={promptTextareaRef}
-                  value={prompt}
-                  onChange={(e) => handlePromptChange(e, setPrompt)}
-                  onKeyUp={canMentionCharacterCards ? handlePromptKeyUp : undefined}
-                  placeholder={isSoraChannel ? '描述视频动态，或拖入图片生成图生视频... 输入 @ 引用角色卡' : '描述视频动态，或拖入图片生成图生视频...'}
-                  className="w-full h-20 px-3 py-2 bg-input/70 border border-border/70 text-foreground rounded-lg resize-none text-sm focus:outline-none focus:border-border focus:ring-2 focus:ring-ring/30"
-                />
-              )}
+              <textarea
+                ref={promptTextareaRef}
+                value={prompt}
+                onChange={(e) => handlePromptChange(e, setPrompt)}
+                onKeyUp={canMentionCharacterCards ? handlePromptKeyUp : undefined}
+                placeholder={isSoraChannel ? '描述视频动态，或拖入图片生成图生视频... 输入 @ 引用角色卡' : '描述视频动态，或拖入图片生成图生视频...'}
+                className="w-full h-20 px-3 py-2 bg-input/70 border border-border/70 text-foreground rounded-lg resize-none text-sm focus:outline-none focus:border-border focus:ring-2 focus:ring-ring/30"
+              />
 
               {/* @ 触发的角色卡弹出菜单，仅 sora 渠道显示 */}
               {isSoraChannel && showCharacterMenu && characterCards.length > 0 && (

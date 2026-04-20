@@ -66,7 +66,7 @@ const FALLBACK_IMAGE_BADGE: Badge = { label: '图像', icon: ImageIcon };
 const VIDEO_CHANNEL_BADGE_LABELS: Record<string, string> = {
   sora: 'Sora 视频',
   grok2api: 'Grok 视频',
-  flow2api: 'Flow2API 视频',
+  flow2api: 'Veo 视频',
   'openai-compatible': 'OpenAI 视频',
 };
 

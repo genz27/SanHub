@@ -48,9 +48,7 @@ const DEFAULT_ASPECT_RATIOS: AspectRatioRow[] = [
 ];
 
 const DEFAULT_DURATIONS: VideoDuration[] = [
-  { value: '10s', label: '10 秒', cost: 100 },
-  { value: '15s', label: '15 秒', cost: 150 },
-  { value: '25s', label: '25 秒', cost: 200 },
+  { value: '8s', label: '8 秒', cost: 100 },
 ];
 
 const GROK_MAX_VIDEO_LENGTH_SECONDS = 30;
@@ -70,22 +68,22 @@ const GROK_TEMPLATE_ASPECT_RATIOS: AspectRatioRow[] = GROK_ASPECT_RATIO_OPTIONS.
 
 const GROK_TEMPLATE_DURATIONS: VideoDuration[] = [
   { value: '5s', label: '5 \u79d2', cost: 100 },
-  { value: '10s', label: '10 \u79d2', cost: 100 },
+  { value: '8s', label: '8 \u79d2', cost: 100 },
   { value: '15s', label: '15 \u79d2', cost: 150 },
   { value: '30s', label: '30 \u79d2', cost: 200 },
 ];
 
 const GROK_TEMPLATE_VIDEO_CONFIG_OBJECT: VideoConfigObject = {
   aspect_ratio: '16:9',
-  video_length: 10,
+  video_length: 8,
   resolution: 'HD',
   preset: 'normal',
 };
 
 function parseDurationToSeconds(duration: string): number {
   const matched = (duration || '').match(/(\d+)/);
-  const value = matched ? Number.parseInt(matched[1], 10) : 10;
-  if (!Number.isFinite(value) || value <= 0) return 10;
+  const value = matched ? Number.parseInt(matched[1], 10) : 8;
+  if (!Number.isFinite(value) || value <= 0) return 8;
   return value;
 }
 
@@ -100,7 +98,7 @@ function normalizeAspectRatioForVideoConfig(aspectRatio?: string): NonNullable<V
 }
 
 function normalizeVideoConfigObject(input: VideoConfigObject): VideoConfigObject {
-  const videoLengthRaw = typeof input.video_length === 'number' ? input.video_length : 10;
+  const videoLengthRaw = typeof input.video_length === 'number' ? input.video_length : 8;
   const videoLength = Math.max(5, Math.min(GROK_MAX_VIDEO_LENGTH_SECONDS, Math.floor(videoLengthRaw)));
   const resolution = input.resolution === 'SD' ? 'SD' : 'HD';
   const preset = input.preset === 'fun' || input.preset === 'spicy' ? input.preset : 'normal';
@@ -116,7 +114,7 @@ function buildGrokTemplateModelPayload(channelId: string) {
   return {
     channelId,
     name: 'Grok Imagine Video',
-    description: 'Grok \u9ed8\u8ba4\u6a21\u677f\uff0c\u5185\u7f6e 5/10/15/30 \u79d2\u548c HD \u914d\u7f6e',
+    description: 'Grok \u9ed8\u8ba4\u6a21\u677f\uff0c\u5185\u7f6e 5/8/15/30 \u79d2\u548c HD \u914d\u7f6e',
     apiModel: 'grok-imagine-1.0-video',
     features: {
       textToVideo: true,
@@ -127,7 +125,7 @@ function buildGrokTemplateModelPayload(channelId: string) {
     aspectRatios: GROK_TEMPLATE_ASPECT_RATIOS,
     durations: GROK_TEMPLATE_DURATIONS,
     defaultAspectRatio: '16:9',
-    defaultDuration: '10s',
+    defaultDuration: '8s',
     videoConfigObject: GROK_TEMPLATE_VIDEO_CONFIG_OBJECT,
     highlight: false,
     enabled: true,
@@ -150,7 +148,7 @@ function buildSoraTemplateModelPayload(channelId: string) {
     aspectRatios: [...DEFAULT_ASPECT_RATIOS],
     durations: [...DEFAULT_DURATIONS],
     defaultAspectRatio: 'landscape',
-    defaultDuration: '10s',
+    defaultDuration: '8s',
     highlight: true,
     enabled: true,
     sortOrder: 0,
@@ -161,7 +159,7 @@ function buildManualTemplateModelPayload(channel: VideoChannel) {
   if (channel.type === 'grok2api') {
     return {
       name: 'Grok Imagine Video',
-      description: '\u5df2\u9884\u586b Grok \u6a21\u677f\uff0c\u652f\u6301 5/10/15/30 \u79d2',
+      description: '\u5df2\u9884\u586b Grok \u6a21\u677f\uff0c\u652f\u6301 5/8/15/30 \u79d2',
       apiModel: 'grok-imagine-1.0-video',
       baseUrl: '',
       apiKey: '',
@@ -172,7 +170,7 @@ function buildManualTemplateModelPayload(channel: VideoChannel) {
         supportStyles: false,
       },
       defaultAspectRatio: '16:9',
-      defaultDuration: '10s',
+      defaultDuration: '8s',
       videoConfigObject: {
         ...GROK_TEMPLATE_VIDEO_CONFIG_OBJECT,
       },
@@ -196,7 +194,7 @@ function buildManualTemplateModelPayload(channel: VideoChannel) {
         supportStyles: false,
       },
       defaultAspectRatio: 'landscape',
-      defaultDuration: '10s',
+      defaultDuration: '8s',
       videoConfigObject: {
         ...GROK_TEMPLATE_VIDEO_CONFIG_OBJECT,
       },
@@ -220,7 +218,7 @@ function buildManualTemplateModelPayload(channel: VideoChannel) {
         supportStyles: false,
       },
       defaultAspectRatio: 'landscape',
-      defaultDuration: '10s',
+      defaultDuration: '8s',
       videoConfigObject: {
         ...GROK_TEMPLATE_VIDEO_CONFIG_OBJECT,
       },
@@ -243,7 +241,7 @@ function buildManualTemplateModelPayload(channel: VideoChannel) {
       supportStyles: false,
     },
     defaultAspectRatio: 'landscape',
-    defaultDuration: '10s',
+    defaultDuration: '8s',
     videoConfigObject: {
       ...GROK_TEMPLATE_VIDEO_CONFIG_OBJECT,
     },
@@ -288,7 +286,7 @@ export default function VideoChannelsPage() {
     apiKey: '',
     features: { ...DEFAULT_FEATURES },
     defaultAspectRatio: 'landscape',
-    defaultDuration: '10s',
+    defaultDuration: '8s',
     videoConfigObject: {
       ...GROK_TEMPLATE_VIDEO_CONFIG_OBJECT,
     } as VideoConfigObject,
@@ -349,7 +347,7 @@ export default function VideoChannelsPage() {
     setModelForm({
       name: '', description: '', apiModel: '', baseUrl: '', apiKey: '',
       features: { ...DEFAULT_FEATURES },
-      defaultAspectRatio: 'landscape', defaultDuration: '10s',
+      defaultAspectRatio: 'landscape', defaultDuration: '8s',
       videoConfigObject: {
         ...GROK_TEMPLATE_VIDEO_CONFIG_OBJECT,
       },

@@ -380,7 +380,7 @@ export default function WorkspaceEditorPage() {
           data: {
             modelId: model?.id || '',
             aspectRatio: model?.defaultAspectRatio || 'landscape',
-            duration: model?.defaultDuration || '10s',
+            duration: model?.defaultDuration || '8s',
             prompt: '',
             status: 'idle',
           },
@@ -895,7 +895,7 @@ export default function WorkspaceEditorPage() {
         
         const model = videoModels.find(m => m.id === node.data.modelId) || videoModels[0];
         const ratio = node.data.aspectRatio || model?.defaultAspectRatio || 'landscape';
-        const duration = node.data.duration || model?.defaultDuration || '10s';
+        const duration = node.data.duration || model?.defaultDuration || '8s';
         const taskModel = `sora2-${ratio}-${duration}`;
         
         // Find image input node for reference image
@@ -913,7 +913,7 @@ export default function WorkspaceEditorPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            model: model?.apiModel || taskModel,
+            model: taskModel,
             modelId: model?.id,
             aspectRatio: ratio,
             duration,
@@ -1538,7 +1538,7 @@ export default function WorkspaceEditorPage() {
                               updateNodeData(node.id, {
                                 modelId: nextId,
                                 aspectRatio: nextModel?.defaultAspectRatio || 'landscape',
-                                duration: nextModel?.defaultDuration || '10s',
+                                duration: nextModel?.defaultDuration || '8s',
                               });
                             }
                           }}
@@ -1600,7 +1600,7 @@ export default function WorkspaceEditorPage() {
                         <div className="space-y-1">
                           <label className="text-[10px] uppercase tracking-wider text-foreground/40">时长</label>
                           <select
-                            value={node.data.duration || (model as SafeVideoModel)?.defaultDuration || '10s'}
+                            value={node.data.duration || (model as SafeVideoModel)?.defaultDuration || '8s'}
                             onChange={(e) => updateNodeData(node.id, { duration: e.target.value })}
                             className="w-full px-2 py-2 bg-card/60 border border-border/70 rounded-lg text-foreground focus:outline-none focus:border-border"
                           >

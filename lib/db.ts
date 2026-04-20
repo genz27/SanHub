@@ -4,6 +4,7 @@ import { generateId } from './utils';
 import bcrypt from 'bcryptjs';
 import { createDatabaseAdapter, type DatabaseAdapter } from './db-adapter';
 import { cache, CacheKeys, CacheTTL, withCache } from './cache';
+import { buildSafeVideoModels } from './video-model-normalizer';
 
 // ========================================
 // 数据库连接（支持 SQLite �?MySQL�?
@@ -3126,7 +3127,7 @@ CREATE TABLE IF NOT EXISTS video_models (
   aspect_ratios TEXT NOT NULL,
   durations TEXT NOT NULL,
   default_aspect_ratio VARCHAR(20) DEFAULT 'landscape',
-  default_duration VARCHAR(20) DEFAULT '10s',
+  default_duration VARCHAR(20) DEFAULT '8s',
   video_config_object TEXT,
   highlight TINYINT(1) DEFAULT 0,
   enabled TINYINT(1) DEFAULT 1,
@@ -3388,7 +3389,7 @@ export async function getVideoModels(enabledOnly = false): Promise<VideoModel[]>
     aspectRatios: parseAspectRatios(row.aspect_ratios),
     durations: parseDurations(row.durations),
     defaultAspectRatio: row.default_aspect_ratio || 'landscape',
-    defaultDuration: row.default_duration || '10s',
+    defaultDuration: row.default_duration || '8s',
     videoConfigObject: parseVideoConfigObject(row.video_config_object),
     highlight: Boolean(row.highlight),
     enabled: Boolean(row.enabled),
@@ -3421,7 +3422,7 @@ export async function getVideoModel(id: string): Promise<VideoModel | null> {
     aspectRatios: parseAspectRatios(row.aspect_ratios),
     durations: parseDurations(row.durations),
     defaultAspectRatio: row.default_aspect_ratio || 'landscape',
-    defaultDuration: row.default_duration || '10s',
+    defaultDuration: row.default_duration || '8s',
     videoConfigObject: parseVideoConfigObject(row.video_config_object),
     highlight: Boolean(row.highlight),
     enabled: Boolean(row.enabled),
@@ -3526,40 +3527,7 @@ export async function deleteVideoModel(id: string): Promise<boolean> {
 export async function getSafeVideoModels(enabledOnly = false): Promise<SafeVideoModel[]> {
   const models = await getVideoModels(enabledOnly);
   const channels = await getVideoChannels();
-  const channelMap = new Map(channels.map((c) => [c.id, c]));
-
-  const allModels = models
-    .filter((m) => {
-      const channel = channelMap.get(m.channelId);
-      return channel && (!enabledOnly || channel.enabled);
-    })
-    .map((m) => {
-      const channel = channelMap.get(m.channelId)!;
-      return {
-        id: m.id,
-        channelId: m.channelId,
-        channelType: channel.type,
-        apiModel: m.apiModel,
-        name: m.name,
-        description: m.description,
-        features: m.features,
-        aspectRatios: m.aspectRatios,
-        durations: m.durations,
-        defaultAspectRatio: m.defaultAspectRatio,
-        defaultDuration: m.defaultDuration,
-        videoConfigObject: m.videoConfigObject,
-        highlight: m.highlight,
-        enabled: m.enabled,
-      };
-    });
-
-  // Deduplicate by model name - keep only the first occurrence
-  const seen = new Set<string>();
-  return allModels.filter((m) => {
-    if (seen.has(m.name)) return false;
-    seen.add(m.name);
-    return true;
-  });
+  return buildSafeVideoModels(models, channels, enabledOnly);
 }
 
 // 获取视频模型的完整配置

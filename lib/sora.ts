@@ -4,6 +4,7 @@ import { getSystemConfig, getVideoModelWithChannel } from './db';
 import type { SoraGenerateRequest, GenerateResult, VideoChannel, VideoModel } from '@/types';
 import { generateVideo, type VideoGenerationRequest } from './sora-api';
 import { fetchWithRetry } from './http-retry';
+import { resolveFlowVeoModel } from './video-model-normalizer';
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'silent';
 
@@ -416,6 +417,138 @@ function extractVideoUrlFromSseResponseText(
   return { url: fallbackUrl, errorMessage, text: mergedText };
 }
 
+function parseSseEventBlock(block: string): string | null {
+  const dataLines = block
+    .split('\n')
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => line.slice(5).trimStart());
+
+  if (dataLines.length === 0) return null;
+  return dataLines.join('\n').trim();
+}
+
+function progressFromExternalMessage(message: string, currentProgress: number): number {
+  const text = message.trim();
+  if (!text) return currentProgress;
+
+  if (text.includes('上传参考图片')) return Math.max(currentProgress, 30);
+  if (text.includes('参考图已就绪')) return Math.max(currentProgress, 42);
+  if (text.includes('开始提交视频任务')) return Math.max(currentProgress, 56);
+  if (text.includes('视频任务状态:')) return Math.max(currentProgress, 72);
+  if (text.includes('4K') && text.includes('放大')) return Math.max(currentProgress, 86);
+  if (text.toUpperCase().includes('1080') && text.includes('放大')) return Math.max(currentProgress, 86);
+  if (text.includes('缓存')) return Math.max(currentProgress, 94);
+  return Math.max(currentProgress, 18);
+}
+
+async function readStreamingExternalChatResponse(
+  response: Response,
+  baseUrl: string | undefined,
+  onProgress?: (progress: number) => void
+): Promise<{ url: string | null; errorMessage: string | null; text: string; rawBody: string }> {
+  if (!response.body?.getReader) {
+    const rawBody = await response.text();
+    const parsed = extractVideoUrlFromSseResponseText(rawBody, baseUrl);
+    return { ...parsed, rawBody };
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const textSegments: string[] = [];
+  const rawSegments: string[] = [];
+  let buffer = '';
+  let rawUrl: string | null = null;
+  let errorMessage: string | null = null;
+  let progress = 5;
+
+  const processEventData = (eventData: string) => {
+    const data = eventData.trim();
+    if (!data || data === '[DONE]') return;
+
+    let payload: unknown = null;
+    try {
+      payload = JSON.parse(data);
+    } catch {
+      const directUrl = extractVideoUrlFromText(data, baseUrl);
+      if (directUrl && !rawUrl) {
+        rawUrl = directUrl;
+      }
+      textSegments.push(data);
+      return;
+    }
+
+    const upstreamError = extractUpstreamErrorMessage(payload);
+    if (upstreamError && !errorMessage) {
+      errorMessage = upstreamError;
+    }
+
+    const urlFromPayload = extractVideoUrlFromUnknownPayload(payload, baseUrl);
+    if (urlFromPayload && !rawUrl) {
+      rawUrl = urlFromPayload;
+    }
+
+    const contentText = extractContentFromExternalChatPayload(payload);
+    if (contentText) {
+      textSegments.push(contentText);
+      const nextProgress = progressFromExternalMessage(contentText, progress);
+      if (nextProgress > progress) {
+        progress = nextProgress;
+        onProgress?.(progress);
+      }
+
+      const urlFromContent = extractVideoUrlFromText(contentText, baseUrl);
+      if (urlFromContent && !rawUrl) {
+        rawUrl = urlFromContent;
+      }
+    }
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+
+    const chunk = decoder.decode(value, { stream: true });
+    rawSegments.push(chunk);
+    buffer = (buffer + chunk).replace(/\r\n/g, '\n');
+
+    let boundary = buffer.indexOf('\n\n');
+    while (boundary !== -1) {
+      const block = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary + 2);
+
+      const eventData = parseSseEventBlock(block);
+      if (eventData) {
+        processEventData(eventData);
+      }
+
+      boundary = buffer.indexOf('\n\n');
+    }
+  }
+
+  const tail = decoder.decode();
+  if (tail) {
+    rawSegments.push(tail);
+    buffer += tail;
+  }
+
+  const tailData = parseSseEventBlock(buffer.replace(/\r\n/g, '\n'));
+  if (tailData) {
+    processEventData(tailData);
+  }
+
+  const text = textSegments.join('\n').trim();
+  if (!rawUrl && text) {
+    rawUrl = extractVideoUrlFromText(text, baseUrl);
+  }
+
+  return {
+    url: rawUrl,
+    errorMessage,
+    text,
+    rawBody: rawSegments.join(''),
+  };
+}
+
 function normalizeAspectRatioLabel(aspectRatio: string): string {
   switch ((aspectRatio || '').toLowerCase()) {
     case 'landscape':
@@ -444,20 +577,19 @@ function normalizeGrokVideoLengthSeconds(duration?: string, fallback = 10): numb
   return Math.max(5, Math.min(GROK_MAX_VIDEO_LENGTH_SECONDS, Math.floor(base)));
 }
 
-function mapFlowModel(modelName: string, aspectRatio: string, duration: string): string {
+function mapFlowModel(modelName: string, aspectRatio: string, duration: string, imageCount: number): string {
   const normalizedModel = (modelName || '').trim();
   const lowerModel = normalizedModel.toLowerCase();
 
-  // Keep explicit Flow2API model ids untouched (for one-click imported models).
   if (lowerModel.startsWith('veo_')) {
-    return normalizedModel;
+    return resolveFlowVeoModel(normalizedModel, aspectRatio, imageCount) || normalizedModel;
   }
 
   const ratio = (aspectRatio || '').toLowerCase();
   const seconds = normalizeDurationSeconds(duration);
 
-  const isI2V = lowerModel.includes('i2v') || lowerModel.includes('image');
-  const isR2V = lowerModel.includes('r2v') || lowerModel.includes('reference');
+  const isI2V = imageCount > 0 || lowerModel.includes('i2v') || lowerModel.includes('image');
+  const isR2V = imageCount >= 3 || lowerModel.includes('r2v') || lowerModel.includes('reference');
 
   if (isR2V) {
     return ratio === 'portrait' ? 'veo_3_0_r2v_fast_portrait' : 'veo_3_0_r2v_fast_landscape';
@@ -470,8 +602,8 @@ function mapFlowModel(modelName: string, aspectRatio: string, duration: string):
         : 'veo_2_1_fast_d_15_i2v_landscape';
     }
     return ratio === 'portrait'
-      ? 'veo_3_1_i2v_s_fast_fl_portrait'
-      : 'veo_3_1_i2v_s_fast_fl_landscape';
+      ? 'veo_3_1_i2v_s_fast_portrait_fl'
+      : 'veo_3_1_i2v_s_fast_fl';
   }
 
   if (seconds >= 15) {
@@ -489,10 +621,11 @@ function mapGrokModel(modelName: string): string {
 
 function mapChannelModel(channelType: VideoChannel['type'], model: VideoModel, request: SoraGenerateRequest): string {
   const ratio = request.aspectRatio || model.defaultAspectRatio || 'landscape';
-  const duration = request.duration || model.defaultDuration || '10s';
+  const duration = request.duration || model.defaultDuration || '8s';
+  const imageCount = (request.files || []).filter((file) => file.mimeType.startsWith('image/')).length;
 
   if (channelType === 'flow2api') {
-    return mapFlowModel(model.apiModel, ratio, duration);
+    return mapFlowModel(model.apiModel, ratio, duration, imageCount);
   }
   if (channelType === 'grok2api') {
     return mapGrokModel(model.apiModel);
@@ -519,10 +652,10 @@ function resolveVideoConfigObject(
     typeof requestConfig?.video_length === 'number'
       ? requestConfig.video_length
       : hasRequestDuration
-        ? normalizeGrokVideoLengthSeconds(request.duration || '10s')
+        ? normalizeGrokVideoLengthSeconds(request.duration || '8s')
         : typeof modelConfig?.video_length === 'number'
           ? modelConfig.video_length
-          : normalizeGrokVideoLengthSeconds(model.defaultDuration || '10s');
+          : normalizeGrokVideoLengthSeconds(model.defaultDuration || '8s');
 
   const resolutionRaw = (requestConfig?.resolution || modelConfig?.resolution || 'HD').toString().toUpperCase();
   const presetRaw = (requestConfig?.preset || modelConfig?.preset || 'normal').toString().toLowerCase();
@@ -549,7 +682,7 @@ function resolveRequestedVideoLengthSeconds(request: SoraGenerateRequest, model?
     return Math.max(5, Math.min(GROK_MAX_VIDEO_LENGTH_SECONDS, Math.floor(model.videoConfigObject.video_length)));
   }
 
-  return normalizeGrokVideoLengthSeconds(model?.defaultDuration || request.model || '10s');
+  return normalizeGrokVideoLengthSeconds(model?.defaultDuration || request.model || '8s');
 }
 
 function resolveModelDurationCost(model: VideoModel, request: SoraGenerateRequest): number | null {
@@ -716,18 +849,16 @@ async function generateViaExternalChat(
     body: JSON.stringify(payload),
   }));
 
-  const rawBody = await response.text();
-
-  let parsedBody: unknown = null;
-  if (rawBody.trim()) {
-    try {
-      parsedBody = JSON.parse(rawBody) as ExternalChatResponse;
-    } catch {
-      parsedBody = null;
-    }
-  }
-
   if (!response.ok) {
+    const rawBody = await response.text();
+    let parsedBody: unknown = null;
+    if (rawBody.trim()) {
+      try {
+        parsedBody = JSON.parse(rawBody) as ExternalChatResponse;
+      } catch {
+        parsedBody = null;
+      }
+    }
     const upstreamError = extractUpstreamErrorMessage(parsedBody);
     const detail = upstreamError || compactSnippet(rawBody, 400);
     throw new Error(`上游返回错误 (${response.status})${detail ? `: ${detail}` : ''}`);
@@ -735,12 +866,27 @@ async function generateViaExternalChat(
 
   let rawUrl: string | null = null;
   let upstreamMessage = '';
+  let rawBody = '';
 
   if (useStreamingResponse) {
-    const parsedStream = extractVideoUrlFromSseResponseText(rawBody, effectiveBaseUrl);
+    const parsedStream = await readStreamingExternalChatResponse(
+      response as unknown as Response,
+      effectiveBaseUrl,
+      onProgress
+    );
+    rawBody = parsedStream.rawBody;
     rawUrl = parsedStream.url;
     upstreamMessage = parsedStream.errorMessage || parsedStream.text;
   } else {
+    rawBody = await response.text();
+    let parsedBody: unknown = null;
+    if (rawBody.trim()) {
+      try {
+        parsedBody = JSON.parse(rawBody) as ExternalChatResponse;
+      } catch {
+        parsedBody = null;
+      }
+    }
     rawUrl = extractVideoUrlFromUnknownPayload(parsedBody, effectiveBaseUrl);
     upstreamMessage = extractContentFromExternalChatPayload(parsedBody);
   }
@@ -845,7 +991,7 @@ async function generateByVideoModel(
 
   if (channelType === 'sora') {
     const ratio = request.aspectRatio || model.defaultAspectRatio || 'landscape';
-    const duration = request.duration || model.defaultDuration || '10s';
+    const duration = request.duration || model.defaultDuration || '8s';
 
     const fallbackRequest: SoraGenerateRequest = {
       ...request,

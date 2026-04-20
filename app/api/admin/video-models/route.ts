@@ -105,10 +105,10 @@ export async function POST(request: NextRequest) {
         { value: 'portrait', label: '9:16' },
       ],
       durations: durations || [
-        { value: '10s', label: '10 秒', cost: 100 },
+        { value: '8s', label: '8 秒', cost: 100 },
       ],
       defaultAspectRatio: defaultAspectRatio || 'landscape',
-      defaultDuration: defaultDuration || '10s',
+      defaultDuration: defaultDuration || '8s',
       videoConfigObject: normalizeVideoConfigObject(videoConfigObject),
       highlight: highlight || false,
       enabled: enabled !== false,

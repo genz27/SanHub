@@ -326,12 +326,10 @@ export const VIDEO_MODELS: VideoModelConfig[] = [
       { value: 'portrait', label: '9:16', icon: '▮' },
     ],
     durations: [
-      { value: '10s', label: '10 秒' },
-      { value: '15s', label: '15 秒' },
-      { value: '25s', label: '25 秒' },
+      { value: '8s', label: '8 秒' },
     ],
     defaultAspectRatio: 'landscape',
-    defaultDuration: '10s',
+    defaultDuration: '8s',
   },
 ];
 
@@ -396,7 +394,7 @@ export function getImageResolution(
 
 // 构建 Sora 模型 ID
 // 新格式: sora2-{orientation}-{duration}
-// 例如: sora2-landscape-10s, sora2-portrait-15s, sora2-landscape-25s
+// 例如: sora2-landscape-8s, sora2-portrait-8s
 export function buildSoraModelId(ratio: string, duration: string): string {
   return `sora2-${ratio}-${duration}`;
 }

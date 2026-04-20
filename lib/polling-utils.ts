@@ -12,7 +12,7 @@ export function getPollingInterval(elapsedMs: number, taskType: TaskType): numbe
   if (taskType === 'image') {
     return isFirstMinute ? 10_000 : 30_000;
   }
-  return isFirstMinute ? 30_000 : 60_000;
+  return isFirstMinute ? 5_000 : 15_000;
 }
 
 export function shouldContinuePolling(elapsedMs: number, taskType: TaskType): boolean {
