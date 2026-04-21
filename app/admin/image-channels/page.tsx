@@ -128,6 +128,7 @@ type GroupedRemoteModel = {
   displayName: string;
   apiModel: string;
   modelIds: string[];
+  sourceModelIds: string[];
   modelCount: number;
   recommendedName: string;
   recommendedDescription: string;
@@ -573,6 +574,13 @@ export default function ImageChannelsPage() {
     return new Set(getChannelModels(channelId).map((model) => model.apiModel));
   };
 
+  const isGroupedRemoteModelImported = (group: GroupedRemoteModel, existingApiModels: Set<string>) => {
+    if (existingApiModels.has(group.apiModel)) {
+      return true;
+    }
+    return (group.sourceModelIds || []).some((modelId) => existingApiModels.has(modelId));
+  };
+
   const handleChannelTypeChange = (nextType: ImageAdminChannelType) => {
     setChannelForm((prev) => {
       const knownNames = new Set(Object.values(CHANNEL_FORM_GUIDES).map((guide) => guide.defaultName));
@@ -905,7 +913,11 @@ export default function ImageChannelsPage() {
       setGroupedModels(nextGroupedModels);
       setRemoteModels(nextRemoteModels);
       setSelectedGroupedModels(
-        new Set(nextGroupedModels.filter((group) => !existingApiModels.has(group.apiModel)).map((group) => group.baseName))
+        new Set(
+          nextGroupedModels
+            .filter((group) => !isGroupedRemoteModelImported(group, existingApiModels))
+            .map((group) => group.baseName)
+        )
       );
       setSelectedRemoteModels(
         new Set(nextRemoteModels.filter((model) => !existingApiModels.has(model.id)).map((model) => model.id))
@@ -956,8 +968,8 @@ export default function ImageChannelsPage() {
   };
 
   const selectAllGroupedModels = () => {
-    const existingApiModels = new Set(models.filter(m => m.channelId === remoteModelsChannelId).map(m => m.apiModel));
-    const available = groupedModels.filter(g => !existingApiModels.has(g.apiModel));
+    const existingApiModels = getExistingApiModelSet(remoteModelsChannelId);
+    const available = groupedModels.filter((group) => !isGroupedRemoteModelImported(group, existingApiModels));
     setSelectedGroupedModels(new Set(available.map(g => g.baseName)));
   };
 
@@ -971,11 +983,13 @@ export default function ImageChannelsPage() {
     setAddingRemoteModels(true);
     try {
       let added = 0;
+      const existingApiModels = getExistingApiModelSet(remoteModelsChannelId);
 
       // Add grouped models
       for (const baseName of Array.from(selectedGroupedModels)) {
         const group = groupedModels.find(g => g.baseName === baseName);
         if (!group) continue;
+        if (isGroupedRemoteModelImported(group, existingApiModels)) continue;
         const override = groupedModelOverrides[baseName];
         const name = (override?.displayName || group.recommendedName || group.displayName).trim() || group.displayName;
         const description = (override?.description || group.recommendedDescription || '').trim();
@@ -1007,11 +1021,16 @@ export default function ImageChannelsPage() {
             sortOrder: nextSortOrder,
           }),
         });
-        if (res.ok) added++;
+        if (res.ok) {
+          existingApiModels.add(group.apiModel);
+          (group.sourceModelIds || []).forEach((modelId) => existingApiModels.add(modelId));
+          added++;
+        }
       }
 
       // Add ungrouped models
       for (const modelId of Array.from(selectedRemoteModels)) {
+        if (existingApiModels.has(modelId)) continue;
         const nextSortOrder = getChannelModels(remoteModelsChannelId).length + added;
         const res = await fetch('/api/admin/image-models', {
           method: 'POST',
@@ -1030,7 +1049,10 @@ export default function ImageChannelsPage() {
             sortOrder: nextSortOrder,
           }),
         });
-        if (res.ok) added++;
+        if (res.ok) {
+          existingApiModels.add(modelId);
+          added++;
+        }
       }
 
       toast({ title: '模型导入完成', description: `已新增 ${added} 个模型。` });
@@ -1696,7 +1718,7 @@ export default function ImageChannelsPage() {
                             </button>
                           </div>
                           <p className="text-xs text-foreground/50">
-                            已自动按模型家族做智能分组，并默认勾选当前渠道还没导入的模型。
+                            已自动按模型家族做智能分组，像 `image-2 / image-2-16:9 / image-2-9:16` 这类会聚合成一个模型，并默认勾选当前渠道还没导入的项。
                           </p>
 
                           {/* Grouped Models Section */}
@@ -1709,7 +1731,7 @@ export default function ImageChannelsPage() {
                               <div className="max-h-40 overflow-y-auto space-y-2">
                                 {groupedModels.map(group => {
                                   const existingApiModels = new Set(channelModels.map(m => m.apiModel));
-                                  const alreadyExists = existingApiModels.has(group.apiModel);
+                                  const alreadyExists = isGroupedRemoteModelImported(group, existingApiModels);
                                   const isSelected = selectedGroupedModels.has(group.baseName);
                                   const override = groupedModelOverrides[group.baseName];
                                   const displayName = override?.displayName ?? group.recommendedName ?? group.displayName;

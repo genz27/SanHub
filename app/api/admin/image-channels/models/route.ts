@@ -12,43 +12,79 @@ interface RemoteModel {
   owned_by?: string;
 }
 
-interface ModelPattern {
-  basePattern: RegExp;
-  ratioSuffixes: Record<string, string>;
-  sizeSuffixes: Record<string, string>;
-}
+type ParsedModelVariant = {
+  baseName: string;
+  aspectRatio: string;
+  imageSize: string;
+};
 
-const MODEL_PATTERNS: ModelPattern[] = [
-  {
-    basePattern: /^(.+?-image)-(landscape|portrait|square|four-three|three-four)(-2k|-4k)?$/i,
-    ratioSuffixes: {
-      landscape: '16:9',
-      portrait: '9:16',
-      square: '1:1',
-      'four-three': '4:3',
-      'three-four': '3:4',
-    },
-    sizeSuffixes: {
-      '': '1K',
-      '-2k': '2K',
-      '-4k': '4K',
-    },
-  },
-  {
-    basePattern: /^(.+?-preview)-(landscape|portrait)$/i,
-    ratioSuffixes: {
-      landscape: '16:9',
-      portrait: '9:16',
-    },
-    sizeSuffixes: {},
-  },
-];
+const RATIO_SUFFIX_ALIASES: Record<string, string> = {
+  landscape: '16:9',
+  portrait: '9:16',
+  square: '1:1',
+  'four-three': '4:3',
+  'three-four': '3:4',
+  '1:1': '1:1',
+  '1x1': '1:1',
+  '1_1': '1:1',
+  '1:4': '1:4',
+  '1x4': '1:4',
+  '1_4': '1:4',
+  '1:8': '1:8',
+  '1x8': '1:8',
+  '1_8': '1:8',
+  '2:3': '2:3',
+  '2x3': '2:3',
+  '2_3': '2:3',
+  '3:2': '3:2',
+  '3x2': '3:2',
+  '3_2': '3:2',
+  '3:4': '3:4',
+  '3x4': '3:4',
+  '3_4': '3:4',
+  '4:1': '4:1',
+  '4x1': '4:1',
+  '4_1': '4:1',
+  '4:3': '4:3',
+  '4x3': '4:3',
+  '4_3': '4:3',
+  '4:5': '4:5',
+  '4x5': '4:5',
+  '4_5': '4:5',
+  '5:4': '5:4',
+  '5x4': '5:4',
+  '5_4': '5:4',
+  '8:1': '8:1',
+  '8x1': '8:1',
+  '8_1': '8:1',
+  '9:16': '9:16',
+  '9x16': '9:16',
+  '9_16': '9:16',
+  '16:9': '16:9',
+  '16x9': '16:9',
+  '16_9': '16:9',
+  '21:9': '21:9',
+  '21x9': '21:9',
+  '21_9': '21:9',
+};
+
+const IMAGE_SIZE_SUFFIXES: Record<string, string> = {
+  '': '1K',
+  '-2k': '2K',
+  '-4k': '4K',
+};
+
+const ORDERED_RATIO_SUFFIXES = Object.keys(RATIO_SUFFIX_ALIASES).sort((left, right) => right.length - left.length);
+const ORDERED_IMAGE_SIZE_SUFFIXES = Object.entries(IMAGE_SIZE_SUFFIXES).sort(
+  (left, right) => right[0].length - left[0].length
+);
 
 interface GroupedModel {
   baseName: string;
   displayName: string;
   apiModel: string;
   modelIds: string[];
+  sourceModelIds: string[];
   modelCount: number;
   recommendedName: string;
   recommendedDescription: string;
@@ -63,8 +99,31 @@ interface GroupedModel {
   };
 }
 
-const RATIO_ORDER = ['1:1', '16:9', '9:16', '4:3', '3:4'];
+const RATIO_ORDER = ['1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3', '4:5', '5:4', '21:9', '4:1', '8:1', '1:4', '1:8'];
 const SIZE_ORDER = ['1K', '2K', '4K'];
+
+function parseModelVariant(modelId: string): ParsedModelVariant | null {
+  const normalized = modelId.trim().toLowerCase();
+  if (!normalized) return null;
+
+  for (const [sizeSuffix, imageSize] of ORDERED_IMAGE_SIZE_SUFFIXES) {
+    for (const ratioSuffix of ORDERED_RATIO_SUFFIXES) {
+      const suffix = `-${ratioSuffix}${sizeSuffix}`;
+      if (!normalized.endsWith(suffix)) continue;
+
+      const baseName = modelId.slice(0, modelId.length - suffix.length).trim();
+      if (!baseName) continue;
+
+      return {
+        baseName,
+        aspectRatio: RATIO_SUFFIX_ALIASES[ratioSuffix],
+        imageSize,
+      };
+    }
+  }
+
+  return null;
+}
 
 function formatDisplayName(baseName: string): string {
   const lower = baseName.toLowerCase();
@@ -89,83 +148,94 @@ function buildRecommendedDescription(group: Pick<GroupedModel, 'features' | 'asp
 
 function groupModels(models: RemoteModel[]): { grouped: GroupedModel[]; ungrouped: RemoteModel[] } {
   const grouped: Map<string, GroupedModel> = new Map();
-  const ungrouped: RemoteModel[] = [];
+  const modelMap = new Map(models.map((model) => [model.id, model]));
   const processedIds = new Set<string>();
 
   for (const model of models) {
-    let matched = false;
-
-    for (const pattern of MODEL_PATTERNS) {
-      const match = model.id.match(pattern.basePattern);
-      if (!match) continue;
-
-      const baseName = match[1];
-      const ratioSuffix = match[2].toLowerCase();
-      const sizeSuffix = (match[3] || '').toLowerCase();
-
-      const aspectRatio = pattern.ratioSuffixes[ratioSuffix];
-      const imageSize = pattern.sizeSuffixes[sizeSuffix] || '1K';
-      if (!aspectRatio) continue;
-
-      let group = grouped.get(baseName);
-      if (!group) {
-        const displayName = formatDisplayName(baseName);
-        group = {
-          baseName,
-          displayName,
-          apiModel: model.id,
-          modelIds: [],
-          modelCount: 0,
-          recommendedName: displayName,
-          recommendedDescription: '',
-          tags: [],
-          aspectRatios: [],
-          imageSizes: [],
-          resolutions: {},
-          features: {
-            textToImage: true,
-            imageToImage: true,
-            imageSize: Object.keys(pattern.sizeSuffixes).length > 1,
-          },
-        };
-        grouped.set(baseName, group);
-      }
-
-      if (!group.modelIds.includes(model.id)) {
-        group.modelIds.push(model.id);
-        group.modelCount = group.modelIds.length;
-      }
-
-      if (!group.aspectRatios.includes(aspectRatio)) {
-        group.aspectRatios.push(aspectRatio);
-      }
-
-      if (imageSize && !group.imageSizes.includes(imageSize)) {
-        group.imageSizes.push(imageSize);
-      }
-
-      if (group.features.imageSize && imageSize) {
-        if (!group.resolutions[imageSize]) {
-          group.resolutions[imageSize] = {};
-        }
-        (group.resolutions[imageSize] as Record<string, string>)[aspectRatio] = model.id;
-      } else {
-        group.resolutions[aspectRatio] = model.id;
-      }
-
-      processedIds.add(model.id);
-      matched = true;
-      break;
+    const parsed = parseModelVariant(model.id);
+    if (!parsed) {
+      continue;
     }
 
-    if (!matched) {
-      ungrouped.push(model);
+    let group = grouped.get(parsed.baseName);
+    if (!group) {
+      const displayName = formatDisplayName(parsed.baseName);
+      group = {
+        baseName: parsed.baseName,
+        displayName,
+        apiModel: parsed.baseName,
+        modelIds: [],
+        sourceModelIds: [],
+        modelCount: 0,
+        recommendedName: displayName,
+        recommendedDescription: '',
+        tags: [],
+        aspectRatios: [],
+        imageSizes: [],
+        resolutions: {},
+        features: {
+          textToImage: true,
+          imageToImage: true,
+          imageSize: false,
+        },
+      };
+      grouped.set(parsed.baseName, group);
     }
+
+    if (!group.modelIds.includes(model.id)) {
+      group.modelIds.push(model.id);
+    }
+    if (!group.sourceModelIds.includes(model.id)) {
+      group.sourceModelIds.push(model.id);
+    }
+
+    if (!group.aspectRatios.includes(parsed.aspectRatio)) {
+      group.aspectRatios.push(parsed.aspectRatio);
+    }
+    if (!group.imageSizes.includes(parsed.imageSize)) {
+      group.imageSizes.push(parsed.imageSize);
+    }
+
+    if (!group.resolutions[parsed.imageSize] || typeof group.resolutions[parsed.imageSize] === 'string') {
+      group.resolutions[parsed.imageSize] = {};
+    }
+    (group.resolutions[parsed.imageSize] as Record<string, string>)[parsed.aspectRatio] = model.id;
+
+    processedIds.add(model.id);
   }
 
   for (const group of Array.from(grouped.values())) {
-    group.aspectRatios.sort((left, right) => RATIO_ORDER.indexOf(left) - RATIO_ORDER.indexOf(right));
-    group.imageSizes.sort((left, right) => SIZE_ORDER.indexOf(left) - SIZE_ORDER.indexOf(right));
+    if (!modelMap.has(group.baseName)) continue;
+
+    if (!group.modelIds.includes(group.baseName)) {
+      group.modelIds.unshift(group.baseName);
+    }
+    if (!group.sourceModelIds.includes(group.baseName)) {
+      group.sourceModelIds.unshift(group.baseName);
+    }
+    processedIds.add(group.baseName);
+  }
+
+  for (const group of Array.from(grouped.values())) {
+    group.modelCount = group.modelIds.length;
+    group.aspectRatios.sort((left, right) => {
+      const leftIndex = RATIO_ORDER.indexOf(left);
+      const rightIndex = RATIO_ORDER.indexOf(right);
+      return (leftIndex === -1 ? 99 : leftIndex) - (rightIndex === -1 ? 99 : rightIndex);
+    });
+    group.imageSizes.sort((left, right) => {
+      const leftIndex = SIZE_ORDER.indexOf(left);
+      const rightIndex = SIZE_ORDER.indexOf(right);
+      return (leftIndex === -1 ? 99 : leftIndex) - (rightIndex === -1 ? 99 : rightIndex);
+    });
+
+    const sizeBuckets = group.resolutions as Record<string, Record<string, string>>;
+    group.features.imageSize = group.imageSizes.length > 1;
+
+    if (!group.features.imageSize) {
+      const flattenedRatioMap = sizeBuckets[group.imageSizes[0]] || {};
+      group.resolutions = flattenedRatioMap;
+    }
 
     const tags: string[] = [];
     if (group.features.textToImage) tags.push('文生图');
@@ -177,13 +247,15 @@ function groupModels(models: RemoteModel[]): { grouped: GroupedModel[]; ungroupe
     const defaultRatio = group.aspectRatios.includes('1:1') ? '1:1' : group.aspectRatios[0];
     const defaultSize = group.imageSizes.includes('1K') ? '1K' : group.imageSizes[0];
 
-    if (group.features.imageSize && defaultSize) {
-      const sizeConfig = group.resolutions[defaultSize];
-      if (typeof sizeConfig === 'object' && defaultRatio && sizeConfig[defaultRatio]) {
+    if (modelMap.has(group.baseName)) {
+      group.apiModel = group.baseName;
+    } else if (group.features.imageSize && defaultSize) {
+      const sizeConfig = sizeBuckets[defaultSize];
+      if (sizeConfig && defaultRatio && sizeConfig[defaultRatio]) {
         group.apiModel = sizeConfig[defaultRatio];
       }
     } else if (defaultRatio) {
-      const ratioConfig = group.resolutions[defaultRatio];
+      const ratioConfig = (group.resolutions as Record<string, string>)[defaultRatio];
       if (typeof ratioConfig === 'string') {
         group.apiModel = ratioConfig;
       }
@@ -194,7 +266,7 @@ function groupModels(models: RemoteModel[]): { grouped: GroupedModel[]; ungroupe
 
   return {
     grouped: Array.from(grouped.values()).sort((left, right) => left.displayName.localeCompare(right.displayName)),
-    ungrouped: ungrouped.filter((model) => !processedIds.has(model.id)),
+    ungrouped: models.filter((model) => !processedIds.has(model.id)),
   };
 }
 
