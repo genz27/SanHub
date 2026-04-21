@@ -8,6 +8,7 @@ export interface ExtendedSiteConfig extends SiteConfig {
   defaultBalance: number;
   squareEnabled: boolean;
   gachaEnabled: boolean;
+  characterCardEnabled: boolean;
   inviteEnabled: boolean;
   inviteRewardEnabled: boolean;
   inviteeBonusPoints: number;
@@ -25,6 +26,7 @@ const defaultSiteConfig: ExtendedSiteConfig = {
   defaultBalance: 100,
   squareEnabled: true,
   gachaEnabled: true,
+  characterCardEnabled: true,
   inviteEnabled: true,
   inviteRewardEnabled: true,
   inviteeBonusPoints: 100,
@@ -69,6 +71,7 @@ export function SiteConfigProvider({ children, initialConfig }: SiteConfigProvid
           defaultBalance: data.data.defaultBalance ?? 100,
           squareEnabled: data.data.squareEnabled ?? true,
           gachaEnabled: data.data.gachaEnabled ?? true,
+          characterCardEnabled: data.data.characterCardEnabled ?? true,
           inviteEnabled: data.data.inviteEnabled ?? true,
           inviteRewardEnabled: data.data.inviteRewardEnabled ?? true,
           inviteeBonusPoints: data.data.inviteeBonusPoints ?? 100,

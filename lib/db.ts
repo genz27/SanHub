@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS system_config (
   picui_base_url VARCHAR(500) DEFAULT 'https://picui.cn/api/v1',
   square_enabled TINYINT(1) DEFAULT 1,
   gacha_enabled TINYINT(1) DEFAULT 1,
+  character_card_enabled TINYINT(1) DEFAULT 1,
   invite_enabled TINYINT(1) DEFAULT 1,
   invite_reward_enabled TINYINT(1) DEFAULT 1,
   invite_invitee_bonus INT DEFAULT 100,
@@ -406,6 +407,11 @@ export async function initializeDatabase(): Promise<void> {
   }
   try {
     await db.execute("ALTER TABLE system_config ADD COLUMN gacha_enabled TINYINT(1) DEFAULT 1");
+  } catch {
+    // 字段已存在，忽略错误
+  }
+  try {
+    await db.execute("ALTER TABLE system_config ADD COLUMN character_card_enabled TINYINT(1) DEFAULT 1");
   } catch {
     // 字段已存在，忽略错误
   }
@@ -1465,6 +1471,7 @@ export async function getSystemConfig(): Promise<SystemConfig> {
         featureFlags: {
           squareEnabled: true,
           gachaEnabled: true,
+          characterCardEnabled: true,
         },
         inviteSettings: {
           enabled: true,
@@ -1557,6 +1564,7 @@ export async function getSystemConfig(): Promise<SystemConfig> {
       featureFlags: {
         squareEnabled: row.square_enabled !== 0,
         gachaEnabled: row.gacha_enabled !== 0,
+        characterCardEnabled: row.character_card_enabled !== 0,
       },
       inviteSettings: {
         enabled: row.invite_enabled !== 0,
@@ -1737,6 +1745,10 @@ export async function updateSystemConfig(
     if (featureFlags.gachaEnabled !== undefined) {
       fields.push('gacha_enabled = ?');
       values.push(featureFlags.gachaEnabled ? 1 : 0);
+    }
+    if (featureFlags.characterCardEnabled !== undefined) {
+      fields.push('character_card_enabled = ?');
+      values.push(featureFlags.characterCardEnabled ? 1 : 0);
     }
   }
   if (updates.inviteSettings) {

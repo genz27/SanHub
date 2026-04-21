@@ -30,6 +30,7 @@ async function getSiteConfig(): Promise<ExtendedSiteConfig> {
     defaultBalance: config.defaultBalance ?? 100,
     squareEnabled: config.featureFlags?.squareEnabled ?? true,
     gachaEnabled: config.featureFlags?.gachaEnabled ?? true,
+    characterCardEnabled: config.featureFlags?.characterCardEnabled ?? true,
     inviteEnabled: config.inviteSettings?.enabled ?? true,
     inviteRewardEnabled: config.inviteSettings?.rewardEnabled ?? true,
     inviteeBonusPoints: config.inviteSettings?.inviteeBonusPoints ?? 100,

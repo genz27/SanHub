@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { saveCharacterCard, updateCharacterCard, getUserById } from '@/lib/db';
+import { saveCharacterCard, updateCharacterCard, getUserById, getSystemConfig } from '@/lib/db';
 import { createCharacterCard } from '@/lib/sora-api';
 import { uploadToPicUI } from '@/lib/picui';
 import { checkRateLimit, RateLimitConfig } from '@/lib/rate-limit';
@@ -114,6 +114,11 @@ export async function POST(request: NextRequest) {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
       return NextResponse.json({ error: '请先登录' }, { status: 401 });
+    }
+
+    const config = await getSystemConfig();
+    if (!config.featureFlags.characterCardEnabled) {
+      return NextResponse.json({ error: '角色卡生成功能已关闭' }, { status: 403 });
     }
 
     const body: CharacterCardRequest = await request.json();

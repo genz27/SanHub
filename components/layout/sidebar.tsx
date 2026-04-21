@@ -48,7 +48,9 @@ export function Sidebar({ user }: SidebarProps) {
   const [pendingCount, setPendingCount] = useState<number | null>(null);
   const [pendingUpdatedAt, setPendingUpdatedAt] = useState<number | null>(null);
   const visibleNavItems = navItems.filter(
-    (item) => item.href !== '/square' || siteConfig.squareEnabled
+    (item) =>
+      (item.href !== '/square' || siteConfig.squareEnabled) &&
+      (item.href !== '/video/character-card' || siteConfig.characterCardEnabled)
   );
 
   const fetchPendingTasks = useCallback(async () => {

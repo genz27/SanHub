@@ -330,6 +330,26 @@ export default function SiteConfigPage() {
 
         <div className="flex items-center justify-between rounded-xl border border-border/70 bg-card/50 p-4">
           <div>
+            <p className="text-sm text-foreground">角色卡生成</p>
+            <p className="mt-1 text-xs text-foreground/30">关闭后隐藏导航入口，并拒绝新的角色卡生成请求。</p>
+          </div>
+          <Switch
+            checked={config.featureFlags.characterCardEnabled}
+            onClick={() =>
+              patch((prev) => ({
+                ...prev,
+                featureFlags: {
+                  ...prev.featureFlags,
+                  characterCardEnabled: !prev.featureFlags.characterCardEnabled,
+                },
+              }))
+            }
+            color="bg-indigo-500"
+          />
+        </div>
+
+        <div className="flex items-center justify-between rounded-xl border border-border/70 bg-card/50 p-4">
+          <div>
             <p className="text-sm text-foreground">启用邀请码</p>
             <p className="mt-1 text-xs text-foreground/30">关闭后用户页不再显示邀请码入口。</p>
           </div>

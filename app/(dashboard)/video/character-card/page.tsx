@@ -3,6 +3,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 import {
   User,
   Upload,
@@ -18,6 +19,7 @@ import { cn, fileToBase64 } from '@/lib/utils';
 import { toast } from '@/components/ui/toaster';
 import type { CharacterCard, DailyLimitConfig } from '@/types';
 import { formatDate } from '@/lib/utils';
+import { useSiteConfig } from '@/components/providers/site-config-provider';
 
 // 进行中的任务（存储在内存中，刷新后消失）
 interface PendingTask {
@@ -40,6 +42,8 @@ type CreateMode = 'video' | 'image';
 
 export default function CharacterCardPage() {
   const { data: session } = useSession();
+  const router = useRouter();
+  const siteConfig = useSiteConfig();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
@@ -73,6 +77,12 @@ export default function CharacterCardPage() {
   const [timestampStart, setTimestampStart] = useState(0);
   const [timestampEnd, setTimestampEnd] = useState(3);
   const [videoDuration, setVideoDuration] = useState(16); // 视频时长，最大16秒
+
+  useEffect(() => {
+    if (!siteConfig.characterCardEnabled) {
+      router.replace('/create');
+    }
+  }, [router, siteConfig.characterCardEnabled]);
 
   // 加载角色卡列表（包括已完成和进行中的）
   const loadCharacterCards = useCallback(async () => {
@@ -416,6 +426,10 @@ export default function CharacterCardPage() {
       });
     }
   };
+
+  if (!siteConfig.characterCardEnabled) {
+    return null;
+  }
 
   return (
     <div className="flex flex-col h-[calc(100vh-100px)] max-w-7xl mx-auto">
