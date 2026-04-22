@@ -10,14 +10,13 @@ import {
   AlertCircle,
   Dices,
   User,
-  X,
-  Plus,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { compressImageToWebP, fileToBase64 } from '@/lib/image-compression';
 import { toast } from '@/components/ui/toaster';
 import { CustomSelect } from '@/components/ui/select-custom';
 import { InlineToggle } from '@/components/generator/inline-toggle';
+import { ReferenceImageInput } from '@/components/generator/reference-image-input';
 import type { Task } from '@/components/generator/result-gallery';
 import { useSiteConfig } from '@/components/providers/site-config-provider';
 import type { Generation, CharacterCard, SafeVideoModel, DailyLimitConfig } from '@/types';
@@ -68,7 +67,6 @@ export function VideoGenerationView({
 }: VideoGenerationPageProps = {}) {
   const { update } = useSession();
   const siteConfig = useSiteConfig();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
   const filesRef = useRef<Array<{ file: File; preview: string }>>([]);
   const refreshGenerationFeedRef = useRef<() => Promise<void>>(async () => {});
@@ -107,10 +105,6 @@ export function VideoGenerationView({
   // 角色卡选择
   const [characterCards, setCharacterCards] = useState<CharacterCard[]>([]);
   const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
-
-  // 新增：拖拽上传状态
-  const [isDragging, setIsDragging] = useState(false);
-
 
   const [showCharacterMenu, setShowCharacterMenu] = useState(false);
 
@@ -287,43 +281,53 @@ export function VideoGenerationView({
     setShowCharacterMenu(false);
   };
 
-  // 新增：拖拽上传处理
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(true);
-  };
+  const handleAddReferenceFiles = useCallback(
+    (selectedFiles: File[]) => {
+      const nextFiles: Array<{ file: File; preview: string }> = [];
+      let hasOversizedImage = false;
 
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-  };
+      for (const file of selectedFiles) {
+        if (!file.type.startsWith('image/')) continue;
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-    const droppedFiles = Array.from(e.dataTransfer.files);
-    const nextFiles: Array<{ file: File; preview: string }> = [];
-    for (const file of droppedFiles) {
-      if (!file.type.startsWith('image/')) continue;
+        if (file.size > 15 * 1024 * 1024) {
+          hasOversizedImage = true;
+          continue;
+        }
 
-      if (file.size > 15 * 1024 * 1024) {
+        nextFiles.push({ file, preview: URL.createObjectURL(file) });
+      }
+
+      if (hasOversizedImage) {
         toast({ title: '图片过大', description: '图片大小不能超过 15MB', variant: 'destructive' });
-        continue;
+        setError('图片大小不能超过 15MB');
       }
 
-      nextFiles.push({ file, preview: URL.createObjectURL(file) });
-    }
-
-    if (nextFiles.length > 0) {
-      if (activeExternalReference) {
-        setActiveExternalReference(null);
+      if (nextFiles.length > 0) {
+        setError('');
+        if (activeExternalReference) {
+          setActiveExternalReference(null);
+        }
+        setFiles((prev) => [...prev, ...nextFiles]);
       }
-      setFiles((prev) => [...prev, ...nextFiles]);
-    }
-  };
+    },
+    [activeExternalReference, setActiveExternalReference]
+  );
+
+  const handleRemoveReferenceImage = useCallback((index: number) => {
+    setFiles((prev) => {
+      const target = prev[index];
+      if (!target) return prev;
+
+      URL.revokeObjectURL(target.preview);
+      setCompressedCache((current) => {
+        const nextCache = new Map(current);
+        nextCache.delete(target.file);
+        return nextCache;
+      });
+
+      return prev.filter((_, itemIndex) => itemIndex !== index);
+    });
+  }, []);
 
 
   const handlePromptKeyUp = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -510,32 +514,6 @@ export function VideoGenerationView({
       filesRef.current = [];
     };
   }, []);
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = Array.from(e.target.files || []);
-    const nextFiles: Array<{ file: File; preview: string }> = [];
-    for (const file of selectedFiles) {
-      // 只允许图片，禁止视频
-      if (!file.type.startsWith('image/')) continue;
-
-      // 15MB limit check
-      if (file.size > 15 * 1024 * 1024) {
-        toast({ title: '图片过大', description: '图片大小不能超过 15MB', variant: 'destructive' });
-        continue;
-      }
-
-      nextFiles.push({ file, preview: URL.createObjectURL(file) });
-    }
-
-    if (nextFiles.length > 0) {
-      setError('');
-      if (activeExternalReference) {
-        setActiveExternalReference(null);
-      }
-      setFiles((prev) => [...prev, ...nextFiles]);
-    }
-    e.target.value = '';
-  };
 
   const handleRemoveTask = useCallback(async (taskId: string) => {
     const controller = abortControllersRef.current.get(taskId);
@@ -878,66 +856,15 @@ export function VideoGenerationView({
           <div className="flex gap-4 mb-4">
             {/* 图片上传区 */}
             {(currentModel?.features.imageToVideo || activeExternalReference) && (
-              <div
-                onClick={() => fileInputRef.current?.click()}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                className={cn(
-                  'w-24 h-20 shrink-0 border-2 border-dashed rounded-lg flex flex-col items-center justify-center cursor-pointer transition-all',
-                  isDragging
-                    ? 'border-sky-500 bg-sky-500/10'
-                    : files.length > 0 || activeExternalReference
-                      ? 'border-border/70 bg-card/60'
-                      : 'border-border/70 hover:border-border hover:bg-card/60'
-                )}
-              >
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  className="hidden"
-                  multiple
-                  accept="image/*"
-                  onChange={handleFileUpload}
-                />
-                {files.length > 0 || activeExternalReference ? (
-                  <div className="relative w-full h-full">
-                    <img
-                      src={files[0]?.preview || activeExternalReference?.previewUrl}
-                      alt=""
-                      className="w-full h-full object-cover rounded-md"
-                    />
-                    {files.length > 1 && (
-                      <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/70 rounded text-[10px] text-white">
-                        +{files.length - 1}
-                      </div>
-                    )}
-                    {activeExternalReference && files.length === 0 && (
-                      <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/70 rounded text-[10px] text-white">
-                        已生成
-                      </div>
-                    )}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (files.length > 0) {
-                          clearFiles();
-                        } else {
-                          setActiveExternalReference(null);
-                        }
-                      }}
-                      className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center hover:bg-red-600"
-                    >
-                      <X className="w-3 h-3 text-white" />
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <Plus className="w-5 h-5 text-foreground/40 mb-1" />
-                    <span className="text-[10px] text-foreground/40">参考图/视频帧</span>
-                  </>
-                )}
-              </div>
+              <ReferenceImageInput
+                images={files}
+                externalReference={activeExternalReference}
+                emptyLabel="参考图/视频帧"
+                externalBadge="已生成"
+                onAddFiles={handleAddReferenceFiles}
+                onRemoveImage={handleRemoveReferenceImage}
+                onClearExternalReference={() => setActiveExternalReference(null)}
+              />
             )}
 
             {/* 文本输入区 */}

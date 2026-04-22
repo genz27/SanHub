@@ -6,12 +6,10 @@ import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import {
-  Upload,
   Loader2,
   AlertCircle,
   Sparkles,
   Dices,
-  X,
   Image as ImageIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -20,6 +18,7 @@ import type { Generation, SafeImageModel, DailyLimitConfig } from '@/types';
 import { toast } from '@/components/ui/toaster';
 import type { Task } from '@/components/generator/result-gallery';
 import { InlineToggle } from '@/components/generator/inline-toggle';
+import { ReferenceImageInput } from '@/components/generator/reference-image-input';
 import { useSiteConfig } from '@/components/providers/site-config-provider';
 import { CustomSelect } from '@/components/ui/select-custom';
 import {
@@ -96,7 +95,6 @@ export function ImageGenerationPage({
   const router = useRouter();
   const { update } = useSession();
   const siteConfig = useSiteConfig();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
   const refreshGenerationFeedRef = useRef<() => Promise<void>>(async () => {});
   const imagesRef = useRef<Array<{ file: File; preview: string }>>([]);
@@ -236,32 +234,58 @@ export function ImageGenerationPage({
     clearImages();
   }, [clearImages, externalReference, images.length]);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = Array.from(e.target.files || []);
-    const nextImages: Array<{ file: File; preview: string }> = [];
+  const handleAddReferenceFiles = useCallback(
+    (selectedFiles: File[]) => {
+      const nextImages: Array<{ file: File; preview: string }> = [];
+      let hasOversizedImage = false;
 
-    for (const file of selectedFiles) {
-      if (!file.type.startsWith('image/')) continue;
+      for (const file of selectedFiles) {
+        if (!file.type.startsWith('image/')) continue;
 
-      if (file.size > 15 * 1024 * 1024) {
-        setError('图片大小不能超过 15MB');
-        continue;
+        if (file.size > 15 * 1024 * 1024) {
+          hasOversizedImage = true;
+          continue;
+        }
+
+        nextImages.push({
+          file,
+          preview: URL.createObjectURL(file),
+        });
       }
 
-      nextImages.push({
-        file,
-        preview: URL.createObjectURL(file),
+      if (hasOversizedImage) {
+        setError('图片大小不能超过 15MB');
+        toast({
+          title: '图片过大',
+          description: '图片大小不能超过 15MB',
+          variant: 'destructive',
+        });
+      }
+
+      if (nextImages.length > 0) {
+        setError('');
+        onClearExternalReference?.();
+        setImages((prev) => [...prev, ...nextImages]);
+      }
+    },
+    [onClearExternalReference]
+  );
+
+  const handleRemoveReferenceImage = useCallback((index: number) => {
+    setImages((prev) => {
+      const target = prev[index];
+      if (!target) return prev;
+
+      URL.revokeObjectURL(target.preview);
+      setCompressedCache((current) => {
+        const nextCache = new Map(current);
+        nextCache.delete(target.file);
+        return nextCache;
       });
-    }
 
-    if (nextImages.length > 0) {
-      setError('');
-      onClearExternalReference?.();
-      setImages((prev) => [...prev, ...nextImages]);
-    }
-
-    e.target.value = '';
-  };
+      return prev.filter((_, itemIndex) => itemIndex !== index);
+    });
+  }, []);
 
   const loadRecentGenerations = useCallback(async () => {
     try {
@@ -648,9 +672,6 @@ export function ImageGenerationPage({
     return getImageResolution(currentModel, aspectRatio, imageSize);
   };
 
-  const previewUrl = images[0]?.preview || externalReference?.previewUrl || '';
-  const isUsingExternalReference = Boolean(externalReference) && images.length === 0;
-
   return (
     <div
       className={cn(
@@ -730,57 +751,15 @@ export function ImageGenerationPage({
         <div className="p-4">
           <div className="flex gap-4 mb-4">
             {currentModel?.features.imageToImage && (
-              <div
-                onClick={() => fileInputRef.current?.click()}
-                className={cn(
-                  'w-24 h-20 shrink-0 border-2 border-dashed rounded-lg flex flex-col items-center justify-center cursor-pointer transition-all',
-                  previewUrl
-                    ? 'border-border/70 bg-card/60'
-                    : 'border-border/70 hover:border-border hover:bg-card/60'
-                )}
-              >
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  className="hidden"
-                  multiple
-                  accept="image/*"
-                  onChange={handleFileUpload}
-                />
-                {previewUrl ? (
-                  <div className="relative w-full h-full">
-                    <img src={previewUrl} alt="" className="w-full h-full object-cover rounded-md" />
-                    {images.length > 1 && (
-                      <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/70 rounded text-[10px] text-white">
-                        +{images.length - 1}
-                      </div>
-                    )}
-                    {isUsingExternalReference && (
-                      <div className="absolute left-1 bottom-1 px-1.5 py-0.5 bg-black/70 rounded text-[10px] text-white">
-                        生成结果
-                      </div>
-                    )}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (images.length > 0) {
-                          clearImages();
-                          return;
-                        }
-                        onClearExternalReference?.();
-                      }}
-                      className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center hover:bg-red-600"
-                    >
-                      <X className="w-3 h-3 text-white" />
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <Upload className="w-5 h-5 text-foreground/40 mb-1" />
-                    <span className="text-[10px] text-foreground/40">参考图</span>
-                  </>
-                )}
-              </div>
+              <ReferenceImageInput
+                images={images}
+                externalReference={externalReference}
+                emptyLabel="参考图"
+                externalBadge="生成结果"
+                onAddFiles={handleAddReferenceFiles}
+                onRemoveImage={handleRemoveReferenceImage}
+                onClearExternalReference={onClearExternalReference}
+              />
             )}
 
             <div className="flex-1 relative">
