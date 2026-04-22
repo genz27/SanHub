@@ -321,13 +321,13 @@ export function ReferenceImageInput({
             aria-label="Toggle reference image list"
             title={isExpanded ? '收起参考图' : '展开参考图'}
           >
-            {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}
           </button>
         </>
       )}
 
       {isExpanded && totalCount > 0 && (
-        <div className="absolute left-0 top-full z-30 mt-3 w-[min(22rem,calc(100vw-2rem))] rounded-xl border border-border/70 bg-card/95 p-3 shadow-2xl backdrop-blur">
+        <div className="absolute bottom-full left-0 z-[80] mb-3 w-[min(22rem,calc(100vw-2rem))] rounded-xl border border-border/70 bg-card/95 p-3 shadow-2xl backdrop-blur">
           <div className="mb-2 flex items-center justify-between gap-2">
             <div>
               <p className="text-xs font-medium text-foreground">参考图</p>
