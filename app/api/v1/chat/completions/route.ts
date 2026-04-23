@@ -1,31 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateWithSora } from '@/lib/sora';
 import { generateImage, type ImageGenerateRequest } from '@/lib/image-generator';
-import { getImageModels, getImageChannels, getSystemConfig, getVideoChannel, getVideoChannels } from '@/lib/db';
+import { getSystemConfig, getVideoChannel, getVideoChannels } from '@/lib/db';
 import { fetchWithRetry } from '@/lib/http-retry';
-import { fetchExternalBuffer } from '@/lib/safe-fetch';
 import { generateId } from '@/lib/utils';
 import {
-  buildDataUrl,
   buildErrorResponse,
   extractBearerToken,
   isAuthorized,
-  parseDataUrl,
 } from '@/lib/v1';
+import {
+  collectPayloadImageReferences,
+  loadImageSource,
+  loadReferenceImages,
+  normalizeImageReferences,
+  resolveImageModelId,
+  resolveImageSize,
+} from '@/lib/v1-images';
 import { processVideoPrompt } from '@/lib/prompt-processor';
 import { assertPromptsAllowed } from '@/lib/prompt-blocklist';
 
 export const dynamic = 'force-dynamic';
 
-const MAX_REFERENCE_IMAGE_BYTES = 10 * 1024 * 1024;
-const MAX_IMAGE_COUNT = 10;
 const OPENAI_CHAT_VIDEO_CHANNEL_TYPES = new Set(['sora', 'openai-compatible', 'flow2api']);
 
 type MediaType = 'image' | 'video';
 
 type ChatContentPart =
   | { type: 'text'; text?: string }
-  | { type: 'image_url'; image_url?: { url: string } };
+  | { type: 'image_url'; image_url?: string | { url?: string } }
+  | { type: 'input_image'; image_url?: string | { url?: string }; file_data?: string }
+  | { type: 'file'; file?: { file_data?: string; url?: string } };
 
 type ChatMessage = {
   role: string;
@@ -115,8 +120,8 @@ function extractPromptAndImages(messages: ChatMessage[]): { prompt: string; imag
     if (part.type === 'text' && part.text) {
       promptParts.push(part.text);
     }
-    if (part.type === 'image_url' && part.image_url?.url) {
-      imageUrls.push(part.image_url.url);
+    if (part.type !== 'text') {
+      imageUrls.push(...normalizeImageReferences(part));
     }
   }
 
@@ -160,45 +165,6 @@ function normalizeIncomingVideoConfigObject(payload: Record<string, unknown>):
   return Object.keys(output).length > 0 ? output : undefined;
 }
 
-async function loadImageSource(input: string, origin: string): Promise<{ mimeType: string; data: string; dataUrl: string }> {
-  const trimmed = input.trim();
-  const parsed = parseDataUrl(trimmed);
-  if (parsed) {
-    return {
-      mimeType: parsed.mimeType,
-      data: parsed.data,
-      dataUrl: buildDataUrl(parsed.mimeType, parsed.data),
-    };
-  }
-
-  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-    const { buffer, contentType } = await fetchExternalBuffer(trimmed, {
-      origin,
-      allowRelative: false,
-      maxBytes: MAX_REFERENCE_IMAGE_BYTES,
-      timeoutMs: 10000,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      },
-    });
-
-    const data = buffer.toString('base64');
-    const mimeType = (contentType || 'image/jpeg').split(';')[0]?.trim() || 'image/jpeg';
-    return {
-      mimeType,
-      data,
-      dataUrl: buildDataUrl(mimeType, data),
-    };
-  }
-
-  const fallbackMime = 'image/jpeg';
-  return {
-    mimeType: fallbackMime,
-    data: trimmed,
-    dataUrl: buildDataUrl(fallbackMime, trimmed),
-  };
-}
-
 async function resolveVideoChatConfig(channelId?: string): Promise<{ apiKey: string; baseUrl: string }> {
   if (channelId) {
     const channel = await getVideoChannel(channelId);
@@ -234,32 +200,6 @@ function isSameOrigin(left: string, right: string): boolean {
   } catch {
     return false;
   }
-}
-
-async function resolveImageModelId(model: string): Promise<string | null> {
-  const channels = await getImageChannels(true);
-  const enabledChannelIds = new Set(channels.map((channel) => channel.id));
-  const models = (await getImageModels(true)).filter((item) => enabledChannelIds.has(item.channelId));
-  if (models.length === 0) return null;
-
-  const normalized = model.toLowerCase();
-  const byId = models.find((m) => m.id.toLowerCase() === normalized);
-  if (byId) return byId.id;
-
-  const byApiModel = models.find((m) => m.apiModel.toLowerCase() === normalized);
-  if (byApiModel) return byApiModel.id;
-
-  const byName = models.find((m) => m.name.toLowerCase() === normalized);
-  if (byName) return byName.id;
-
-  const aliases = ['gpt-image', 'gpt-image-1', 'image', 'sora-image'];
-  if (!aliases.some((alias) => normalized.includes(alias))) {
-    return null;
-  }
-
-  const channelById = new Map(channels.map((channel) => [channel.id, channel]));
-  const soraModel = models.find((m) => channelById.get(m.channelId)?.type === 'sora');
-  return soraModel?.id || models[0].id;
 }
 
 function buildChatResponseContent(type: 'image' | 'video', url: string): string {
@@ -311,10 +251,10 @@ export async function POST(request: NextRequest) {
   }
 
   const { prompt, imageUrls: extractedImageUrls } = extractPromptAndImages(messages as ChatMessage[]);
-  const imageUrls = [...extractedImageUrls];
-  if (typeof payload?.image === 'string' && payload.image.trim()) {
-    imageUrls.unshift(payload.image.trim());
-  }
+  const imageUrls = [
+    ...collectPayloadImageReferences(payload as Record<string, unknown>),
+    ...extractedImageUrls,
+  ];
 
   if (!prompt && imageUrls.length === 0) {
     return buildErrorResponse('Prompt or image input is required', 400);
@@ -583,17 +523,12 @@ export async function POST(request: NextRequest) {
     return buildErrorResponse('Unknown model', 400);
   }
 
-  const limitedImages = imageUrls.slice(0, MAX_IMAGE_COUNT);
-  const imageInputs = await Promise.all(
-    limitedImages.map(async (url) => {
-      const source = await loadImageSource(url, origin);
-      return { mimeType: source.mimeType, data: source.dataUrl };
-    })
-  );
+  const imageInputs = await loadReferenceImages(imageUrls, origin);
 
   const imageRequest: ImageGenerateRequest = {
     modelId: imageModelId,
     prompt: prompt || '',
+    ...resolveImageSize(payload.size),
     images: imageInputs.length > 0 ? imageInputs : undefined,
   };
 

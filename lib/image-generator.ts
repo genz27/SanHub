@@ -11,6 +11,7 @@ import type { GenerateResult } from '@/types';
 export interface ImageGenerateRequest {
   modelId: string;
   prompt: string;
+  size?: string;
   aspectRatio?: string;
   imageSize?: string;
   images?: Array<{ mimeType: string; data: string }>;
@@ -64,9 +65,22 @@ export type ResolvedImageTarget = {
   usedModelFromMapping: boolean;
 };
 
-const SIZE_PATTERN = /^\d+x\d+$/i;
+const PIXEL_SIZE_PATTERN = /^\d+x\d+$/i;
+const ASPECT_RATIO_PATTERN = /^\d+:\d+$/;
 
-const isSizeValue = (value: string): boolean => SIZE_PATTERN.test(value);
+const isSizeValue = (value: string): boolean =>
+  PIXEL_SIZE_PATTERN.test(value) || ASPECT_RATIO_PATTERN.test(value);
+
+function buildOpenAIImageInput(
+  images: ImageGenerateRequest['images']
+): string | string[] | undefined {
+  const refs = (images || [])
+    .map((image) => image.data)
+    .filter((data): data is string => Boolean(data));
+
+  if (refs.length === 0) return undefined;
+  return refs.length === 1 ? refs[0] : refs;
+}
 
 export function resolveImageTarget(
   apiModel: string,
@@ -131,7 +145,9 @@ async function generateWithOpenAI(
   };
 
   // 添加尺寸参数
-  if (target.size) {
+  if (request.size) {
+    payload.size = request.size;
+  } else if (target.size) {
     payload.size = target.size;
   } else if (!target.usedModelFromMapping && request.aspectRatio) {
     // 尝试从 model config 获取对应分辨率，这里简化处理
@@ -143,6 +159,11 @@ async function generateWithOpenAI(
       '2:3': '1024x1536',
     };
     payload.size = sizeMap[request.aspectRatio] || '1024x1024';
+  }
+
+  const imageInput = buildOpenAIImageInput(request.images);
+  if (imageInput) {
+    payload.image = imageInput;
   }
 
   const response = await fetchWithRetry(fetch, url, () => ({

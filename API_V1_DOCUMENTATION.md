@@ -457,35 +457,57 @@ curl -X POST "http://your-server/v1/videos/sora-2-abc123def456/remix" \
 | 参数 | 类型 | 必填 | 描述 |
 |------|------|------|------|
 | `prompt` | string | 是 | 图片生成提示词 |
-| `model` | string | 否 | 模型：`sora-image`, `sora-image-landscape`, `sora-image-portrait` |
+| `model` | string | 否 | 图片模型 ID 或模型别名 |
 | `n` | integer | 否 | 生成数量（目前仅支持 1） |
-| `size` | string | 否 | 尺寸：`1024x1024`, `1792x1024`, `1024x1792` |
+| `size` | string | 否 | 尺寸或比例：`1024x1024`, `1792x1024`, `16:9`, `3:2`, `1:1` |
 | `quality` | string | 否 | 质量：`standard` 或 `hd` |
 | `style` | string | 否 | 风格：`natural` 或 `vivid` |
 | `response_format` | string | 否 | 响应格式：`url` 或 `b64_json` |
-| `input_reference` | file | 否 | 参考图片文件 |
-| `input_image` | string | 否 | Base64 编码的参考图片 |
+| `image` | string/array | 否 | 单张或多张参考图，支持 URL、data URL、`{ "url": "..." }` |
 
-**请求示例 (JSON):**
+经过 NewAPI 转发 `/v1/images/generations` 时，推荐使用 `image` 字段传参考图；`images`、`references`、`input_image` 仅作为本服务直连兼容字段。
+
+**文生图示例:**
 ```bash
 curl -X POST "http://your-server/v1/images/generations" \
   -H "Authorization: Bearer your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
-    "prompt": "A beautiful sunset over mountains",
-    "model": "sora-image-landscape",
-    "size": "1792x1024"
+    "model": "gpt-image-2",
+    "prompt": "A 16:9 cinematic cyberpunk city poster",
+    "size": "16:9",
+    "n": 1
   }'
 ```
 
-**请求示例 (multipart/form-data):**
+**单图参考示例:**
 ```bash
 curl -X POST "http://your-server/v1/images/generations" \
   -H "Authorization: Bearer your-api-key" \
-  -F "prompt=A beautiful sunset over mountains" \
-  -F "model=sora-image-landscape" \
-  -F "size=1792x1024" \
-  -F "input_reference=@reference.jpg;type=image/jpeg"
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-image-2",
+    "prompt": "Use this reference and turn it into a vintage movie poster",
+    "size": "3:2",
+    "image": "https://example.com/reference.png"
+  }'
+```
+
+**多图参考示例:**
+```bash
+curl -X POST "http://your-server/v1/images/generations" \
+  -H "Authorization: Bearer your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-image-2",
+    "prompt": "Blend the subjects and colors from these references into a product key visual",
+    "size": "1:1",
+    "image": [
+      "https://example.com/ref-1.png",
+      "data:image/png;base64,BASE64_IMAGE_2",
+      { "url": "https://example.com/ref-3.png" }
+    ]
+  }'
 ```
 
 **响应示例:**
@@ -499,6 +521,49 @@ curl -X POST "http://your-server/v1/images/generations" \
     }
   ]
 }
+```
+
+---
+
+### POST /v1/images/edits
+
+基于参考图创建图片编辑结果（兼容 OpenAI Images Edits API）。
+
+**请求参数:**
+
+| 参数 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| `prompt` | string | 是 | 图片编辑提示词 |
+| `model` | string | 否 | 图片模型 ID 或模型别名 |
+| `size` | string | 否 | 尺寸或比例：`16:9`, `4:5`, `1:1`, `1024x1024` |
+| `response_format` | string | 否 | 响应格式：`url` 或 `b64_json` |
+| `image` | string/array/file | 是 | 单张或多张参考图，JSON 支持 URL/data URL，multipart 支持文件 |
+
+**JSON 多图参考示例:**
+```bash
+curl -X POST "http://your-server/v1/images/edits" \
+  -H "Authorization: Bearer your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-image-2",
+    "prompt": "Use the first image as the subject and the second image as the color reference",
+    "size": "1:1",
+    "image": [
+      "https://example.com/main.png",
+      "data:image/png;base64,BASE64_STYLE_REF"
+    ]
+  }'
+```
+
+**multipart 多图参考示例:**
+```bash
+curl -X POST "http://your-server/v1/images/edits" \
+  -H "Authorization: Bearer your-api-key" \
+  -F "model=gpt-image-2" \
+  -F "prompt=Blend these references into one consistent poster style" \
+  -F "size=3:2" \
+  -F "image[]=@./subject.png" \
+  -F "image[]=@./style.png"
 ```
 
 ---
