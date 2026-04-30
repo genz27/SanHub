@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateWithSora } from '@/lib/sora';
 import { generateImage, type ImageGenerateRequest } from '@/lib/image-generator';
+import { saveMediaAsync } from '@/lib/media-storage';
 import { getSystemConfig, getVideoChannel, getVideoChannels } from '@/lib/db';
 import { fetchWithRetry } from '@/lib/http-retry';
 import { generateId } from '@/lib/utils';
@@ -23,7 +24,7 @@ import { assertPromptsAllowed } from '@/lib/prompt-blocklist';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 600;
 
-const OPENAI_CHAT_VIDEO_CHANNEL_TYPES = new Set(['sora', 'openai-compatible', 'flow2api']);
+const OPENAI_CHAT_VIDEO_CHANNEL_TYPES = new Set(['apexerapi', 'sora', 'openai-compatible', 'flow2api']);
 
 type MediaType = 'image' | 'video';
 
@@ -41,7 +42,8 @@ type ChatMessage = {
 function isLikelyVideoModel(model: string): boolean {
   const value = model.toLowerCase();
   if (value.includes('image')) return false;
-  const markers = ['sora2', 'sora-2', 'video', 'landscape', 'portrait', '10s', '15s', '25s'];
+  if (value === 'sora') return true;
+  const markers = ['sora2', 'sora-2', 'video', 'landscape', 'portrait', '10s', '15s', '20s', '25s'];
   return markers.some((marker) => value.includes(marker));
 }
 
@@ -49,7 +51,7 @@ function shouldUseOpenAiStream(body: Record<string, unknown>, model: string, str
   if (!streamEnabled) return false;
   if (body.openai_stream === true) return true;
   if (typeof body.stream_mode === 'string' && body.stream_mode.toLowerCase() === 'openai') return true;
-  return model.toLowerCase() === 'sora';
+  return false;
 }
 
 function requestIdempotencyKey(request: NextRequest, fallbackPrefix: string): string {
@@ -435,7 +437,8 @@ export async function POST(request: NextRequest) {
           videoConfigObject: normalizedVideoConfigObject,
           video_config: normalizedVideoConfigObject,
         });
-        const content = buildChatResponseContent('video', result.url);
+        const outputUrl = await saveMediaAsync(`v1-video-${completionId}`, result.url, { publicBaseUrl: origin });
+        const content = buildChatResponseContent('video', outputUrl);
         return NextResponse.json({
           id: completionId,
           object: 'chat.completion',
@@ -496,7 +499,8 @@ export async function POST(request: NextRequest) {
             }
           );
 
-          const content = buildChatResponseContent('video', result.url);
+          const outputUrl = await saveMediaAsync(`v1-video-${completionId}`, result.url, { publicBaseUrl: origin });
+          const content = buildChatResponseContent('video', outputUrl);
           send(
             buildChatChunk({
               id: completionId,
@@ -534,18 +538,40 @@ export async function POST(request: NextRequest) {
 
   const imageInputs = await loadReferenceImages(imageUrls, origin);
 
+  // 提取 extra_body.google.image_config（Gemini/Banana 原生参数透传）
+  let aspectRatioFromConfig: string | undefined;
+  let imageSizeFromConfig: string | undefined;
+  const extraBody = (payload as Record<string, unknown>).extra_body as Record<string, unknown> | undefined;
+  const googleCfg = extraBody?.google as Record<string, unknown> | undefined;
+  const imageCfg = googleCfg?.image_config as Record<string, unknown> | undefined;
+  if (imageCfg) {
+    aspectRatioFromConfig = (typeof imageCfg.aspect_ratio === 'string' ? imageCfg.aspect_ratio : undefined)
+      || (typeof imageCfg.aspectRatio === 'string' ? imageCfg.aspectRatio : undefined);
+    imageSizeFromConfig = (typeof imageCfg.image_size === 'string' ? imageCfg.image_size : undefined)
+      || (typeof imageCfg.imageSize === 'string' ? imageCfg.imageSize : undefined);
+  }
+
   const imageRequest: ImageGenerateRequest = {
     modelId: imageModelId,
     prompt: prompt || '',
+    quality: typeof payload.quality === 'string' ? payload.quality.trim() : undefined,
     ...resolveImageSize(payload.size),
     images: imageInputs.length > 0 ? imageInputs : undefined,
     idempotencyKey: requestIdempotencyKey(request, completionId),
   };
 
+  if (!imageRequest.aspectRatio && aspectRatioFromConfig) {
+    imageRequest.aspectRatio = aspectRatioFromConfig;
+  }
+  if (!imageRequest.imageSize && imageSizeFromConfig) {
+    imageRequest.imageSize = imageSizeFromConfig;
+  }
+
   if (!stream) {
     try {
       const result = await generateImage(imageRequest);
-      const content = buildChatResponseContent('image', result.url);
+      const outputUrl = await saveMediaAsync(`v1-chat-image-${completionId}`, result.url, { publicBaseUrl: origin });
+      const content = buildChatResponseContent('image', outputUrl);
       return NextResponse.json({
         id: completionId,
         object: 'chat.completion',
@@ -580,7 +606,8 @@ export async function POST(request: NextRequest) {
 
       try {
         const result = await generateImage(imageRequest);
-        const content = buildChatResponseContent('image', result.url);
+        const outputUrl = await saveMediaAsync(`v1-chat-image-${completionId}`, result.url, { publicBaseUrl: origin });
+        const content = buildChatResponseContent('image', outputUrl);
         send(
           buildChatChunk({
             id: completionId,

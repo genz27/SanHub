@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateImage, type ImageGenerateRequest } from '@/lib/image-generator';
+import { saveMediaAsync } from '@/lib/media-storage';
 import {
   buildErrorResponse,
   extractBearerToken,
@@ -65,17 +66,28 @@ export async function POST(request: NextRequest) {
     const imageRequest: ImageGenerateRequest = {
       modelId: imageModelId,
       prompt: parsed.prompt,
+      quality: parsed.quality,
       ...resolveImageSize(parsed.size),
       images: imageInputs.length > 0 ? imageInputs : undefined,
       idempotencyKey: requestIdempotencyKey(request, 'sanhub-v1-image-edit'),
     };
 
+    if (!imageRequest.aspectRatio && parsed.aspectRatio) {
+      imageRequest.aspectRatio = parsed.aspectRatio;
+    }
+    if (!imageRequest.imageSize && parsed.imageSize) {
+      imageRequest.imageSize = parsed.imageSize;
+    }
+
     const result = await generateImage(imageRequest);
+    const outputUrl = parsed.responseFormat === 'b64_json'
+      ? result.url
+      : await saveMediaAsync(`v1-image-edit-${crypto.randomUUID()}`, result.url, { publicBaseUrl: origin });
 
     return NextResponse.json({
       created: Math.floor(Date.now() / 1000),
       data: [
-        buildOpenAIImageData(result.url, parsed.responseFormat),
+        buildOpenAIImageData(outputUrl, parsed.responseFormat),
       ],
     });
   } catch (error) {

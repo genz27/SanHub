@@ -23,6 +23,9 @@ export type ParsedOpenAIImageRequest = {
   size?: string;
   responseFormat?: string;
   imageReferences: string[];
+  aspectRatio?: string;
+  imageSize?: string;
+  quality?: string;
 };
 
 export function normalizeImageReferences(input: unknown): string[] {
@@ -169,12 +172,31 @@ export async function parseOpenAIImageRequest(request: NextRequest): Promise<Par
   const body = await request.json();
   const payload = body && typeof body === 'object' ? body as Record<string, unknown> : {};
 
+  // 提取 standard OpenAI 参数
+  const quality = typeof payload.quality === 'string' ? payload.quality.trim() : undefined;
+
+  // 提取 extra_body.google.image_config（Gemini/Banana 原生参数透传）
+  let aspectRatio: string | undefined;
+  let imageSize: string | undefined;
+  const extraBody = payload.extra_body as Record<string, unknown> | undefined;
+  const googleConfig = extraBody?.google as Record<string, unknown> | undefined;
+  const imageConfig = googleConfig?.image_config as Record<string, unknown> | undefined;
+  if (imageConfig) {
+    aspectRatio = (typeof imageConfig.aspect_ratio === 'string' ? imageConfig.aspect_ratio : undefined)
+      || (typeof imageConfig.aspectRatio === 'string' ? imageConfig.aspectRatio : undefined);
+    imageSize = (typeof imageConfig.image_size === 'string' ? imageConfig.image_size : undefined)
+      || (typeof imageConfig.imageSize === 'string' ? imageConfig.imageSize : undefined);
+  }
+
   return {
     model: typeof payload.model === 'string' ? payload.model.trim() : undefined,
     prompt: typeof payload.prompt === 'string' ? payload.prompt.trim() : '',
     size: typeof payload.size === 'string' ? payload.size.trim() : undefined,
     responseFormat: typeof payload.response_format === 'string' ? payload.response_format.trim() : undefined,
     imageReferences: collectPayloadImageReferences(payload),
+    aspectRatio,
+    imageSize,
+    quality,
   };
 }
 
@@ -184,11 +206,18 @@ export function resolveImageSize(size: unknown): Pick<ImageGenerateRequest, 'siz
   if (!normalized) return {};
 
   if (ASPECT_RATIO_PATTERN.test(normalized)) {
-    return { size: normalized, aspectRatio: normalized };
+    return { aspectRatio: normalized };
   }
 
   if (PIXEL_SIZE_PATTERN.test(normalized)) {
-    return { size: normalized, imageSize: normalized };
+    const [w, h] = normalized.split('x').map(Number);
+    if (w && h) {
+      const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+      const divisor = gcd(w, h);
+      // 保留原始 size 作为后备，同时提供 aspectRatio 用于分辨率映射表
+      return { size: normalized, aspectRatio: `${w / divisor}:${h / divisor}` };
+    }
+    return {};
   }
 
   return { size: normalized };
@@ -212,12 +241,31 @@ export async function resolveImageModelId(model?: string): Promise<string | null
   const byName = models.find((m) => m.name.toLowerCase() === normalized);
   if (byName) return byName.id;
 
+  const channelById = new Map(channels.map((channel) => [channel.id, channel]));
+  const apexerModels = models.filter((m) => channelById.get(m.channelId)?.type === 'apexerapi');
+  if (apexerModels.length > 0) {
+    if ((normalized.includes('banana') || normalized.includes('香蕉')) && (normalized.includes('pro') || normalized.includes('hd'))) {
+      const bananaPro = apexerModels.find((m) => m.apiModel.toLowerCase() === 'gemini_3.0_pro_image_preview');
+      if (bananaPro) return bananaPro.id;
+    }
+    if (normalized.includes('banana') || normalized.includes('nanobanana') || normalized.includes('香蕉')) {
+      const banana2 = apexerModels.find((m) => m.apiModel.toLowerCase() === 'gemini_3.1_flash_image_preview');
+      if (banana2) return banana2.id;
+    }
+    if (normalized.includes('gpt-image')) {
+      const gptImage = apexerModels.find((m) => m.apiModel.toLowerCase() === 'gpt-image-2');
+      if (gptImage) return gptImage.id;
+    }
+  }
+
   const aliases = ['gpt-image', 'gpt-image-1', 'gpt-image-2', 'image', 'sora-image'];
   if (!aliases.some((alias) => normalized.includes(alias))) {
     return null;
   }
 
-  const channelById = new Map(channels.map((channel) => [channel.id, channel]));
+  const apexerModel = models.find((m) => channelById.get(m.channelId)?.type === 'apexerapi');
+  if (apexerModel) return apexerModel.id;
+
   const openAIModel = models.find((m) => channelById.get(m.channelId)?.type === 'openai-compatible');
   if (openAIModel) return openAIModel.id;
 

@@ -53,7 +53,7 @@ async function uploadImageForApi(
   index: number
 ): Promise<string> {
   const filename = `input_${Date.now()}_${index}.jpg`;
-  const url = await uploadToPicUI(imageData, filename);
+  const url = await uploadToPicUI(imageData, filename, { preferDirectS3Url: true });
   if (!url) {
     throw new Error('参考图上传失败，请检查默认图床桶配置');
   }
@@ -149,13 +149,12 @@ async function generateWithOpenAI(
     response_format: 'url',
   };
 
-  // 添加尺寸参数
-  if (request.size) {
-    payload.size = request.size;
-  } else if (target.size) {
+  // 添加尺寸参数：管理员配置的分辨率映射 > 显式 size > 硬编码兜底
+  if (target.size) {
     payload.size = target.size;
-  } else if (!target.usedModelFromMapping && request.aspectRatio) {
-    // 尝试从 model config 获取对应分辨率，这里简化处理
+  } else if (request.size) {
+    payload.size = request.size;
+  } else if (request.aspectRatio) {
     const sizeMap: Record<string, string> = {
       '1:1': '1024x1024',
       '16:9': '1792x1024',
@@ -829,23 +828,22 @@ async function generateWithSora(
   const normalizedBaseUrl = baseUrl.replace(/\/$/, '');
   const url = `${normalizedBaseUrl}/v1/images/generations`;
 
-  // 根据 aspectRatio 选择模型和尺寸
-  let model = apiModel || 'sora-image';
+  const normalizedApiModel = (apiModel || '').trim().toLowerCase();
+  let model = !normalizedApiModel || normalizedApiModel.startsWith('sora-image')
+    ? 'gpt-image-2'
+    : apiModel;
   let size = '1024x1024';
 
   if (request.aspectRatio) {
     switch (request.aspectRatio) {
       case '16:9':
-        model = 'sora-image-landscape';
-        size = '1792x1024';
+        size = '1536x1024';
         break;
       case '9:16':
-        model = 'sora-image-portrait';
-        size = '1024x1792';
+        size = '1024x1536';
         break;
       case '1:1':
       default:
-        model = 'sora-image';
         size = '1024x1024';
         break;
     }
@@ -937,6 +935,7 @@ export async function generateImage(request: ImageGenerateRequest): Promise<Gene
   let result: GenerateResult;
 
   switch (channel.type) {
+    case 'apexerapi':
     case 'openai-compatible':
       result = await generateWithOpenAI(
         request,
