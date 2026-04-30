@@ -579,7 +579,7 @@ export function ImageGenerationPage({
         prompt: taskPrompt,
         aspectRatio,
         imageSize: currentModel.features.imageSize ? imageSize : undefined,
-        quality: (currentModel.channelType === 'openai-compatible' || currentModel.channelType === 'openai-chat') && currentModel.apiModel.toLowerCase().includes('gpt-image-2') && (!currentModel.features.qualityOptions || currentModel.features.qualityOptions.length === 0 || currentModel.features.qualityOptions.includes(quality)) ? quality : undefined,
+        quality: (currentModel.channelType === 'apexerapi' || currentModel.channelType === 'openai-compatible' || currentModel.channelType === 'openai-chat') && currentModel.apiModel.toLowerCase().includes('gpt-image-2') && (!currentModel.features.qualityOptions || currentModel.features.qualityOptions.length === 0 || currentModel.features.qualityOptions.includes(quality)) ? quality : undefined,
         images: compressedImages || [],
         referenceImageUrl: externalReference?.sourceUrl,
       }),
@@ -834,7 +834,7 @@ export function ImageGenerationPage({
 
             {(() => {
               if (!currentModel) return null;
-              if (currentModel.channelType !== 'openai-compatible' && currentModel.channelType !== 'openai-chat') return null;
+              if (currentModel.channelType !== 'apexerapi' && currentModel.channelType !== 'openai-compatible' && currentModel.channelType !== 'openai-chat') return null;
               if (!currentModel.apiModel.toLowerCase().includes('gpt-image-2')) return null;
               const qOpts = currentModel.features.qualityOptions;
               const allQualities = [

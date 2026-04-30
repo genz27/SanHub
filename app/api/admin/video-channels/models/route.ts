@@ -8,13 +8,15 @@ import {
   getVeoGroupKey,
   isVeoApiModel,
 } from '@/lib/video-model-normalizer';
-import type { VideoDuration, VideoModelFeatures } from '@/types';
+import type { VideoChannel, VideoDuration, VideoModelFeatures } from '@/types';
 
 export const dynamic = 'force-dynamic';
 
 type RemoteModel = {
   id: string;
   owned_by?: string;
+  type?: string;
+  modality?: string;
 };
 
 type VideoCategory = 't2v' | 'i2v' | 'r2v' | 'interpolation' | 'upsample';
@@ -192,6 +194,66 @@ function classifyFlow2ApiModel(modelId: string): ClassifiedVideoModel | null {
   };
 }
 
+function isApexerVideoRemoteModel(model: RemoteModel): boolean {
+  const type = String(model.type || model.modality || '').toLowerCase();
+  if (type) return type === 'video';
+
+  const id = model.id.toLowerCase();
+  if (id.includes('gpt-image') || id.includes('gemini') || id.includes('banana') || id.includes('image')) {
+    return false;
+  }
+  return id === 'sora-2' || id === 'sora' || id.includes('sora') || id.includes('video');
+}
+
+function classifyApexerApiModel(model: RemoteModel): ClassifiedVideoModel | null {
+  if (!isApexerVideoRemoteModel(model)) return null;
+
+  const apiModel = model.id === 'sora' ? 'sora-2' : model.id;
+  return {
+    apiModel,
+    name: apiModel === 'sora-2' ? 'Sora 2' : `Sora (${apiModel})`,
+    description: 'ApexerAPI /v1/videos 视频生成模型，SanHub 会统一按 sora-2 请求格式发送。',
+    category: 't2v',
+    categoryLabel: '视频生成',
+    features: {
+      textToVideo: true,
+      imageToVideo: true,
+      videoToVideo: false,
+      supportStyles: false,
+    },
+    aspectRatios: [
+      { value: 'landscape', label: '16:9' },
+      { value: 'portrait', label: '9:16' },
+    ],
+    defaultAspectRatio: 'landscape',
+    durations: [
+      { value: '8s', label: '8 秒', cost: 100 },
+      { value: '12s', label: '12 秒', cost: 150 },
+      { value: '20s', label: '20 秒', cost: 200 },
+    ],
+    defaultDuration: '8s',
+  };
+}
+
+function classifyRemoteVideoModels(
+  channelType: VideoChannel['type'],
+  remoteModels: RemoteModel[]
+): ClassifiedVideoModel[] {
+  if (channelType === 'apexerapi') {
+    return sortClassifiedModels(
+      remoteModels
+        .map((model) => classifyApexerApiModel(model))
+        .filter((model): model is ClassifiedVideoModel => Boolean(model))
+    );
+  }
+
+  return sortClassifiedModels(
+    remoteModels
+      .map((model) => classifyFlow2ApiModel(model.id))
+      .filter((model): model is ClassifiedVideoModel => Boolean(model))
+  );
+}
+
 function sortClassifiedModels(models: ClassifiedVideoModel[]): ClassifiedVideoModel[] {
   return [...models].sort((left, right) => {
     const categoryOrder = CATEGORY_ORDER[left.category] - CATEGORY_ORDER[right.category];
@@ -301,13 +363,16 @@ function getClassifiedModelSelectionId(model: ClassifiedVideoModel): string {
   return model.apiModel;
 }
 
-async function fetchChannelRemoteModels(channelId: string): Promise<RemoteModel[]> {
+async function fetchChannelRemoteModels(channelId: string): Promise<{
+  channelType: VideoChannel['type'];
+  models: RemoteModel[];
+}> {
   const channel = await getVideoChannel(channelId);
   if (!channel) {
     throw new Error('渠道不存在');
   }
-  if (channel.type !== 'flow2api') {
-    throw new Error('仅支持 Flow2API 渠道一键导入');
+  if (channel.type !== 'flow2api' && channel.type !== 'apexerapi') {
+    throw new Error('仅支持 Flow2API / ApexerAPI 渠道一键导入');
   }
   if (!channel.baseUrl) {
     throw new Error('该渠道未配置 Base URL');
@@ -334,7 +399,10 @@ async function fetchChannelRemoteModels(channelId: string): Promise<RemoteModel[
 
   const data = await response.json();
   const models = (data?.data || data?.models || []) as RemoteModel[];
-  return Array.isArray(models) ? models : [];
+  return {
+    channelType: channel.type,
+    models: Array.isArray(models) ? models : [],
+  };
 }
 
 function parseSelectedModelIds(body: ImportRequestBody): Set<string> {
@@ -357,12 +425,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: '缺少 channelId' }, { status: 400 });
     }
 
-    const remoteModels = await fetchChannelRemoteModels(channelId);
-    const classified = mergeClassifiedModels(sortClassifiedModels(
-      remoteModels
-        .map((model) => classifyFlow2ApiModel(model.id))
-        .filter((model): model is ClassifiedVideoModel => Boolean(model))
-    ));
+    const { channelType, models: remoteModels } = await fetchChannelRemoteModels(channelId);
+    const classified = mergeClassifiedModels(classifyRemoteVideoModels(channelType, remoteModels));
 
     const existingModels = await getVideoModels();
     const existingApiModelSet = new Set(
@@ -391,7 +455,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('[API] Fetch flow2api video models error:', error);
+    console.error('[API] Fetch remote video models error:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : '拉取模型失败' },
       { status: 500 }
@@ -413,12 +477,8 @@ export async function POST(request: NextRequest) {
     }
 
     const selectedModelIds = parseSelectedModelIds(body);
-    const remoteModels = await fetchChannelRemoteModels(channelId);
-    let classified = sortClassifiedModels(
-      remoteModels
-        .map((model) => classifyFlow2ApiModel(model.id))
-        .filter((model): model is ClassifiedVideoModel => Boolean(model))
-    );
+    const { channelType, models: remoteModels } = await fetchChannelRemoteModels(channelId);
+    let classified = classifyRemoteVideoModels(channelType, remoteModels);
 
     if (selectedModelIds.size > 0) {
       classified = classified.filter(
@@ -492,7 +552,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('[API] Import flow2api video models error:', error);
+    console.error('[API] Import remote video models error:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : '导入失败' },
       { status: 500 }

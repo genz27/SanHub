@@ -12,6 +12,7 @@ import type { VideoChannelType } from '@/types';
 export const dynamic = 'force-dynamic';
 
 const VIDEO_CHANNEL_TYPES: VideoChannelType[] = [
+  'apexerapi',
   'sora',
   'openai-compatible',
   'flow2api',
@@ -19,6 +20,9 @@ const VIDEO_CHANNEL_TYPES: VideoChannelType[] = [
 ];
 
 const VIDEO_CHANNEL_TYPE_ALIASES: Record<string, VideoChannelType> = {
+  apexerapi: 'apexerapi',
+  apexer: 'apexerapi',
+  apexer_api: 'apexerapi',
   sora: 'sora',
   'openai-compatible': 'openai-compatible',
   openai_compatible: 'openai-compatible',

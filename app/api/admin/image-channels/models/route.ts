@@ -10,6 +10,8 @@ interface RemoteModel {
   object?: string;
   created?: number;
   owned_by?: string;
+  type?: string;
+  modality?: string;
 }
 
 type ParsedModelVariant = {
@@ -294,7 +296,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Channel has no baseUrl configured' }, { status: 400 });
     }
 
-    if (channel.type !== 'openai-chat' && channel.type !== 'openai-compatible') {
+    if (channel.type !== 'apexerapi' && channel.type !== 'openai-chat' && channel.type !== 'openai-compatible') {
       return NextResponse.json(
         { error: 'This channel type does not support fetching remote models' },
         { status: 400 }
@@ -326,7 +328,16 @@ export async function GET(request: NextRequest) {
     }
 
     const data = await response.json();
-    const models: RemoteModel[] = data.data || data.models || [];
+    const rawModels: RemoteModel[] = data.data || data.models || [];
+    const models = rawModels.filter((model) => {
+      const type = String(model.type || model.modality || '').toLowerCase();
+      if (channel.type === 'apexerapi') {
+        if (type) return type === 'image';
+        const id = model.id.toLowerCase();
+        return !id.includes('sora') && !id.includes('video');
+      }
+      return !type || type === 'image';
+    });
 
     if (groupParam === 'true') {
       const { grouped, ungrouped } = groupModels(models);

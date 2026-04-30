@@ -9,6 +9,7 @@ import { checkRateLimit } from '@/lib/rate-limit';
 import { fetchReferenceImage } from '@/lib/reference-image';
 import { processVideoPrompt } from '@/lib/prompt-processor';
 import { assertPromptsAllowed, isPromptBlockedError } from '@/lib/prompt-blocklist';
+import { saveMediaAsync } from '@/lib/media-storage';
 
 function normalizeIncomingVideoConfigObject(input: SoraGenerateRequest): SoraGenerateRequest['videoConfigObject'] {
   const raw = (input.videoConfigObject || input.video_config) as Record<string, unknown> | undefined;
@@ -95,7 +96,8 @@ async function processGenerationTask(
   generationId: string,
   userId: string,
   body: SoraGenerateRequest,
-  prechargedCost: number
+  prechargedCost: number,
+  publicBaseUrl?: string
 ): Promise<void> {
   try {
     console.log(`[Task ${generationId}] 开始处理生成任务`);
@@ -176,12 +178,14 @@ async function processGenerationTask(
     // 调用 Sora API 生成内容
     const result = await generateWithRateLimitRetry(processedBody, onProgress, generationId);
 
-    console.log(`[Task ${generationId}] 生成成功:`, result.url);
+    const savedUrl = await saveMediaAsync(generationId, result.url, { publicBaseUrl });
+
+    console.log(`[Task ${generationId}] 生成成功:`, savedUrl);
 
     // 更新生成记录为完成状态
     await updateGeneration(generationId, {
       status: 'completed',
-      resultUrl: result.url,
+      resultUrl: savedUrl,
       params: {
         ...baseParams,
         ...promptParams,
@@ -359,7 +363,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 在后台异步处理（不等待完成）
-    processGenerationTask(generation.id, user.id, normalizedBody, estimatedCost).catch((err) => {
+    processGenerationTask(generation.id, user.id, normalizedBody, estimatedCost, origin).catch((err) => {
       console.error('[API] 后台任务启动失败:', err);
     });
 

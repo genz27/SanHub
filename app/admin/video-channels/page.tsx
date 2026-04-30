@@ -16,6 +16,7 @@ import type {
 } from '@/types';
 
 const CHANNEL_TYPES: { value: VideoChannelType; label: string }[] = [
+  { value: 'apexerapi', label: 'ApexerAPI' },
   { value: 'sora', label: 'Sora API' },
   { value: 'openai-compatible', label: 'OpenAI 流式' },
   { value: 'flow2api', label: 'Flow2API' },
@@ -35,12 +36,20 @@ type RemoteFlow2ApiModel = {
   id: string;
   displayName: string;
   description: string;
-  category: 't2v' | 'i2v' | 'r2v' | 'upsample';
+  category: 't2v' | 'i2v' | 'r2v' | 'interpolation' | 'upsample';
   categoryLabel: string;
   defaultAspectRatio: string;
   defaultDuration: string;
   alreadyImported: boolean;
 };
+
+function supportsRemoteVideoModelImport(channel: VideoChannel): boolean {
+  return channel.type === 'flow2api' || channel.type === 'apexerapi';
+}
+
+function remoteVideoImportLabel(channel?: VideoChannel): string {
+  return channel?.type === 'apexerapi' ? 'ApexerAPI' : 'Flow2API';
+}
 
 const DEFAULT_ASPECT_RATIOS: AspectRatioRow[] = [
   { value: 'landscape', label: '16:9' },
@@ -138,7 +147,7 @@ function buildSoraTemplateModelPayload(channelId: string) {
     channelId,
     name: 'Sora \u9ed8\u8ba4\u6a21\u578b',
     description: '\u6309\u5e38\u7528 Sora \u914d\u7f6e\u9884\u586b\uff0c\u521b\u5efa\u6e20\u9053\u540e\u53ef\u76f4\u63a5\u4f7f\u7528',
-    apiModel: 'sora-video',
+    apiModel: 'sora-2',
     features: {
       textToVideo: true,
       imageToVideo: true,
@@ -180,11 +189,11 @@ function buildManualTemplateModelPayload(channel: VideoChannel) {
     };
   }
 
-  if (channel.type === 'sora') {
+  if (channel.type === 'sora' || channel.type === 'apexerapi') {
     return {
       name: `${channel.name} \u9ed8\u8ba4\u6a21\u578b`,
       description: '\u5df2\u6309 Sora \u5e38\u7528\u6a21\u677f\u9884\u586b\uff0c\u786e\u8ba4\u540e\u53ef\u76f4\u63a5\u4fdd\u5b58',
-      apiModel: 'sora-video',
+      apiModel: 'sora-2',
       baseUrl: '',
       apiKey: '',
       features: {
@@ -435,7 +444,7 @@ export default function VideoChannelsPage() {
 
     if (channel.type === 'grok2api') {
       templatePayload = buildGrokTemplateModelPayload(channel.id);
-    } else if (channel.type === 'sora') {
+    } else if (channel.type === 'sora' || channel.type === 'apexerapi') {
       templatePayload = buildSoraTemplateModelPayload(channel.id);
     }
 
@@ -461,7 +470,8 @@ export default function VideoChannelsPage() {
   };
 
   const quickImportFlow2ApiModels = async (channel: VideoChannel) => {
-    if (channel.type !== 'flow2api') return;
+    if (!supportsRemoteVideoModelImport(channel)) return;
+    const channelLabel = remoteVideoImportLabel(channel);
 
     setImportingChannelId(channel.id);
     setRemoteFlowModelsChannelId(channel.id);
@@ -488,7 +498,7 @@ export default function VideoChannelsPage() {
       });
 
       if (importableIds.length === 0) {
-        toast({ title: '\u5f53\u524d Flow2API \u6a21\u578b\u90fd\u5df2\u5bfc\u5165\uff0c\u65e0\u9700\u91cd\u590d\u5bfc\u5165' });
+        toast({ title: `当前 ${channelLabel} 模型都已导入，无需重复导入` });
         return;
       }
 
@@ -506,7 +516,7 @@ export default function VideoChannelsPage() {
       }
 
       toast({
-        title: 'Flow2API \u4e00\u952e\u5bfc\u5165\u5b8c\u6210',
+        title: `${channelLabel} 一键导入完成`,
         description: `\u65b0\u589e ${importData?.data?.created || 0} \u4e2a\uff0c\u8df3\u8fc7 ${importData?.data?.skipped || 0} \u4e2a`,
       });
 
@@ -514,7 +524,7 @@ export default function VideoChannelsPage() {
       await fetchRemoteFlow2ApiModels(channel);
     } catch (err) {
       toast({
-        title: 'Flow2API \u4e00\u952e\u5bfc\u5165\u5931\u8d25',
+        title: `${channelLabel} 一键导入失败`,
         description: err instanceof Error ? err.message : '\u672a\u77e5\u9519\u8bef',
         variant: 'destructive',
       });
@@ -546,17 +556,18 @@ export default function VideoChannelsPage() {
       toast({ title: editingChannel ? '\u6e20\u9053\u5df2\u66f4\u65b0' : '\u6e20\u9053\u5df2\u521b\u5efa' });
 
       if (!editingChannel && createdChannel) {
-        if (createdChannel.type === 'flow2api') {
+        if (supportsRemoteVideoModelImport(createdChannel)) {
+          const channelLabel = remoteVideoImportLabel(createdChannel);
           if (createdChannel.baseUrl) {
             toast({
               title: '\u5f00\u59cb\u81ea\u52a8\u5bfc\u5165',
-              description: '\u5df2\u5c1d\u8bd5\u81ea\u52a8\u62c9\u53d6\u5e76\u5bfc\u5165 Flow2API \u89c6\u9891\u6a21\u578b',
+              description: `已尝试自动拉取并导入 ${channelLabel} 视频模型`,
             });
             await quickImportFlow2ApiModels(createdChannel);
           } else {
             toast({
               title: '\u6e20\u9053\u5df2\u521b\u5efa',
-              description: 'Flow2API \u5efa\u8bae\u5148\u586b\u5199 Base URL\uff0c\u518d\u4f7f\u7528\u201c\u4e00\u952e\u5bfc\u5165\u201d\u81ea\u52a8\u62c9\u53d6\u6a21\u578b',
+              description: `${channelLabel} 建议先填写 Base URL，再使用“一键导入”自动拉取模型`,
             });
           }
         } else {
@@ -600,7 +611,7 @@ export default function VideoChannelsPage() {
   };
 
   const fetchRemoteFlow2ApiModels = async (channel: VideoChannel) => {
-    if (channel.type !== 'flow2api') return;
+    if (!supportsRemoteVideoModelImport(channel)) return;
     setFetchingRemoteFlowModels(true);
     setRemoteFlowModelsChannelId(channel.id);
     setRemoteFlowModels([]);
@@ -679,7 +690,7 @@ export default function VideoChannelsPage() {
       });
       await loadData();
       const currentChannel = channels.find((item) => item.id === remoteFlowModelsChannelId);
-      if (currentChannel && currentChannel.type === 'flow2api') {
+      if (currentChannel && supportsRemoteVideoModelImport(currentChannel)) {
         await fetchRemoteFlow2ApiModels(currentChannel);
       }
     } catch (err) {
@@ -877,6 +888,7 @@ export default function VideoChannelsPage() {
         <div className="rounded-xl border border-border/70 bg-card/50 p-4 text-sm text-foreground/60">
           {channelForm.type === 'flow2api' && '\u4fdd\u5b58\u6e20\u9053\u540e\u4f1a\u4f18\u5148\u5c1d\u8bd5\u81ea\u52a8\u62c9\u53d6\u5e76\u5bfc\u5165\u8fdc\u7aef\u6a21\u578b\uff1b\u540e\u7eed\u4e5f\u53ef\u4ee5\u5728\u6e20\u9053\u5361\u7247\u91cc\u4f7f\u7528\u201c\u4e00\u952e\u5bfc\u5165\u201d\u6216\u624b\u52a8\u52fe\u9009\u5bfc\u5165\u3002'}
           {channelForm.type === 'grok2api' && `\u4fdd\u5b58\u6e20\u9053\u540e\u4f1a\u81ea\u52a8\u8865\u4e00\u6761 Grok \u6a21\u677f\u6a21\u578b\uff0cvideo_length \u5141\u8bb8 5-${GROK_MAX_VIDEO_LENGTH_SECONDS} \u79d2\uff0c\u5e76\u4f1a\u7ee7\u7eed\u900f\u4f20\u5230\u751f\u6210\u8bf7\u6c42\u3002`}
+          {channelForm.type === 'apexerapi' && '\u9002\u7528\u4e8e ApexerAPI /v1/videos\uff0c\u4fdd\u5b58\u540e\u4f1a\u81ea\u52a8\u8865\u4e00\u6761 sora-2 \u9ed8\u8ba4\u6a21\u578b\u3002'}
           {channelForm.type === 'sora' && '\u4fdd\u5b58\u6e20\u9053\u540e\u4f1a\u81ea\u52a8\u8865\u4e00\u6761 Sora \u9ed8\u8ba4\u6a21\u578b\uff0c\u901a\u5e38\u4e0d\u9700\u8981\u624b\u5de5\u586b\u5199\u7b2c\u4e00\u6761\u6a21\u578b\u3002'}
           {channelForm.type === 'openai-compatible' && '\u9002\u7528\u4e8e\u517c\u5bb9 /v1/chat/completions \u7684\u89c6\u9891\u63a5\u53e3\u3002\u5148\u5efa\u6e20\u9053\uff0c\u518d\u6309\u5b9e\u9645\u6a21\u578b ID \u8865\u5145\u6a21\u578b\u5373\u53ef\u3002'}
         </div>
@@ -980,6 +992,7 @@ export default function VideoChannelsPage() {
             <div className="rounded-xl border border-border/70 bg-card/50 p-4 text-sm text-foreground/60">
               {selectedChannel.type === 'flow2api' && '\u5df2\u77e5\u6a21\u578b ID \u65f6\u518d\u624b\u52a8\u6dfb\u52a0\uff1b\u5982\u679c\u53ea\u662f\u60f3\u628a\u8fdc\u7aef\u6a21\u578b\u62c9\u4e0b\u6765\uff0c\u4f18\u5148\u4f7f\u7528\u6e20\u9053\u5361\u7247\u91cc\u7684\u201c\u4e00\u952e\u5bfc\u5165\u201d\u6216\u5237\u65b0\u9009\u62e9\u5bfc\u5165\u3002'}
               {selectedChannel.type === 'grok2api' && `\u5df2\u6309 Grok \u6a21\u677f\u9884\u586b\uff0cvideo_length \u652f\u6301 5-${GROK_MAX_VIDEO_LENGTH_SECONDS} \u79d2\uff0c\u4fdd\u5b58\u540e\u4f1a\u539f\u6837\u900f\u4f20\u5230\u751f\u6210\u8bf7\u6c42\u3002`}
+              {selectedChannel.type === 'apexerapi' && '\u5df2\u6309 ApexerAPI sora-2 \u9884\u586b\uff0cSanHub \u4f1a\u628a sora-video / sora2-* \u8bf7\u6c42\u8f6c\u6210 sora-2\u3002'}
               {selectedChannel.type === 'sora' && '\u5df2\u6309 Sora \u5e38\u7528\u6a21\u677f\u9884\u586b\uff0c\u901a\u5e38\u53ea\u9700\u8981\u786e\u8ba4\u540d\u79f0\u3001\u9ed8\u8ba4\u65f6\u957f\u548c\u4ef7\u683c\u5373\u53ef\u4fdd\u5b58\u3002'}
               {selectedChannel.type === 'openai-compatible' && '\u6a21\u578b\u7ea7 Base URL / API Key \u53ef\u4ee5\u7559\u7a7a\uff0c\u4fdd\u5b58\u65f6\u4f1a\u81ea\u52a8\u7ee7\u627f\u6e20\u9053\u4e0a\u7684\u914d\u7f6e\u3002'}
             </div>
@@ -1001,7 +1014,7 @@ export default function VideoChannelsPage() {
                 type="text"
                 value={modelForm.apiModel}
                 onChange={(e) => setModelForm({ ...modelForm, apiModel: e.target.value })}
-                placeholder="sora-video"
+                placeholder="sora-2"
                 className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
               />
             </div>
@@ -1414,17 +1427,17 @@ export default function VideoChannelsPage() {
                       >
                         {channel.enabled ? '启用' : '禁用'}
                       </button>
-                      {channel.type === 'flow2api' && (
+                      {supportsRemoteVideoModelImport(channel) && (
                         <button
                           onClick={() => quickImportFlow2ApiModels(channel)}
                           disabled={importingChannelId === channel.id || fetchingRemoteFlowModels}
-                          title="\u4e00\u952e\u5bfc\u5165\u5168\u90e8\u53ef\u8bc6\u522b\u7684 Flow2API \u89c6\u9891\u6a21\u578b"
+                          title={`一键导入全部可识别的 ${remoteVideoImportLabel(channel)} 视频模型`}
                           className="px-3 py-1.5 text-xs rounded-full bg-cyan-500/15 text-cyan-300 hover:bg-cyan-500/25 disabled:opacity-50"
                         >
                           {importingChannelId === channel.id ? '\u5bfc\u5165\u4e2d...' : '\u4e00\u952e\u5bfc\u5165'}
                         </button>
                       )}
-                      {channel.type === 'flow2api' && (
+                      {supportsRemoteVideoModelImport(channel) && (
                         <button
                           onClick={() => {
                             if (remoteFlowModelsChannelId === channel.id) {
@@ -1434,7 +1447,7 @@ export default function VideoChannelsPage() {
                             }
                           }}
                           disabled={importingChannelId === channel.id || fetchingRemoteFlowModels}
-                          title="拉取并选择 Flow2API 视频模型"
+                          title={`拉取并选择 ${remoteVideoImportLabel(channel)} 视频模型`}
                           className="p-2 text-foreground/40 hover:text-cyan-400 hover:bg-cyan-500/10 rounded-lg disabled:opacity-50"
                         >
                           {fetchingRemoteFlowModels && remoteFlowModelsChannelId === channel.id ? (
@@ -1464,7 +1477,7 @@ export default function VideoChannelsPage() {
                       {remoteFlowModelsChannelId === channel.id && (
                         <div className="mb-3 p-3 bg-card/70 border border-border/70 rounded-xl space-y-3">
                           <div className="flex items-center justify-between">
-                            <div className="text-sm font-medium text-foreground">Flow2API 模型选择导入</div>
+                            <div className="text-sm font-medium text-foreground">{remoteVideoImportLabel(channel)} 模型选择导入</div>
                             <button
                               type="button"
                               onClick={closeRemoteFlow2ApiModels}
@@ -1480,7 +1493,7 @@ export default function VideoChannelsPage() {
                               拉取模型中...
                             </div>
                           ) : remoteFlowModels.length === 0 ? (
-                            <p className="text-sm text-foreground/40 text-center py-2">未发现可识别的 Flow2API 视频模型</p>
+                            <p className="text-sm text-foreground/40 text-center py-2">未发现可识别的 {remoteVideoImportLabel(channel)} 视频模型</p>
                           ) : (
                             <>
                               <div className="rounded-xl border border-border/70 bg-card/50 px-3 py-2 text-xs text-foreground/50">

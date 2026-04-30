@@ -3,16 +3,17 @@ import { createVideoTask, generateVideo, type VideoGenerationRequest, type Video
 import { buildErrorResponse, extractBearerToken, isAuthorized, parseDataUrl } from '@/lib/v1';
 import { processVideoPrompt } from '@/lib/prompt-processor';
 import { assertPromptsAllowed } from '@/lib/prompt-blocklist';
+import { saveMediaAsync } from '@/lib/media-storage';
 
 export const dynamic = 'force-dynamic';
 
-function normalizeSeconds(value: unknown): '10' | '15' | '25' | undefined {
+function normalizeSeconds(value: unknown): string | undefined {
   if (value === undefined || value === null) return undefined;
-  const text = String(value).trim();
-  if (text === '10') return '10';
-  if (text === '15') return '15';
-  if (text === '25') return '25';
-  return undefined;
+  const matched = String(value).match(/(\d+)/);
+  if (!matched) return undefined;
+  const parsed = Number.parseInt(matched[1], 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return undefined;
+  return String(parsed);
 }
 
 function normalizeBoolean(value: unknown): boolean | undefined {
@@ -162,6 +163,11 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await generateVideo(processedRequest);
+    const origin = new URL(request.url).origin;
+    const firstUrl = result.data?.[0]?.url;
+    if (firstUrl) {
+      result.data[0].url = await saveMediaAsync(`v1-video-${result.id}`, firstUrl, { publicBaseUrl: origin });
+    }
     const response = buildSyncResponse(processedRequest, result);
     return NextResponse.json(response);
   } catch (error) {

@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { getVideoStatus } from '@/lib/sora-api';
 import { buildErrorResponse, extractBearerToken, isAuthorized } from '@/lib/v1';
+import { saveMediaAsync } from '@/lib/media-storage';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,6 +25,13 @@ export async function GET(request: NextRequest, context: { params: { video_id: s
 
   try {
     const status = await getVideoStatus(videoId);
+    const origin = new URL(request.url).origin;
+    const rawUrl = status.url || status.output?.url;
+    if ((status.status === 'completed' || status.status === 'succeeded') && rawUrl) {
+      const cachedUrl = await saveMediaAsync(`v1-video-${videoId}`, rawUrl, { publicBaseUrl: origin });
+      status.url = cachedUrl;
+      if (status.output) status.output.url = cachedUrl;
+    }
     return Response.json(status);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to get video status';

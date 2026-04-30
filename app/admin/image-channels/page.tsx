@@ -9,6 +9,7 @@ import { toast } from '@/components/ui/toaster';
 import type { ImageChannel, ImageModel, ImageModelFeatures } from '@/types';
 
 const CHANNEL_TYPES = [
+  { value: 'apexerapi', label: 'ApexerAPI', description: 'ApexerAPI image gateway' },
   { value: 'openai-compatible', label: 'OpenAI Images', description: 'OpenAI /v1/images/generations API' },
   { value: 'openai-chat', label: 'OpenAI Chat', description: 'OpenAI /v1/chat/completions API' },
   { value: 'gemini', label: 'Gemini', description: 'Google Gemini Native API' },
@@ -179,6 +180,12 @@ const CHANNEL_FORM_GUIDES: Record<ImageAdminChannelType, {
     hint: '优先填写可访问的 Base URL，保存后可直接从 /v1/models 智能拉取模型。',
     recommendedAction: '先保存渠道，再点“智能导入远端模型”',
   },
+  apexerapi: {
+    defaultName: 'ApexerAPI',
+    summary: '适合接入 ApexerAPI，覆盖 Banana Pro、Banana 2 和 GPT Image 2。',
+    hint: '填写 ApexerAPI Base URL 与 API Key 后，可直接用预设或从 /v1/models 导入。',
+    recommendedAction: '先保存渠道，再导入或套用 ApexerAPI 预设',
+  },
   'openai-chat': {
     defaultName: 'OpenAI Chat',
     summary: '适合通过 /v1/chat/completions 提供生图能力的兼容渠道。',
@@ -215,6 +222,11 @@ const CHANNEL_FORM_GUIDES: Record<ImageAdminChannelType, {
 };
 
 const MANUAL_PRESET_OPTIONS: Record<ImageAdminChannelType, ModelPresetOption[]> = {
+  apexerapi: [
+    { id: 'general', label: 'Banana 2', description: 'ApexerAPI gemini_3.1_flash_image_preview。' },
+    { id: 'hd', label: 'Banana Pro', description: 'ApexerAPI gemini_3.0_pro_image_preview，多档分辨率。' },
+    { id: 'edit', label: 'GPT Image 2', description: 'ApexerAPI gpt-image-2，支持参考图。' },
+  ],
   'openai-compatible': [
     { id: 'general', label: '标准生图', description: '适合常规文生图，带默认常用比例。' },
     { id: 'edit', label: '编辑变体', description: '适合编辑、局部重绘或 variation 场景。' },
@@ -310,7 +322,9 @@ function buildModelPreset(channelType: ImageAdminChannelType, presetId: ModelPre
 
   if (presetId === 'general') {
     form.name =
-      channelType === 'gemini'
+      channelType === 'apexerapi'
+        ? 'Banana 2'
+        : channelType === 'gemini'
         ? 'Gemini Nano'
         : channelType === 'modelscope'
         ? 'Qwen Image'
@@ -321,7 +335,9 @@ function buildModelPreset(channelType: ImageAdminChannelType, presetId: ModelPre
         : '通用图像模型';
     form.description = '适合常规文生图，默认带常用比例。';
     form.apiModel =
-      channelType === 'gemini'
+      channelType === 'apexerapi'
+        ? 'gemini_3.1_flash_image_preview'
+        : channelType === 'gemini'
         ? 'gemini-2.5-flash-image'
         : channelType === 'modelscope'
         ? 'Qwen/Qwen-Image'
@@ -332,39 +348,46 @@ function buildModelPreset(channelType: ImageAdminChannelType, presetId: ModelPre
         : '';
     form.features = {
       textToImage: true,
-      imageToImage: channelType === 'gemini' || channelType === 'sora',
+      imageToImage: channelType === 'apexerapi' || channelType === 'gemini' || channelType === 'sora',
       upscale: false,
       matting: false,
-      multipleImages: false,
+      multipleImages: channelType === 'apexerapi',
       imageSize: false,
     };
   }
 
   if (presetId === 'edit') {
-    form.name = channelType === 'modelscope' ? 'Qwen Image Edit' : '图像编辑模型';
-    form.description = '适合编辑、重绘或 variation，默认要求上传参考图。';
-    form.apiModel = channelType === 'modelscope' ? 'Qwen/Qwen-Image-Edit-2509' : '';
+    form.name = channelType === 'apexerapi' ? 'GPT Image 2' : channelType === 'modelscope' ? 'Qwen Image Edit' : '图像编辑模型';
+    form.description = channelType === 'apexerapi'
+      ? '适合文生图和多参考图编辑，支持 GPT Image 2 quality 参数。'
+      : '适合编辑、重绘或 variation，默认要求上传参考图。';
+    form.apiModel = channelType === 'apexerapi' ? 'gpt-image-2' : channelType === 'modelscope' ? 'Qwen/Qwen-Image-Edit-2509' : '';
     form.features = {
-      textToImage: false,
+      textToImage: channelType === 'apexerapi',
       imageToImage: true,
       upscale: false,
       matting: false,
-      multipleImages: false,
+      multipleImages: channelType === 'apexerapi',
       imageSize: false,
+      qualityOptions: channelType === 'apexerapi' ? ['low', 'medium', 'high'] : undefined,
     };
-    form.requiresReferenceImage = true;
+    form.requiresReferenceImage = channelType !== 'apexerapi';
   }
 
   if (presetId === 'hd') {
-    form.name = channelType === 'gemini' ? 'Gemini Pro' : '高清图像模型';
+    form.name = channelType === 'apexerapi' ? 'Banana Pro' : channelType === 'gemini' ? 'Gemini Pro' : '高清图像模型';
     form.description = '适合需要 1K / 2K / 4K 多档分辨率的模型。';
-    form.apiModel = channelType === 'gemini' ? 'gemini-3.0-pro-image-square' : '';
+    form.apiModel = channelType === 'apexerapi'
+      ? 'gemini_3.0_pro_image_preview'
+      : channelType === 'gemini'
+      ? 'gemini-3.0-pro-image-square'
+      : '';
     form.features = {
       textToImage: true,
       imageToImage: true,
       upscale: false,
       matting: false,
-      multipleImages: channelType === 'gemini',
+      multipleImages: channelType === 'apexerapi' || channelType === 'gemini',
       imageSize: true,
     };
     form.defaultImageSize = '1K';
@@ -1720,7 +1743,7 @@ export default function ImageChannelsPage() {
                       >
                         <Plus className="w-4 h-4" />
                       </button>
-                      {(channel.type === 'openai-chat' || channel.type === 'openai-compatible') && (
+                      {(channel.type === 'apexerapi' || channel.type === 'openai-chat' || channel.type === 'openai-compatible') && (
                         <button
                           onClick={() => fetchRemoteModels(channel.id)}
                           disabled={fetchingRemoteModels}

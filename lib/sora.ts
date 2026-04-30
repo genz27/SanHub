@@ -749,27 +749,30 @@ function getTypeAndCost(
 }
 
 function parseLegacySoraModel(model: string): {
-  apiModel: 'sora-2' | 'sora-2-pro';
+  apiModel: 'sora-2';
   orientation: 'landscape' | 'portrait';
-  seconds: '10' | '15' | '25';
+  seconds: string;
   size?: string;
 } {
-  let apiModel: 'sora-2' | 'sora-2-pro' = 'sora-2';
+  const normalizedModel = String(model || '').toLowerCase();
+  const apiModel: 'sora-2' = 'sora-2';
   let orientation: 'landscape' | 'portrait' = 'landscape';
-  let seconds: '10' | '15' | '25' = '10';
+  let seconds = '8';
 
-  if (model.includes('pro')) {
-    apiModel = 'sora-2-pro';
-  }
-
-  if (model.includes('portrait')) {
+  if (normalizedModel.includes('portrait')) {
     orientation = 'portrait';
   }
 
-  if (model.includes('25s') || model.includes('25')) {
-    seconds = '25';
-  } else if (model.includes('15s') || model.includes('15')) {
+  if (normalizedModel.includes('25s') || normalizedModel.includes('25')) {
+    seconds = '20';
+  } else if (normalizedModel.includes('15s') || normalizedModel.includes('15')) {
     seconds = '15';
+  } else if (normalizedModel.includes('12s') || normalizedModel.includes('12')) {
+    seconds = '12';
+  } else if (normalizedModel.includes('10s') || normalizedModel.includes('10')) {
+    seconds = '10';
+  } else if (normalizedModel.includes('4s')) {
+    seconds = '4';
   }
 
   const size = orientation === 'portrait' ? '720x1280' : '1280x720';
@@ -914,7 +917,8 @@ async function generateViaExternalChat(
 
 async function generateViaSoraApi(
   request: SoraGenerateRequest,
-  onProgress?: (progress: number) => void
+  onProgress?: (progress: number) => void,
+  channelId?: string
 ): Promise<GenerateResult> {
   const config = await getSystemConfig();
   const { apiModel, orientation, seconds, size } = parseLegacySoraModel(request.model);
@@ -943,7 +947,8 @@ async function generateViaSoraApi(
 
   const result = await generateVideo(
     videoRequest,
-    onProgress ? (progress) => onProgress(progress) : undefined
+    onProgress ? (progress) => onProgress(progress) : undefined,
+    channelId ? { channelId } : undefined
   );
 
   if (!result.data || result.data.length === 0 || !result.data[0].url) {
@@ -989,7 +994,7 @@ async function generateByVideoModel(
     return generateViaExternalChat(channel, model, request, onProgress);
   }
 
-  if (channelType === 'sora') {
+  if (channelType === 'sora' || channelType === 'apexerapi') {
     const ratio = request.aspectRatio || model.defaultAspectRatio || 'landscape';
     const duration = request.duration || model.defaultDuration || '8s';
 
@@ -997,7 +1002,7 @@ async function generateByVideoModel(
       ...request,
       model: `sora2-${ratio}-${duration}`,
     };
-    return generateViaSoraApi(fallbackRequest, onProgress);
+    return generateViaSoraApi(fallbackRequest, onProgress, channel.id);
   }
 
   throw new Error(`不支持的视频渠道类型: ${channelType}`);

@@ -8,6 +8,7 @@ import { checkRateLimit } from '@/lib/rate-limit';
 import { fetchReferenceImage } from '@/lib/reference-image';
 import type { Generation } from '@/types';
 import { assertPromptsAllowed, isPromptBlockedError } from '@/lib/prompt-blocklist';
+import { saveMediaAsync } from '@/lib/media-storage';
 
 export const maxDuration = 120;
 export const dynamic = 'force-dynamic';
@@ -28,7 +29,8 @@ async function processGenerationTask(
   userId: string,
   body: SoraImageRequest,
   prechargedCost: number,
-  generationParams: Generation['params']
+  generationParams: Generation['params'],
+  publicBaseUrl?: string
 ): Promise<void> {
   try {
     console.log(`[Task ${generationId}] 开始处理 Sora 图像生成任务`);
@@ -65,11 +67,17 @@ async function processGenerationTask(
       },
     });
 
-    console.log(`[Task ${generationId}] 生成成功:`, first.url);
+    const firstUrl = first.url;
+    if (!firstUrl) {
+      throw new Error('图片生成失败：未返回有效的图片 URL');
+    }
+    const savedUrl = await saveMediaAsync(generationId, firstUrl, { publicBaseUrl });
+
+    console.log(`[Task ${generationId}] 生成成功:`, savedUrl);
 
     await updateGeneration(generationId, {
       status: 'completed',
-      resultUrl: first.url,
+      resultUrl: savedUrl,
       params: {
         ...generationParams,
         revised_prompt: first.revised_prompt,
@@ -200,7 +208,8 @@ export async function POST(request: NextRequest) {
       user.id,
       normalizedBody,
       estimatedCost,
-      generationParams
+      generationParams,
+      origin
     ).catch((err) => {
       console.error('[API] Sora Image 后台任务启动失败:', err);
     });

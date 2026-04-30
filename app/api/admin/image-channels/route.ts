@@ -8,8 +8,49 @@ import {
   updateImageChannel,
   deleteImageChannel,
 } from '@/lib/db';
+import type { ChannelType } from '@/types';
 
 export const dynamic = 'force-dynamic';
+
+const IMAGE_CHANNEL_TYPES: ChannelType[] = [
+  'apexerapi',
+  'openai-compatible',
+  'openai-chat',
+  'modelscope',
+  'gitee',
+  'gemini',
+  'sora',
+  'flow2api',
+  'grok2api',
+];
+
+const IMAGE_CHANNEL_TYPE_ALIASES: Record<string, ChannelType> = {
+  apexerapi: 'apexerapi',
+  apexer: 'apexerapi',
+  apexer_api: 'apexerapi',
+  openai: 'openai-compatible',
+  openai_compatible: 'openai-compatible',
+  'openai-compatible': 'openai-compatible',
+  openai_chat: 'openai-chat',
+  'openai-chat': 'openai-chat',
+  modelscope: 'modelscope',
+  gitee: 'gitee',
+  gemini: 'gemini',
+  sora: 'sora',
+  flow2api: 'flow2api',
+  grok2api: 'grok2api',
+};
+
+function normalizeImageChannelType(input: unknown): ChannelType | null {
+  if (typeof input !== 'string') return null;
+  const normalized = input.trim().toLowerCase();
+  if (!normalized) return null;
+  return IMAGE_CHANNEL_TYPE_ALIASES[normalized] || null;
+}
+
+function invalidTypeMessage(): string {
+  return `无效的渠道类型，支持: ${IMAGE_CHANNEL_TYPES.join(', ')}`;
+}
 
 // GET - 获取所有渠道
 export async function GET(request: NextRequest) {
@@ -45,9 +86,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '名称和类型必填' }, { status: 400 });
     }
 
+    const normalizedType = normalizeImageChannelType(type);
+    if (!normalizedType) {
+      return NextResponse.json({ error: invalidTypeMessage() }, { status: 400 });
+    }
+
     const channel = await createImageChannel({
       name,
-      type,
+      type: normalizedType,
       baseUrl: baseUrl || '',
       apiKey: apiKey || '',
       enabled: enabled !== false,
@@ -76,6 +122,14 @@ export async function PUT(request: NextRequest) {
 
     if (!id) {
       return NextResponse.json({ error: '缺少 ID' }, { status: 400 });
+    }
+
+    if ((updates as { type?: unknown }).type !== undefined) {
+      const normalizedType = normalizeImageChannelType((updates as { type?: unknown }).type);
+      if (!normalizedType) {
+        return NextResponse.json({ error: invalidTypeMessage() }, { status: 400 });
+      }
+      (updates as { type?: ChannelType }).type = normalizedType;
     }
 
     const channel = await updateImageChannel(id, updates);

@@ -23,6 +23,7 @@ export const dynamic = 'force-dynamic';
 
 const MAX_REFERENCE_IMAGE_BYTES = 10 * 1024 * 1024;
 const IMAGE_TYPE_BY_CHANNEL: Record<ChannelType, GenerationType> = {
+  apexerapi: 'gemini-image',
   'openai-compatible': 'gemini-image',
   'openai-chat': 'gemini-image',
   gemini: 'gemini-image',
@@ -39,7 +40,8 @@ async function processGenerationTask(
   userId: string,
   request: ImageGenerateRequest,
   prechargedCost: number,
-  generationParams: Generation['params']
+  generationParams: Generation['params'],
+  publicBaseUrl?: string
 ) {
   try {
     console.log(`[Task ${generationId}] 开始处理图像生成任务`);
@@ -63,7 +65,7 @@ async function processGenerationTask(
     });
 
     // 保存到图床或本地
-    const savedUrl = await saveMediaAsync(generationId, result.url);
+    const savedUrl = await saveMediaAsync(generationId, result.url, { publicBaseUrl });
 
     console.log(`[Task ${generationId}] 生成成功`);
 
@@ -297,7 +299,8 @@ export async function POST(request: NextRequest) {
         idempotencyKey: `sanhub-image-${generation.id}`,
       },
       model.costPerGeneration,
-      generationParams
+      generationParams,
+      origin
     ).catch((err) => {
       console.error('[API] 后台任务启动失败:', err);
     });

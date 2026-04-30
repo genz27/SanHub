@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
       channelId: soraChannel.id,
       name: 'Sora Video',
       description: 'OpenAI 视频生成',
-      apiModel: 'sora-video',
+      apiModel: 'sora-2',
       features: {
         textToVideo: true,
         imageToVideo: true,

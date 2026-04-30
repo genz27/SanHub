@@ -233,7 +233,7 @@ data: [DONE]
 | 参数 | 类型 | 必填 | 描述 |
 |------|------|------|------|
 | `prompt` | string | 是 | 视频生成提示词 |
-| `model` | string | 否 | 模型：`sora-2` 或 `sora-2-pro`，默认 `sora-2` |
+| `model` | string | 否 | 模型：`sora-2`，默认 `sora-2` |
 | `seconds` | string | 否 | 时长：`10` 或 `15`，默认 `15` |
 | `size` | string | 否 | 分辨率：`720x1280`(竖屏) 或 `1280x720`(横屏) |
 | `orientation` | string | 否 | 方向：`landscape` 或 `portrait` |
@@ -413,7 +413,7 @@ curl -X GET "http://your-server/v1/videos/sora-2-abc123def456/content" \
 | 参数 | 类型 | 必填 | 描述 |
 |------|------|------|------|
 | `prompt` | string | 是 | Remix 提示词 |
-| `model` | string | 否 | 模型：`sora-2` 或 `sora-2-pro` |
+| `model` | string | 否 | 模型：`sora-2` |
 | `seconds` | string | 否 | 时长：`10` 或 `15` |
 | `size` | string | 否 | 分辨率 |
 | `style_id` | string | 否 | 视频风格 |

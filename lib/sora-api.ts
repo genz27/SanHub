@@ -162,9 +162,14 @@ type SoraConfig = {
   apiKey: string;
   baseUrl: string;
   channelId?: string;
+  channelType?: VideoChannel['type'] | 'legacy';
 };
 
 let soraChannelCursor = 0;
+
+function isSoraCompatibleChannel(channel: VideoChannel): boolean {
+  return (channel.type === 'sora' || channel.type === 'apexerapi') && Boolean(channel.apiKey);
+}
 
 function pickRoundRobinChannel(channels: VideoChannel[]): VideoChannel {
   const index = soraChannelCursor % channels.length;
@@ -179,17 +184,18 @@ async function getSoraConfig(options?: {
 }): Promise<SoraConfig> {
   if (options?.channelId) {
     const channel = await getVideoChannel(options.channelId);
-    if (channel && channel.type === 'sora' && channel.apiKey) {
+    if (channel && isSoraCompatibleChannel(channel)) {
       return {
         apiKey: channel.apiKey,
         baseUrl: channel.baseUrl || DEFAULT_SORA_BASE_URL,
         channelId: channel.id,
+        channelType: channel.type,
       };
     }
   }
 
   const channels = await getVideoChannels(true);
-  const soraChannels = channels.filter(c => c.type === 'sora' && c.apiKey);
+  const soraChannels = channels.filter(isSoraCompatibleChannel);
   if (soraChannels.length > 0) {
     const selected =
       options?.mode === 'round-robin'
@@ -199,6 +205,7 @@ async function getSoraConfig(options?: {
       apiKey: selected.apiKey,
       baseUrl: selected.baseUrl || DEFAULT_SORA_BASE_URL,
       channelId: selected.id,
+      channelType: selected.type,
     };
   }
 
@@ -206,6 +213,7 @@ async function getSoraConfig(options?: {
   return {
     apiKey: config.soraApiKey || '',
     baseUrl: config.soraBaseUrl || DEFAULT_SORA_BASE_URL,
+    channelType: 'legacy',
   };
 }
 
@@ -229,7 +237,7 @@ const soraAgent = new Agent({
 export interface VideoGenerationRequest {
   prompt: string;
   model?: string;
-  seconds?: '10' | '15' | '25';
+  seconds?: string;
   orientation?: 'landscape' | 'portrait';
   size?: string; // e.g., '1920x1080', '1080x1920'
   style_id?: string;
@@ -243,10 +251,92 @@ export interface VideoGenerationRequest {
 export interface VideoRemixRequest {
   prompt: string;
   model?: string;
-  seconds?: '10' | '15' | '25';
+  seconds?: string;
+  orientation?: 'landscape' | 'portrait';
   size?: string;
   style_id?: string;
+  remix_target_id?: string;
   async_mode?: boolean;
+}
+
+function parseSeconds(value: unknown, fallback = 8): number {
+  if (value === undefined || value === null) return fallback;
+  const matched = String(value).match(/(\d+)/);
+  if (!matched) return fallback;
+  const parsed = Number.parseInt(matched[1], 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return parsed;
+}
+
+function normalizeApexerSeconds(...values: unknown[]): string {
+  const raw = values.find((value) => value !== undefined && value !== null && String(value).trim());
+  const seconds = parseSeconds(raw, 8);
+  return String(Math.max(1, Math.min(seconds, 20)));
+}
+
+function inferApexerOrientation(request: Pick<VideoGenerationRequest, 'model' | 'orientation' | 'size'>): 'landscape' | 'portrait' {
+  if (request.orientation === 'portrait' || request.orientation === 'landscape') {
+    return request.orientation;
+  }
+
+  const model = String(request.model || '').toLowerCase();
+  if (model.includes('portrait')) return 'portrait';
+  if (model.includes('landscape')) return 'landscape';
+
+  const size = String(request.size || '').toLowerCase();
+  const matched = size.match(/^(\d+)x(\d+)$/);
+  if (matched) {
+    const width = Number.parseInt(matched[1], 10);
+    const height = Number.parseInt(matched[2], 10);
+    if (Number.isFinite(width) && Number.isFinite(height) && height > width) {
+      return 'portrait';
+    }
+  }
+
+  return 'landscape';
+}
+
+function apexerSizeForOrientation(orientation: 'landscape' | 'portrait'): string {
+  return orientation === 'portrait' ? '720x1280' : '1280x720';
+}
+
+function normalizeApexerVideoRequest(request: VideoGenerationRequest): VideoGenerationRequest {
+  const orientation = inferApexerOrientation(request);
+  return {
+    ...request,
+    model: 'sora-2',
+    seconds: normalizeApexerSeconds(request.seconds, request.model),
+    orientation,
+    size: request.size || apexerSizeForOrientation(orientation),
+  };
+}
+
+function shouldUseApexerVideoContract(channelType?: SoraConfig['channelType']): boolean {
+  return channelType === 'apexerapi' || channelType === 'sora' || channelType === 'legacy';
+}
+
+function normalizeApexerImageRequest(request: ImageGenerationRequest): ImageGenerationRequest {
+  const requestedModel = String(request.model || '').trim().toLowerCase();
+  const model = !requestedModel || requestedModel.startsWith('sora-image')
+    ? 'gpt-image-2'
+    : request.model;
+
+  let size = request.size;
+  if (!size || size === '1792x1024') {
+    size = requestedModel.includes('landscape') ? '1536x1024' : size;
+  }
+  if (!size || size === '1024x1792') {
+    size = requestedModel.includes('portrait') ? '1024x1536' : size;
+  }
+  if (!size) {
+    size = '1024x1024';
+  }
+
+  return {
+    ...request,
+    model,
+    size,
+  };
 }
 
 // Helper: check if status indicates completion
@@ -591,10 +681,13 @@ export async function generateVideo(
   onProgress?: (progress: number, status: string) => void,
   options?: { channelId?: string }
 ): Promise<VideoGenerationResult> {
-  const { apiKey, baseUrl, channelId } = await getSoraConfig({
+  const { apiKey, baseUrl, channelId, channelType } = await getSoraConfig({
     channelId: options?.channelId,
     mode: options?.channelId ? 'default' : 'round-robin',
   });
+  const upstreamRequest = shouldUseApexerVideoContract(channelType)
+    ? normalizeApexerVideoRequest(request)
+    : request;
 
   if (!apiKey) {
     throw new Error('Sora API Key 未配置，请在管理后台「视频渠道」中配置 Sora 渠道');
@@ -609,28 +702,28 @@ export async function generateVideo(
 
   logInfo('[Sora API] Video generation request:', {
     apiUrl,
-    model: request.model,
-    prompt: request.prompt?.substring(0, 50),
-    seconds: request.seconds,
-    size: request.size,
-    hasInputImage: !!request.input_image,
+    model: upstreamRequest.model,
+    prompt: upstreamRequest.prompt?.substring(0, 50),
+    seconds: upstreamRequest.seconds,
+    size: upstreamRequest.size,
+    hasInputImage: !!upstreamRequest.input_image,
   });
 
   const buildFormData = () => {
     const formData = new FormData();
 
-    const prompt = request.prompt || 'Generate video';
+    const prompt = upstreamRequest.prompt || 'Generate video';
 
     formData.append('prompt', prompt);
-    if (request.model) formData.append('model', request.model);
-    if (request.seconds) formData.append('seconds', request.seconds);
-    if (request.size) formData.append('size', request.size);
-    if (request.orientation) formData.append('orientation', request.orientation);
-    if (request.style_id) formData.append('style_id', request.style_id);
-    if (request.remix_target_id) formData.append('remix_target_id', request.remix_target_id);
+    if (upstreamRequest.model) formData.append('model', upstreamRequest.model);
+    if (upstreamRequest.seconds) formData.append('seconds', upstreamRequest.seconds);
+    if (upstreamRequest.size) formData.append('size', upstreamRequest.size);
+    if (upstreamRequest.orientation) formData.append('orientation', upstreamRequest.orientation);
+    if (upstreamRequest.style_id) formData.append('style_id', upstreamRequest.style_id);
+    if (upstreamRequest.remix_target_id) formData.append('remix_target_id', upstreamRequest.remix_target_id);
 
-    if (request.input_image) {
-      const imageBuffer = Buffer.from(request.input_image, 'base64');
+    if (upstreamRequest.input_image) {
+      const imageBuffer = Buffer.from(upstreamRequest.input_image, 'base64');
       const imageBlob = new Blob([imageBuffer], { type: 'image/jpeg' });
       formData.append('input_reference', imageBlob, 'input.jpg');
     }
@@ -798,7 +891,10 @@ export async function generateVideo(
 
 // 异步创建视频任务（立即返回任务ID）
 export async function createVideoTask(request: VideoGenerationRequest): Promise<VideoTaskResponse> {
-  const { apiKey, baseUrl } = await getSoraConfig();
+  const { apiKey, baseUrl, channelType } = await getSoraConfig();
+  const upstreamRequest = shouldUseApexerVideoContract(channelType)
+    ? normalizeApexerVideoRequest(request)
+    : request;
 
   if (!apiKey) {
     throw new Error('Sora API Key 未配置');
@@ -810,18 +906,18 @@ export async function createVideoTask(request: VideoGenerationRequest): Promise<
   const buildFormData = () => {
     const formData = new FormData();
 
-    formData.append('prompt', request.prompt || 'Generate video');
+    formData.append('prompt', upstreamRequest.prompt || 'Generate video');
     formData.append('async_mode', 'true');
 
-    if (request.model) formData.append('model', request.model);
-    if (request.seconds) formData.append('seconds', request.seconds);
-    if (request.size) formData.append('size', request.size);
-    if (request.orientation) formData.append('orientation', request.orientation);
-    if (request.style_id) formData.append('style_id', request.style_id);
-    if (request.remix_target_id) formData.append('remix_target_id', request.remix_target_id);
+    if (upstreamRequest.model) formData.append('model', upstreamRequest.model);
+    if (upstreamRequest.seconds) formData.append('seconds', upstreamRequest.seconds);
+    if (upstreamRequest.size) formData.append('size', upstreamRequest.size);
+    if (upstreamRequest.orientation) formData.append('orientation', upstreamRequest.orientation);
+    if (upstreamRequest.style_id) formData.append('style_id', upstreamRequest.style_id);
+    if (upstreamRequest.remix_target_id) formData.append('remix_target_id', upstreamRequest.remix_target_id);
 
-    if (request.input_image) {
-      const imageBuffer = Buffer.from(request.input_image, 'base64');
+    if (upstreamRequest.input_image) {
+      const imageBuffer = Buffer.from(upstreamRequest.input_image, 'base64');
       const imageBlob = new Blob([imageBuffer], { type: 'image/jpeg' });
       formData.append('input_reference', imageBlob, 'input.jpg');
     }
@@ -857,7 +953,7 @@ export async function remixVideo(
   request: VideoRemixRequest,
   onProgress?: (progress: number, status: string) => void
 ): Promise<VideoGenerationResponse> {
-  const { apiKey, baseUrl } = await getSoraConfig();
+  const { apiKey, baseUrl, channelType } = await getSoraConfig();
 
   if (!apiKey) {
     throw new Error('Sora API Key 未配置');
@@ -868,13 +964,19 @@ export async function remixVideo(
   }
 
   const normalizedBaseUrl = baseUrl.replace(/\/$/, '');
-  const apiUrl = `${normalizedBaseUrl}/v1/videos/${encodeURIComponent(videoId)}/remix`;
+  const usesApexerContract = shouldUseApexerVideoContract(channelType);
+  const upstreamRequest = usesApexerContract
+    ? normalizeApexerVideoRequest({ ...request, remix_target_id: videoId })
+    : request;
+  const apiUrl = usesApexerContract
+    ? `${normalizedBaseUrl}/v1/videos`
+    : `${normalizedBaseUrl}/v1/videos/${encodeURIComponent(videoId)}/remix`;
 
   logInfo('[Sora API] Remix request:', {
     apiUrl,
     videoId,
-    prompt: request.prompt?.substring(0, 50),
-    model: request.model,
+    prompt: upstreamRequest.prompt?.substring(0, 50),
+    model: upstreamRequest.model,
   });
 
   const response = await fetchWithRetry(undiciFetch, apiUrl, () => ({
@@ -884,12 +986,14 @@ export async function remixVideo(
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      prompt: request.prompt,
-      model: request.model,
-      seconds: request.seconds,
-      size: request.size,
-      style_id: request.style_id,
-      async_mode: request.async_mode ?? true,
+      prompt: upstreamRequest.prompt,
+      model: upstreamRequest.model,
+      seconds: upstreamRequest.seconds,
+      size: upstreamRequest.size,
+      orientation: upstreamRequest.orientation,
+      style_id: upstreamRequest.style_id,
+      remix_target_id: upstreamRequest.remix_target_id,
+      async_mode: upstreamRequest.async_mode ?? true,
     }),
     dispatcher: soraAgent,
   }));
@@ -956,14 +1060,20 @@ export async function createRemixTask(
   videoId: string,
   request: VideoRemixRequest
 ): Promise<VideoTaskResponse> {
-  const { apiKey, baseUrl } = await getSoraConfig();
+  const { apiKey, baseUrl, channelType } = await getSoraConfig();
 
   if (!apiKey) {
     throw new Error('Sora API Key 未配置');
   }
 
   const normalizedBaseUrl = baseUrl.replace(/\/$/, '');
-  const apiUrl = `${normalizedBaseUrl}/v1/videos/${encodeURIComponent(videoId)}/remix`;
+  const usesApexerContract = shouldUseApexerVideoContract(channelType);
+  const upstreamRequest = usesApexerContract
+    ? normalizeApexerVideoRequest({ ...request, remix_target_id: videoId })
+    : request;
+  const apiUrl = usesApexerContract
+    ? `${normalizedBaseUrl}/v1/videos`
+    : `${normalizedBaseUrl}/v1/videos/${encodeURIComponent(videoId)}/remix`;
 
   const response = await fetchWithRetry(undiciFetch, apiUrl, () => ({
     method: 'POST',
@@ -972,11 +1082,13 @@ export async function createRemixTask(
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      prompt: request.prompt,
-      model: request.model,
-      seconds: request.seconds,
-      size: request.size,
-      style_id: request.style_id,
+      prompt: upstreamRequest.prompt,
+      model: upstreamRequest.model,
+      seconds: upstreamRequest.seconds,
+      size: upstreamRequest.size,
+      orientation: upstreamRequest.orientation,
+      style_id: upstreamRequest.style_id,
+      remix_target_id: upstreamRequest.remix_target_id,
       async_mode: true,
     }),
     dispatcher: soraAgent,
@@ -1017,7 +1129,10 @@ export interface ImageGenerationResponse {
 }
 
 export async function generateImage(request: ImageGenerationRequest): Promise<ImageGenerationResponse> {
-  const { apiKey, baseUrl } = await getSoraConfig();
+  const { apiKey, baseUrl, channelType } = await getSoraConfig();
+  const upstreamRequest = shouldUseApexerVideoContract(channelType)
+    ? normalizeApexerImageRequest(request)
+    : request;
 
   if (!apiKey) {
     throw new Error('Sora API Key 未配置，请在管理后台「视频渠道」中配置 Sora 渠道');
@@ -1032,8 +1147,8 @@ export async function generateImage(request: ImageGenerationRequest): Promise<Im
 
   logInfo('[Sora API] Image generation request:', {
     apiUrl,
-    model: request.model,
-    prompt: request.prompt?.substring(0, 50),
+    model: upstreamRequest.model,
+    prompt: upstreamRequest.prompt?.substring(0, 50),
   });
 
   const response = await fetchWithRetry(undiciFetch, apiUrl, () => ({
@@ -1042,7 +1157,7 @@ export async function generateImage(request: ImageGenerationRequest): Promise<Im
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify(request),
+    body: JSON.stringify(upstreamRequest),
     dispatcher: soraAgent,
   }));
 
