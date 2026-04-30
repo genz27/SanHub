@@ -876,6 +876,7 @@ export default function ImageChannelsPage() {
         }
       }
     }
+    if (key === 'qualityOptions') return; // qualityOptions 是数组，不通过此方法控制
     setModelForm((prev) => ({
       ...prev,
       features: { ...prev.features, [key]: value },
@@ -1559,7 +1560,7 @@ export default function ImageChannelsPage() {
                 <label key={f.key} className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={modelForm.features[f.key as keyof ImageModelFeatures]}
+                    checked={!!modelForm.features[f.key as keyof ImageModelFeatures]}
                     onChange={(e) => handleFeatureToggle(f.key as keyof ImageModelFeatures, e.target.checked)}
                     className="w-4 h-4 rounded border-border/70 bg-card/60 text-sky-500 focus:ring-sky-500"
                   />
@@ -1567,6 +1568,46 @@ export default function ImageChannelsPage() {
                 </label>
               ))}
             </div>
+
+            {modelForm.apiModel.toLowerCase().includes('gpt-image-2') && (
+              <div className="pt-1">
+                <label className="text-sm text-foreground/70">画质选项</label>
+                <div className="flex flex-wrap gap-4 mt-2">
+                  {['high', 'medium', 'low'].map((q) => {
+                    const options = modelForm.features.qualityOptions;
+                    const checked = !options || options.length === 0 || options.includes(q);
+                    return (
+                      <label key={q} className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            const current = modelForm.features.qualityOptions;
+                            let next: string[];
+                            if (!current || current.length === 0) {
+                              next = ['high', 'medium', 'low'].filter(v => v !== q);
+                            } else {
+                              next = e.target.checked
+                                ? [...current, q]
+                                : current.filter(v => v !== q);
+                            }
+                            setModelForm({
+                              ...modelForm,
+                              features: { ...modelForm.features, qualityOptions: next },
+                            });
+                          }}
+                          className="w-4 h-4 rounded border-border/70 bg-card/60 text-sky-500 focus:ring-sky-500"
+                        />
+                        <span className="text-sm text-foreground/70">
+                          {q === 'high' ? '高' : q === 'medium' ? '中' : '低'}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-foreground/40 mt-1">取消勾选即隐藏对应画质选项</p>
+              </div>
+            )}
           </div>
 
           <div className="flex flex-wrap gap-4 pt-2">

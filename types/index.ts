@@ -191,6 +191,7 @@ export interface ImageModelFeatures {
   matting: boolean;          // 抠图
   multipleImages: boolean;   // 支持多张参考图
   imageSize: boolean;        // 支持分辨率选择 (1K/2K/4K)
+  qualityOptions?: string[]; // 画质选项 (high/medium/low)，为空或 undefined 表示不显示
 }
 
 // 图像渠道配置
