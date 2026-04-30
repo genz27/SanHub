@@ -830,36 +830,37 @@ export function ImageGenerationPage({
               <span className="text-xs text-foreground/40">{getCurrentResolutionDisplay()}</span>
             )}
 
+            <div className="h-5 w-px bg-border/50" />
+
             {(() => {
               if (!currentModel) return null;
-              const isGptImage2 = currentModel.apiModel.toLowerCase().includes('gpt-image-2');
               if (currentModel.channelType !== 'openai-compatible' && currentModel.channelType !== 'openai-chat') return null;
-              if (!isGptImage2) return null;
-              // 根据 qualityOptions 过滤，未设置时默认全部显示
+              if (!currentModel.apiModel.toLowerCase().includes('gpt-image-2')) return null;
               const qOpts = currentModel.features.qualityOptions;
               const allQualities = [
-                { value: 'low', label: '低 low' },
-                { value: 'medium', label: '中 medium' },
-                { value: 'high', label: '高 high' },
+                { value: 'low', label: '低' },
+                { value: 'medium', label: '中' },
+                { value: 'high', label: '高' },
               ];
               const available = qOpts && qOpts.length > 0
                 ? allQualities.filter(q => qOpts.includes(q.value))
                 : allQualities;
               if (available.length === 0) return null;
-              // 如果当前值不在可用选项中，回退到第一个
               const safeValue = available.some(q => q.value === quality) ? quality : available[0].value;
               if (safeValue !== quality) {
-                // 异步更新避免渲染死循环
                 queueMicrotask(() => setQuality(safeValue));
               }
               return (
-                <div className="w-[100px]">
-                  <CustomSelect
-                    value={safeValue}
-                    onValueChange={setQuality}
-                    options={available}
-                    placeholder="画质"
-                  />
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-foreground/50 whitespace-nowrap">质量</span>
+                  <div className="w-[68px]">
+                    <CustomSelect
+                      value={safeValue}
+                      onValueChange={setQuality}
+                      options={available}
+                      placeholder="画质"
+                    />
+                  </div>
                 </div>
               );
             })()}
