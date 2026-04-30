@@ -167,6 +167,7 @@ export interface ModelDisabledConfig {
 
 // 渠道类型 - 决定请求方式
 export type ChannelType =
+  | 'apexerapi'
   | 'openai-compatible'
   | 'openai-chat'
   | 'modelscope'
@@ -178,6 +179,7 @@ export type ChannelType =
 
 // Video channel types (for /admin/video-channels)
 export type VideoChannelType =
+  | 'apexerapi'
   | 'sora'
   | 'openai-compatible'
   | 'flow2api'
