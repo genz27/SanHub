@@ -90,6 +90,44 @@ const imageAgent = new Agent({
   },
 });
 
+function pickImageUrl(value: unknown): string | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+
+  const record = value as Record<string, unknown>;
+  const candidates = [
+    record.url,
+    record.preview_url,
+    record.previewUrl,
+    record.image_url,
+    record.imageUrl,
+    record.output_url,
+    record.outputUrl,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+
+  const nestedImageUrl = record.image_url || record.imageUrl;
+  if (nestedImageUrl && typeof nestedImageUrl === 'object') {
+    const nested = pickImageUrl(nestedImageUrl);
+    if (nested) return nested;
+  }
+
+  const fileData = record.fileData || record.file_data;
+  if (fileData && typeof fileData === 'object') {
+    const fileRecord = fileData as Record<string, unknown>;
+    const fileUri = fileRecord.fileUri || fileRecord.file_uri || fileRecord.url;
+    if (typeof fileUri === 'string' && fileUri.trim()) {
+      return fileUri.trim();
+    }
+  }
+
+  return undefined;
+}
+
 function buildOpenAIImageInput(
   images: ImageGenerateRequest['images']
 ): string | string[] | undefined {
@@ -228,13 +266,13 @@ async function generateWithOpenAI(
   const data: any = await response.json();
   const imageData = data.data?.[0];
 
-  if (!imageData?.b64_json && !imageData?.url) {
+  const remoteImageUrl = pickImageUrl(imageData);
+
+  if (!imageData?.b64_json && !remoteImageUrl) {
     throw new Error('API 返回成功但未包含图片');
   }
 
-  const resultUrl = imageData.b64_json
-    ? `data:image/png;base64,${imageData.b64_json}`
-    : imageData.url;
+  const resultUrl = remoteImageUrl || `data:image/png;base64,${imageData.b64_json}`;
 
   return {
     type: 'gemini-image', // 统一类型
@@ -312,8 +350,14 @@ async function generateWithGemini(
   const data: any = await response.json();
   const generatedImages: string[] = [];
 
-  if (data.candidates?.[0]?.content?.parts) {
-    for (const part of data.candidates[0].content.parts) {
+  const responseParts = data.candidates?.[0]?.content?.parts;
+  if (Array.isArray(responseParts)) {
+    for (const part of responseParts) {
+      const remoteImageUrl = pickImageUrl(part) || pickImageUrl(part.inlineData);
+      if (remoteImageUrl) {
+        generatedImages.push(remoteImageUrl);
+        continue;
+      }
       if (part.inlineData?.data) {
         const mime = part.inlineData.mimeType || 'image/png';
         generatedImages.push(`data:${mime};base64,${part.inlineData.data}`);
@@ -523,15 +567,16 @@ async function generateWithGitee(
   }
 
   const data: any = await response.json();
-  if (!data.data?.[0]?.b64_json) {
+  const imageData = data.data?.[0];
+  const remoteImageUrl = pickImageUrl(imageData);
+  if (!remoteImageUrl && !imageData?.b64_json) {
     throw new Error('API 返回成功但未包含图片');
   }
 
-  const imageData = data.data[0];
   const mimeType = imageData.type || 'image/png';
   return {
     type: 'gitee-image',
-    url: `data:${mimeType};base64,${imageData.b64_json}`,
+    url: remoteImageUrl || `data:${mimeType};base64,${imageData.b64_json}`,
     cost: 0,
   };
 }
@@ -588,11 +633,12 @@ async function generateWithGiteeUpscale(
 
   const data: any = await response.json();
   const imageData = data.data?.[0];
-  if (!imageData?.url && !imageData?.b64_json) {
+  const remoteImageUrl = pickImageUrl(imageData);
+  if (!remoteImageUrl && !imageData?.b64_json) {
     throw new Error('API 返回成功但未包含图片');
   }
 
-  const resultUrl = imageData.url || `data:${imageData.type || 'image/jpeg'};base64,${imageData.b64_json}`;
+  const resultUrl = remoteImageUrl || `data:${imageData.type || 'image/jpeg'};base64,${imageData.b64_json}`;
   return { type: 'gitee-image', url: resultUrl, cost: 0 };
 }
 
@@ -647,11 +693,12 @@ async function generateWithGiteeMatting(
 
   const data: any = await response.json();
   const imageData = data.data?.[0];
-  if (!imageData?.url && !imageData?.b64_json) {
+  const remoteImageUrl = pickImageUrl(imageData);
+  if (!remoteImageUrl && !imageData?.b64_json) {
     throw new Error('API 返回成功但未包含图片');
   }
 
-  const resultUrl = imageData.url || `data:${imageData.type || 'image/png'};base64,${imageData.b64_json}`;
+  const resultUrl = remoteImageUrl || `data:${imageData.type || 'image/png'};base64,${imageData.b64_json}`;
   return { type: 'gitee-image', url: resultUrl, cost: 0 };
 }
 
@@ -790,13 +837,11 @@ async function generateWithOpenAIChat(
     }
   }
 
-  // 3. JSON format: { "url": "..." }
+  // 3. JSON format: { "url": "..." } or { "preview_url": "..." }
   if (!resultUrl) {
     try {
       const parsed = JSON.parse(responseText);
-      if (parsed.url) {
-        resultUrl = parsed.url;
-      }
+      resultUrl = pickImageUrl(parsed);
     } catch {
       // Not JSON, continue
     }
@@ -918,11 +963,12 @@ async function generateWithSora(
 
   // OpenAI 格式响应: { data: [{ url: '...' }] }
   const imageData = data.data?.[0];
-  if (!imageData?.url && !imageData?.b64_json) {
+  const remoteImageUrl = pickImageUrl(imageData);
+  if (!remoteImageUrl && !imageData?.b64_json) {
     throw new Error('API 返回成功但未包含图片');
   }
 
-  const resultUrl = imageData.url || `data:image/png;base64,${imageData.b64_json}`;
+  const resultUrl = remoteImageUrl || `data:image/png;base64,${imageData.b64_json}`;
   return {
     type: 'sora-image',
     url: resultUrl,

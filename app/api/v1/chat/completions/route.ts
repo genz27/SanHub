@@ -72,17 +72,46 @@ function inferMediaTypeFromUrl(url: string): MediaType | null {
   return null;
 }
 
+function pickMediaUrl(value: unknown): string | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+
+  const record = value as Record<string, unknown>;
+  const candidates = [
+    record.url,
+    record.preview_url,
+    record.previewUrl,
+    record.image_url,
+    record.imageUrl,
+    record.video_url,
+    record.videoUrl,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+
+  const nestedImageUrl = record.image_url || record.imageUrl;
+  if (nestedImageUrl && typeof nestedImageUrl === 'object') {
+    return pickMediaUrl(nestedImageUrl);
+  }
+
+  return undefined;
+}
+
 function extractMediaFromContent(content: string): { type: MediaType; url: string } | null {
   const trimmed = content.trim();
   if (!trimmed) return null;
 
   try {
     const parsed = JSON.parse(trimmed);
-    if (parsed && typeof parsed === 'object' && typeof parsed.url === 'string') {
+    const url = pickMediaUrl(parsed);
+    if (url) {
       const type = parsed.type === 'video' || parsed.type === 'image'
         ? parsed.type
-        : inferMediaTypeFromUrl(parsed.url);
-      if (type) return { type, url: parsed.url };
+        : inferMediaTypeFromUrl(url);
+      if (type) return { type, url };
     }
   } catch {
     // ignore
