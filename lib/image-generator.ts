@@ -225,7 +225,7 @@ async function generateWithOpenAI(
     throw new Error(`OpenAI API 错误 (${response.status}): ${errorText}`);
   }
 
-  const data = await response.json();
+  const data: any = await response.json();
   const imageData = data.data?.[0];
 
   if (!imageData?.b64_json && !imageData?.url) {
@@ -309,7 +309,7 @@ async function generateWithGemini(
     throw new Error(`Gemini API 错误 (${response.status}): ${errorText}`);
   }
 
-  const data = await response.json();
+  const data: any = await response.json();
   const generatedImages: string[] = [];
 
   if (data.candidates?.[0]?.content?.parts) {
@@ -370,7 +370,7 @@ async function pollModelScopeTask(baseUrl: string, apiKey: string, taskId: strin
         );
       }
 
-      const data = await response.json();
+      const data: any = await response.json();
       consecutiveErrors = 0;
 
       if (data.task_status === 'SUCCEED') {
@@ -449,14 +449,14 @@ async function generateWithModelScope(
   }
 
   if (useAsync) {
-    const data = await response.json();
+    const data: any = await response.json();
     if (!data.task_id) throw new Error('未返回任务 ID');
     const imageUrl = await pollModelScopeTask(normalizedBaseUrl, key, data.task_id);
     const base64Image = await downloadImageAsBase64(imageUrl);
     return { type: 'zimage-image', url: base64Image, cost: 0 };
   }
 
-  const data = await response.json();
+  const data: any = await response.json();
   if (!data.images?.[0]?.url) {
     throw new Error('API 返回成功但未包含图片');
   }
@@ -522,7 +522,7 @@ async function generateWithGitee(
     throw new Error(`Gitee API 错误 (${response.status}): ${errorText}`);
   }
 
-  const data = await response.json();
+  const data: any = await response.json();
   if (!data.data?.[0]?.b64_json) {
     throw new Error('API 返回成功但未包含图片');
   }
@@ -586,7 +586,7 @@ async function generateWithGiteeUpscale(
     throw new Error(`Gitee API 错误 (${response.status}): ${errorText}`);
   }
 
-  const data = await response.json();
+  const data: any = await response.json();
   const imageData = data.data?.[0];
   if (!imageData?.url && !imageData?.b64_json) {
     throw new Error('API 返回成功但未包含图片');
@@ -645,7 +645,7 @@ async function generateWithGiteeMatting(
     throw new Error(`Gitee API 错误 (${response.status}): ${errorText}`);
   }
 
-  const data = await response.json();
+  const data: any = await response.json();
   const imageData = data.data?.[0];
   if (!imageData?.url && !imageData?.b64_json) {
     throw new Error('API 返回成功但未包含图片');
@@ -914,7 +914,7 @@ async function generateWithSora(
     throw new Error(`Sora API 错误 (${response.status}): ${errorText}`);
   }
 
-  const data = await response.json();
+  const data: any = await response.json();
 
   // OpenAI 格式响应: { data: [{ url: '...' }] }
   const imageData = data.data?.[0];
