@@ -577,9 +577,9 @@ async function generateWithGiteeUpscale(
           }
         : {}),
     },
-    body: buildFormData(),
+    body: buildFormData() as any,
     dispatcher: imageAgent,
-  }), GENERATION_POST_RETRY_OPTIONS);
+  }) as any, GENERATION_POST_RETRY_OPTIONS);
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -636,9 +636,9 @@ async function generateWithGiteeMatting(
           }
         : {}),
     },
-    body: buildFormData(),
+    body: buildFormData() as any,
     dispatcher: imageAgent,
-  }), GENERATION_POST_RETRY_OPTIONS);
+  }) as any, GENERATION_POST_RETRY_OPTIONS);
 
   if (!response.ok) {
     const errorText = await response.text();
