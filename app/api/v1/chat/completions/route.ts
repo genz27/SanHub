@@ -72,29 +72,81 @@ function inferMediaTypeFromUrl(url: string): MediaType | null {
   return null;
 }
 
-function pickMediaUrl(value: unknown): string | undefined {
-  if (!value || typeof value !== 'object') return undefined;
+const MEDIA_URL_KEYS = [
+  'url',
+  'preview_url',
+  'previewUrl',
+  'image_url',
+  'imageUrl',
+  'video_url',
+  'videoUrl',
+  'fileUri',
+  'file_uri',
+];
+
+function isUsableMediaUrl(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  return (
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('data:image/') ||
+    trimmed.startsWith('data:video/')
+  );
+}
+
+function pickMediaUrl(value: unknown, depth = 0): string | undefined {
+  if (!value || typeof value !== 'object' || depth > 6) return undefined;
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const nested = pickMediaUrl(item, depth + 1);
+      if (nested) return nested;
+    }
+    return undefined;
+  }
 
   const record = value as Record<string, unknown>;
-  const candidates = [
-    record.url,
-    record.preview_url,
-    record.previewUrl,
-    record.image_url,
-    record.imageUrl,
-    record.video_url,
-    record.videoUrl,
+  for (const key of MEDIA_URL_KEYS) {
+    if (isUsableMediaUrl(record[key])) {
+      return record[key].trim();
+    }
+  }
+
+  const priorityNestedKeys = [
+    'inlineData',
+    'inline_data',
+    'fileData',
+    'file_data',
+    'image',
+    'images',
+    'video',
+    'videos',
+    'output',
+    'outputs',
+    'result',
+    'results',
+    'data',
+    'parts',
+    'content',
   ];
 
-  for (const candidate of candidates) {
-    if (typeof candidate === 'string' && candidate.trim()) {
+  for (const key of priorityNestedKeys) {
+    const nested = pickMediaUrl(record[key], depth + 1);
+    if (nested) return nested;
+  }
+
+  for (const [key, candidate] of Object.entries(record)) {
+    if (/url|uri/i.test(key) && isUsableMediaUrl(candidate)) {
       return candidate.trim();
     }
   }
 
-  const nestedImageUrl = record.image_url || record.imageUrl;
-  if (nestedImageUrl && typeof nestedImageUrl === 'object') {
-    return pickMediaUrl(nestedImageUrl);
+  for (const candidate of Object.values(record)) {
+    if (candidate && typeof candidate === 'object') {
+      const nested = pickMediaUrl(candidate, depth + 1);
+      if (nested) return nested;
+    }
   }
 
   return undefined;

@@ -90,38 +90,77 @@ const imageAgent = new Agent({
   },
 });
 
-function pickImageUrl(value: unknown): string | undefined {
-  if (!value || typeof value !== 'object') return undefined;
+const IMAGE_URL_KEYS = [
+  'url',
+  'preview_url',
+  'previewUrl',
+  'image_url',
+  'imageUrl',
+  'output_url',
+  'outputUrl',
+  'fileUri',
+  'file_uri',
+];
+
+function isUsableImageUrl(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  return (
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('data:image/')
+  );
+}
+
+function pickImageUrl(value: unknown, depth = 0): string | undefined {
+  if (!value || typeof value !== 'object' || depth > 6) return undefined;
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const nested = pickImageUrl(item, depth + 1);
+      if (nested) return nested;
+    }
+    return undefined;
+  }
 
   const record = value as Record<string, unknown>;
-  const candidates = [
-    record.url,
-    record.preview_url,
-    record.previewUrl,
-    record.image_url,
-    record.imageUrl,
-    record.output_url,
-    record.outputUrl,
+  for (const key of IMAGE_URL_KEYS) {
+    if (isUsableImageUrl(record[key])) {
+      return record[key].trim();
+    }
+  }
+
+  const priorityNestedKeys = [
+    'inlineData',
+    'inline_data',
+    'fileData',
+    'file_data',
+    'image',
+    'images',
+    'output',
+    'outputs',
+    'result',
+    'results',
+    'data',
+    'parts',
+    'content',
   ];
 
-  for (const candidate of candidates) {
-    if (typeof candidate === 'string' && candidate.trim()) {
+  for (const key of priorityNestedKeys) {
+    const nested = pickImageUrl(record[key], depth + 1);
+    if (nested) return nested;
+  }
+
+  for (const [key, candidate] of Object.entries(record)) {
+    if (/url|uri/i.test(key) && isUsableImageUrl(candidate)) {
       return candidate.trim();
     }
   }
 
-  const nestedImageUrl = record.image_url || record.imageUrl;
-  if (nestedImageUrl && typeof nestedImageUrl === 'object') {
-    const nested = pickImageUrl(nestedImageUrl);
-    if (nested) return nested;
-  }
-
-  const fileData = record.fileData || record.file_data;
-  if (fileData && typeof fileData === 'object') {
-    const fileRecord = fileData as Record<string, unknown>;
-    const fileUri = fileRecord.fileUri || fileRecord.file_uri || fileRecord.url;
-    if (typeof fileUri === 'string' && fileUri.trim()) {
-      return fileUri.trim();
+  for (const candidate of Object.values(record)) {
+    if (candidate && typeof candidate === 'object') {
+      const nested = pickImageUrl(candidate, depth + 1);
+      if (nested) return nested;
     }
   }
 
@@ -353,14 +392,15 @@ async function generateWithGemini(
   const responseParts = data.candidates?.[0]?.content?.parts;
   if (Array.isArray(responseParts)) {
     for (const part of responseParts) {
-      const remoteImageUrl = pickImageUrl(part) || pickImageUrl(part.inlineData);
+      const inlineData = part.inlineData || part.inline_data;
+      const remoteImageUrl = pickImageUrl(part) || pickImageUrl(inlineData);
       if (remoteImageUrl) {
         generatedImages.push(remoteImageUrl);
         continue;
       }
-      if (part.inlineData?.data) {
-        const mime = part.inlineData.mimeType || 'image/png';
-        generatedImages.push(`data:${mime};base64,${part.inlineData.data}`);
+      if (inlineData?.data) {
+        const mime = inlineData.mimeType || inlineData.mime_type || 'image/png';
+        generatedImages.push(`data:${mime};base64,${inlineData.data}`);
       }
     }
   }
