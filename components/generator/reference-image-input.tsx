@@ -251,7 +251,12 @@ export function ReferenceImageInput({
       >
         {previewUrl ? (
           <>
-            <img src={previewUrl} alt="" className="h-full w-full object-cover" />
+            <img
+              src={previewUrl}
+              alt=""
+              className="h-full w-full object-cover"
+              decoding="async"
+            />
             <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-black/60 px-1.5 py-1">
               <span className="truncate text-[10px] text-white/85">
                 {totalCount} 张参考图
@@ -359,7 +364,13 @@ export function ReferenceImageInput({
                 key={`${image.preview}-${index}`}
                 className="group relative aspect-square overflow-hidden rounded-lg border border-border/70 bg-background/60"
               >
-                <img src={image.preview} alt="" className="h-full w-full object-cover" />
+                <img
+                  src={image.preview}
+                  alt=""
+                  className="h-full w-full object-cover"
+                  loading="lazy"
+                  decoding="async"
+                />
                 <button
                   type="button"
                   onClick={() => onRemoveImage(index)}
@@ -378,6 +389,8 @@ export function ReferenceImageInput({
                   src={externalReference.previewUrl}
                   alt=""
                   className="h-full w-full object-cover"
+                  loading="lazy"
+                  decoding="async"
                 />
                 <div className="absolute bottom-1 left-1 rounded bg-black/65 px-1.5 py-0.5 text-[10px] text-white">
                   {externalBadge}

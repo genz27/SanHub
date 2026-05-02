@@ -22,14 +22,18 @@ import { ReferenceImageInput } from '@/components/generator/reference-image-inpu
 import { useSiteConfig } from '@/components/providers/site-config-provider';
 import { CustomSelect } from '@/components/ui/select-custom';
 import {
+  buildTaskFromGeneration,
   deleteGenerationRecord,
+  deleteGenerationRecords,
   fetchGenerationSubmit,
   fetchPendingGenerationTasks,
   fetchRecentUserGenerations,
   filterGenerationsByKind,
   filterTasksByKind,
+  isFailedGenerationStatus,
   isTerminalGenerationStatus,
   mergeGenerationsById,
+  mergeTasksById,
   pollGenerationTask,
   replaceActiveTasks,
   type ReusableImageReference,
@@ -126,6 +130,7 @@ export function ImageGenerationPage({
   const [compressing, setCompressing] = useState(false);
   const [compressedCache, setCompressedCache] = useState<Map<File, string>>(new Map());
   const [busyGenerationId, setBusyGenerationId] = useState<string | null>(null);
+  const [clearingFailedTasks, setClearingFailedTasks] = useState(false);
   const [error, setError] = useState('');
   const [keepPrompt, setKeepPrompt] = useState(false);
 
@@ -301,21 +306,87 @@ export function ImageGenerationPage({
   const loadRecentGenerations = useCallback(async () => {
     try {
       const recentGenerations = await fetchRecentUserGenerations(12);
-      const completedImageGenerations = filterGenerationsByKind(
-        recentGenerations.filter(
-          (generation) =>
-            generation.resultUrl &&
-            generation.status === 'completed' &&
-            isTerminalGenerationStatus(generation.status)
-        ),
-        'image'
+      const imageGenerations = filterGenerationsByKind(recentGenerations, 'image');
+      const completedImageGenerations = imageGenerations.filter(
+        (generation) =>
+          generation.resultUrl &&
+          generation.status === 'completed' &&
+          isTerminalGenerationStatus(generation.status)
       );
+      const failedImageTasks = imageGenerations
+        .filter((generation) => isFailedGenerationStatus(generation.status))
+        .map(
+          (generation) =>
+            ({
+              ...buildTaskFromGeneration(generation),
+              persisted: true,
+            }) satisfies Task
+        );
 
       setGenerations((prev) => mergeGenerationsById(prev, completedImageGenerations));
+      if (failedImageTasks.length > 0) {
+        setTasks((prev) => mergeTasksById(prev, failedImageTasks));
+      }
     } catch (err) {
       console.error('Failed to load recent image generations:', err);
     }
   }, []);
+
+  const markTaskAsFailed = useCallback((taskId: string, errorMessage: string, persisted = true) => {
+    setTasks((prev) =>
+      prev.map((task) =>
+        task.id === taskId
+          ? {
+              ...task,
+              status: 'failed' as const,
+              errorMessage,
+              persisted,
+            }
+          : task
+      )
+    );
+  }, []);
+
+  const handleClearFailedTasks = useCallback(async () => {
+    if (clearingFailedTasks) return;
+
+    const failedTasks = tasks.filter((task) => isFailedGenerationStatus(task.status));
+    if (failedTasks.length === 0) return;
+
+    const confirmed = window.confirm('确认清理当前生成页的错误记录吗？');
+    if (!confirmed) return;
+
+    const failedTaskIds = failedTasks
+      .filter((task) => task.persisted !== false)
+      .map((task) => task.id);
+    const localOnlyCount = failedTasks.length - failedTaskIds.length;
+    setClearingFailedTasks(true);
+    setTasks((prev) => prev.filter((task) => !isFailedGenerationStatus(task.status)));
+
+    try {
+      const deletedCount = await deleteGenerationRecords(failedTaskIds);
+      const description = [
+        deletedCount > 0 ? `已删除 ${deletedCount} 条历史错误记录` : '',
+        localOnlyCount > 0 ? `已移除 ${localOnlyCount} 条本地查询错误` : '',
+      ]
+        .filter(Boolean)
+        .join('，') || '没有需要删除的历史错误记录';
+
+      toast({
+        title: '错误任务已清理',
+        description,
+      });
+    } catch (err) {
+      setTasks((prev) => mergeTasksById(prev, failedTasks));
+      toast({
+        title: '清理失败',
+        description: err instanceof Error ? err.message : '清理错误任务失败',
+        variant: 'destructive',
+      });
+    } finally {
+      setClearingFailedTasks(false);
+    }
+  }, [clearingFailedTasks, tasks]);
 
   const pollTaskStatus = useCallback(
     async (taskId: string, taskPrompt: string): Promise<void> => {
@@ -361,23 +432,15 @@ export function ImageGenerationPage({
           },
           onFailed: async (errorMessage, payload) => {
             if (!payload) {
+              markTaskAsFailed(taskId, errorMessage, false);
               shouldResyncAfterPoll = true;
               return;
             }
 
-            setTasks((prev) =>
-              prev.map((task) =>
-                task.id === taskId
-                  ? {
-                      ...task,
-                      status: 'failed' as const,
-                      errorMessage,
-                    }
-                  : task
-              )
-            );
+            markTaskAsFailed(taskId, errorMessage, true);
           },
           onTimeout: async () => {
+            markTaskAsFailed(taskId, '任务查询超时，请稍后刷新或到历史记录查看最终状态', false);
             shouldResyncAfterPoll = true;
           },
         });
@@ -388,7 +451,7 @@ export function ImageGenerationPage({
         }
       }
     },
-    [loadRecentGenerations, update]
+    [loadRecentGenerations, markTaskAsFailed, update]
   );
 
   const loadPendingTasks = useCallback(async () => {
@@ -617,6 +680,10 @@ export function ImageGenerationPage({
     return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   };
 
+  const getSubmissionFailureMessage = (result: PromiseRejectedResult) => {
+    return result.reason instanceof Error ? result.reason.message : '生成失败';
+  };
+
   const handleGenerate = async () => {
     if (submissionLockRef.current) return;
 
@@ -674,17 +741,31 @@ export function ImageGenerationPage({
     try {
       const compressedImages = await compressImagesIfNeeded();
       const batchRequestId = createClientRequestId();
+      const results = await Promise.allSettled(
+        Array.from({ length: 3 }, (_, index) =>
+          submitSingleTask(taskPrompt, compressedImages, `${batchRequestId}-${index}`)
+        )
+      );
+      const successfulCount = results.filter((result) => result.status === 'fulfilled').length;
+      const failedResult = results.find(
+        (result): result is PromiseRejectedResult => result.status === 'rejected'
+      );
 
-      for (let index = 0; index < 3; index += 1) {
-        await submitSingleTask(taskPrompt, compressedImages, `${batchRequestId}-${index}`);
+      if (successfulCount === 0) {
+        throw new Error(failedResult ? getSubmissionFailureMessage(failedResult) : '生成失败');
       }
 
       toast({
-        title: '已提交 3 个任务',
-        description: '抽卡模式启动，等待结果中...',
+        title: successfulCount === 3 ? '已提交 3 个任务' : `已提交 ${successfulCount} / 3 个任务`,
+        description:
+          successfulCount === 3
+            ? '抽卡模式启动，等待结果中...'
+            : failedResult
+              ? getSubmissionFailureMessage(failedResult)
+              : '部分任务提交失败，请稍后重试',
       });
 
-      setDailyUsage((prev) => ({ ...prev, imageCount: prev.imageCount + 3 }));
+      setDailyUsage((prev) => ({ ...prev, imageCount: prev.imageCount + successfulCount }));
 
       if (!keepPrompt) {
         setPrompt('');
@@ -953,9 +1034,11 @@ export function ImageGenerationPage({
           generations={generations}
           tasks={tasks}
           onRemoveTask={handleRemoveTask}
+          onClearFailedTasks={handleClearFailedTasks}
           onRemoveGeneration={handleRemoveGeneration}
           onReuseGeneration={handleReuseCompletedGeneration}
           busyGenerationId={busyGenerationId}
+          clearingFailedTasks={clearingFailedTasks}
         />
       </div>
     </div>

@@ -1,5 +1,3 @@
-import imageCompression from 'browser-image-compression';
-
 const MAX_FILE_SIZE_MB = 15;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
@@ -15,6 +13,7 @@ export async function compressImageToWebP(file: File): Promise<File> {
     initialQuality: 0.85,
   };
 
+  const { default: imageCompression } = await import('browser-image-compression');
   return imageCompression(file, options);
 }
 

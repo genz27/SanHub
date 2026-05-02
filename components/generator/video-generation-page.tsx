@@ -21,14 +21,18 @@ import type { Task } from '@/components/generator/result-gallery';
 import { useSiteConfig } from '@/components/providers/site-config-provider';
 import type { Generation, CharacterCard, SafeVideoModel, DailyLimitConfig } from '@/types';
 import {
+  buildTaskFromGeneration,
   deleteGenerationRecord,
+  deleteGenerationRecords,
   fetchGenerationSubmit,
   fetchPendingGenerationTasks,
   fetchRecentUserGenerations,
   filterGenerationsByKind,
   filterTasksByKind,
+  isFailedGenerationStatus,
   isTerminalGenerationStatus,
   mergeGenerationsById,
+  mergeTasksById,
   pollGenerationTask,
   replaceActiveTasks,
   type ReusableImageReference,
@@ -72,6 +76,7 @@ export function VideoGenerationView({
   const filesRef = useRef<Array<{ file: File; preview: string }>>([]);
   const refreshGenerationFeedRef = useRef<() => Promise<void>>(async () => {});
   const isActiveRef = useRef(isActive);
+  const submissionLockRef = useRef(false);
   const [localExternalReference, setLocalExternalReference] =
     useState<ReusableImageReference | null>(null);
 
@@ -99,12 +104,14 @@ export function VideoGenerationView({
   const [tasks, setTasks] = useState<Task[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [busyGenerationId, setBusyGenerationId] = useState<string | null>(null);
+  const [clearingFailedTasks, setClearingFailedTasks] = useState(false);
   const [error, setError] = useState('');
   const [keepPrompt, setKeepPrompt] = useState(false);
 
 
   // 角色卡选择
   const [characterCards, setCharacterCards] = useState<CharacterCard[]>([]);
+  const characterCardsLoadedRef = useRef(false);
   const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const [showCharacterMenu, setShowCharacterMenu] = useState(false);
@@ -229,9 +236,9 @@ export function VideoGenerationView({
     }
   }, [selectedModelId, availableModels, activeExternalReference, clearFiles, files.length, setActiveExternalReference]);
 
-  // 加载用户角色卡
+  // Load character cards only when the active model can use Sora mentions.
   useEffect(() => {
-    if (!isActive) {
+    if (!isActive || !isSoraChannel || characterCardsLoadedRef.current) {
       return;
     }
 
@@ -244,13 +251,14 @@ export function VideoGenerationView({
             (c: CharacterCard) => c.status === 'completed' && c.characterName
           );
           setCharacterCards(completedCards);
+          characterCardsLoadedRef.current = true;
         }
       } catch (err) {
         console.error('Failed to load character cards:', err);
       }
     };
     void loadCharacterCards();
-  }, [isActive]);
+  }, [isActive, isSoraChannel]);
 
   useEffect(() => {
     if (!isSoraChannel) {
@@ -359,23 +367,89 @@ export function VideoGenerationView({
   const loadRecentGenerations = useCallback(async () => {
     try {
       const recentGenerations = await fetchRecentUserGenerations(12);
-      const completedVideoGenerations = filterGenerationsByKind(
-        recentGenerations.filter(
-          (generation) =>
-            generation.resultUrl &&
-            generation.status === 'completed' &&
-            isTerminalGenerationStatus(generation.status)
-        ),
-        'video'
+      const videoGenerations = filterGenerationsByKind(recentGenerations, 'video');
+      const completedVideoGenerations = videoGenerations.filter(
+        (generation) =>
+          generation.resultUrl &&
+          generation.status === 'completed' &&
+          isTerminalGenerationStatus(generation.status)
       );
+      const failedVideoTasks = videoGenerations
+        .filter((generation) => isFailedGenerationStatus(generation.status))
+        .map(
+          (generation) =>
+            ({
+              ...buildTaskFromGeneration(generation),
+              persisted: true,
+            }) satisfies Task
+        );
 
       setGenerations((prev) =>
         mergeGenerationsById(prev, completedVideoGenerations)
       );
+      if (failedVideoTasks.length > 0) {
+        setTasks((prev) => mergeTasksById(prev, failedVideoTasks));
+      }
     } catch (err) {
       console.error('Failed to load recent video generations:', err);
     }
   }, []);
+
+  const markTaskAsFailed = useCallback((taskId: string, errorMessage: string, persisted = true) => {
+    setTasks((prev) =>
+      prev.map((task) =>
+        task.id === taskId
+          ? {
+              ...task,
+              status: 'failed' as const,
+              errorMessage,
+              persisted,
+            }
+          : task
+      )
+    );
+  }, []);
+
+  const handleClearFailedTasks = useCallback(async () => {
+    if (clearingFailedTasks) return;
+
+    const failedTasks = tasks.filter((task) => isFailedGenerationStatus(task.status));
+    if (failedTasks.length === 0) return;
+
+    const confirmed = window.confirm('确认清理当前生成页的错误记录吗？');
+    if (!confirmed) return;
+
+    const failedTaskIds = failedTasks
+      .filter((task) => task.persisted !== false)
+      .map((task) => task.id);
+    const localOnlyCount = failedTasks.length - failedTaskIds.length;
+    setClearingFailedTasks(true);
+    setTasks((prev) => prev.filter((task) => !isFailedGenerationStatus(task.status)));
+
+    try {
+      const deletedCount = await deleteGenerationRecords(failedTaskIds);
+      const description = [
+        deletedCount > 0 ? `已删除 ${deletedCount} 条历史错误记录` : '',
+        localOnlyCount > 0 ? `已移除 ${localOnlyCount} 条本地查询错误` : '',
+      ]
+        .filter(Boolean)
+        .join('，') || '没有需要删除的历史错误记录';
+
+      toast({
+        title: '错误任务已清理',
+        description,
+      });
+    } catch (err) {
+      setTasks((prev) => mergeTasksById(prev, failedTasks));
+      toast({
+        title: '清理失败',
+        description: err instanceof Error ? err.message : '清理错误任务失败',
+        variant: 'destructive',
+      });
+    } finally {
+      setClearingFailedTasks(false);
+    }
+  }, [clearingFailedTasks, tasks]);
 
   // 轮询任务状态
   const pollTaskStatus = useCallback(
@@ -426,23 +500,15 @@ export function VideoGenerationView({
           },
           onFailed: async (errorMessage, payload) => {
             if (!payload) {
+              markTaskAsFailed(taskId, errorMessage, false);
               shouldResyncAfterPoll = true;
               return;
             }
 
-            setTasks((prev) =>
-              prev.map((task) =>
-                task.id === taskId
-                  ? {
-                      ...task,
-                      status: 'failed' as const,
-                      errorMessage,
-                    }
-                  : task
-              )
-            );
+            markTaskAsFailed(taskId, errorMessage, true);
           },
           onTimeout: async () => {
+            markTaskAsFailed(taskId, '任务查询超时，请稍后刷新或到历史记录查看最终状态', false);
             shouldResyncAfterPoll = true;
           },
         });
@@ -453,7 +519,7 @@ export function VideoGenerationView({
         }
       }
     },
-    [loadRecentGenerations, update]
+    [loadRecentGenerations, markTaskAsFailed, update]
   );
 
   const loadPendingTasks = useCallback(async () => {
@@ -645,6 +711,10 @@ export function VideoGenerationView({
     return `sora2-${ratio}-${dur}`;
   };
 
+  const getSubmissionFailureMessage = (result: PromiseRejectedResult) => {
+    return result.reason instanceof Error ? result.reason.message : '生成失败';
+  };
+
   // 单次提交任务的核心函数
   const submitSingleTask = async (
     taskPrompt: string,
@@ -693,12 +763,15 @@ export function VideoGenerationView({
   };
 
   const handleGenerate = async () => {
+    if (submissionLockRef.current) return;
+
     const validationError = validateInput();
     if (validationError) {
       setError(validationError);
       return;
     }
 
+    submissionLockRef.current = true;
     setError('');
     setSubmitting(true);
 
@@ -732,6 +805,7 @@ export function VideoGenerationView({
     } catch (err) {
       setError(err instanceof Error ? err.message : '生成失败');
     } finally {
+      submissionLockRef.current = false;
       setSubmitting(false);
       setCompressing(false);
     }
@@ -739,12 +813,15 @@ export function VideoGenerationView({
 
   // 抽卡模式：连续提交3个相同任务
   const handleGachaMode = async () => {
+    if (submissionLockRef.current) return;
+
     const validationError = validateInput();
     if (validationError) {
       setError(validationError);
       return;
     }
 
+    submissionLockRef.current = true;
     setError('');
     setSubmitting(true);
 
@@ -753,19 +830,37 @@ export function VideoGenerationView({
     try {
       // 处理图片压缩 (只执行一次)
       const taskFiles = await compressFilesIfNeeded();
+      const results = await Promise.allSettled(
+        Array.from({ length: 3 }, () =>
+          submitSingleTask(taskPrompt, selectedModelId, {
+            aspectRatio,
+            duration,
+            files: taskFiles,
+            referenceImageUrl: activeExternalReference?.sourceUrl,
+          })
+        )
+      );
+      const successfulCount = results.filter((result) => result.status === 'fulfilled').length;
+      const failedResult = results.find(
+        (result): result is PromiseRejectedResult => result.status === 'rejected'
+      );
 
-      // 连续提交3个任务
-      for (let i = 0; i < 3; i++) {
-        await submitSingleTask(taskPrompt, selectedModelId, {
-          aspectRatio,
-          duration,
-          files: taskFiles,
-          referenceImageUrl: activeExternalReference?.sourceUrl,
-        });
+      if (successfulCount === 0) {
+        throw new Error(failedResult ? getSubmissionFailureMessage(failedResult) : '生成失败');
       }
 
       // 更新今日使用量
-      setDailyUsage(prev => ({ ...prev, videoCount: prev.videoCount + 3 }));
+      setDailyUsage(prev => ({ ...prev, videoCount: prev.videoCount + successfulCount }));
+
+      toast({
+        title: successfulCount === 3 ? '已提交 3 个任务' : `已提交 ${successfulCount} / 3 个任务`,
+        description:
+          successfulCount === 3
+            ? '抽卡模式启动，等待结果中...'
+            : failedResult
+              ? getSubmissionFailureMessage(failedResult)
+              : '部分任务提交失败，请稍后重试',
+      });
 
       // 清空输入（如果勾选了保留提示词则不清空）
       if (!keepPrompt) {
@@ -776,6 +871,7 @@ export function VideoGenerationView({
     } catch (err) {
       setError(err instanceof Error ? err.message : '生成失败');
     } finally {
+      submissionLockRef.current = false;
       setSubmitting(false);
       setCompressing(false);
     }
@@ -899,7 +995,13 @@ export function VideoGenerationView({
                     >
                       <div className="w-6 h-6 rounded-full overflow-hidden bg-gradient-to-br from-emerald-500/20 to-sky-500/20 shrink-0">
                         {card.avatarUrl ? (
-                          <img src={card.avatarUrl} alt="" className="w-full h-full object-cover" />
+                          <img
+                            src={card.avatarUrl}
+                            alt=""
+                            className="w-full h-full object-cover"
+                            loading="lazy"
+                            decoding="async"
+                          />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center">
                             <User className="w-3 h-3 text-emerald-300/60" />
@@ -1039,8 +1141,10 @@ export function VideoGenerationView({
           generations={generations}
           tasks={tasks}
           onRemoveTask={handleRemoveTask}
+          onClearFailedTasks={handleClearFailedTasks}
           onRemoveGeneration={handleRemoveGeneration}
           busyGenerationId={busyGenerationId}
+          clearingFailedTasks={clearingFailedTasks}
         />
       </div>
     </div>

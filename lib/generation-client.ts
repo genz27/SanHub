@@ -52,6 +52,10 @@ export function isTerminalGenerationStatus(status?: string): boolean {
   );
 }
 
+export function isFailedGenerationStatus(status?: string): status is 'failed' | 'cancelled' {
+  return status === 'failed' || status === 'cancelled';
+}
+
 export function isVideoGenerationType(type?: string): boolean {
   return Boolean(type && type.includes('video'));
 }
@@ -187,10 +191,44 @@ export function mergeTasksById<T extends { id: string; createdAt?: number }>(
 export function replaceActiveTasks<
   T extends { id: string; status: string; createdAt?: number }
 >(
-  _current: T[],
+  current: T[],
   incoming: T[]
 ): T[] {
-  return mergeTasksById([], incoming);
+  const incomingIds = new Set(incoming.map((task) => task.id));
+  const terminalTasks = current.filter(
+    (task) =>
+      task.status !== 'pending' &&
+      task.status !== 'processing' &&
+      !incomingIds.has(task.id)
+  );
+
+  return mergeTasksById(terminalTasks, incoming);
+}
+
+export function buildTaskFromGeneration(generation: Generation): PendingGenerationTask {
+  const status = isFailedGenerationStatus(generation.status)
+    ? generation.status
+    : generation.status === 'processing'
+      ? 'processing'
+      : 'pending';
+
+  return {
+    id: generation.id,
+    prompt: generation.prompt,
+    type: generation.type,
+    status,
+    progress:
+      typeof generation.params?.progress === 'number'
+        ? generation.params.progress
+        : undefined,
+    modelId: generation.params?.modelId,
+    model: generation.params?.model,
+    errorMessage:
+      generation.errorMessage ||
+      (status === 'cancelled' ? '任务已取消' : '生成失败'),
+    createdAt: generation.createdAt,
+    updatedAt: generation.updatedAt,
+  };
 }
 
 async function parseJsonResponse(response: Response): Promise<any> {
@@ -369,4 +407,24 @@ export async function deleteGenerationRecord(generationId: string): Promise<void
   if (!response.ok) {
     throw new Error(payload.error || '删除作品失败');
   }
+}
+
+export async function deleteGenerationRecords(generationIds: string[]): Promise<number> {
+  if (generationIds.length === 0) return 0;
+
+  const response = await fetch('/api/user/history/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'batch',
+      ids: generationIds,
+    }),
+  });
+  const payload = await parseJsonResponse(response);
+
+  if (!response.ok) {
+    throw new Error(payload.error || '删除错误任务失败');
+  }
+
+  return Number(payload.deletedCount || 0);
 }

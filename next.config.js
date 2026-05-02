@@ -2,17 +2,14 @@
 const nextConfig = {
   output: 'standalone',
   
-  // 图片优化
+  // Image optimization
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: '**' },
       { protocol: 'http', hostname: '**' },
     ],
-    // 图片缓存时间（秒）
     minimumCacheTTL: 3600,
-    // 设备尺寸
     deviceSizes: [640, 750, 828, 1080, 1200, 1920],
-    // 图片尺寸
     imageSizes: [16, 32, 48, 64, 96, 128, 256],
   },
   
@@ -22,15 +19,22 @@ const nextConfig = {
     },
   },
   
-  // 压缩
+  // Keep Next.js response compression enabled in production.
   compress: true,
   
-  // 生产环境优化
+  // Production response hardening.
   poweredByHeader: false,
   
-  // 响应头
+  // Response headers for API freshness, static asset caching, and security.
   async headers() {
     return [
+      {
+        source: '/_next/static/:path*',
+        headers: [
+          { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
+          { key: 'Vary', value: 'Accept-Encoding' },
+        ],
+      },
       {
         source: '/api/:path((?!media/).*)',
         headers: [

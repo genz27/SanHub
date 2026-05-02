@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { DashboardShell } from '@/components/layout/dashboard-shell';
 import { DashboardBackgroundWrapper } from '@/components/ui/dashboard-background-wrapper';
+import { AuthSessionProvider } from '@/components/providers/session-provider';
 
 export default async function DashboardLayout({
   children,
@@ -18,7 +19,9 @@ export default async function DashboardLayout({
   return (
     <div className="min-h-screen relative overflow-hidden">
       <DashboardBackgroundWrapper />
-      <DashboardShell user={session.user}>{children}</DashboardShell>
+      <AuthSessionProvider>
+        <DashboardShell user={session.user}>{children}</DashboardShell>
+      </AuthSessionProvider>
     </div>
   );
 }

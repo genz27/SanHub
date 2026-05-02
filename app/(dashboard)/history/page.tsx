@@ -1,7 +1,7 @@
 'use client';
 /* eslint-disable @next/next/no-img-element */
 
-import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, memo, type CSSProperties } from 'react';
 import { useSession } from 'next-auth/react';
 import {
   Download,
@@ -62,6 +62,22 @@ const isTaskVideoType = (type: string) => type?.includes('video');
 const CHARACTER_BADGE: Badge = { label: '角色卡', icon: User };
 const FALLBACK_VIDEO_BADGE: Badge = { label: '视频', icon: Video };
 const FALLBACK_IMAGE_BADGE: Badge = { label: '图像', icon: ImageIcon };
+const HISTORY_PAGE_SIZE = 24;
+const HISTORY_RESYNC_INTERVAL_MS = 30_000;
+const MEDIA_ROOT_MARGIN = '600px 0px';
+const HISTORY_STATUS_FILTER = 'completed';
+const CARD_CONTAIN_STYLE: CSSProperties = {
+  contentVisibility: 'auto',
+  containIntrinsicSize: '240px 135px',
+};
+
+type HistoryFilter = 'all' | 'video' | 'image' | 'character';
+type HistoryMediaKind = 'all' | 'video' | 'image';
+
+const getHistoryMediaKind = (filter: HistoryFilter): HistoryMediaKind => {
+  if (filter === 'video' || filter === 'image') return filter;
+  return 'all';
+};
 
 const VIDEO_CHANNEL_BADGE_LABELS: Record<string, string> = {
   sora: 'Sora 视频',
@@ -198,8 +214,35 @@ const GenerationCard = memo(function GenerationCard({
   onSelect,
   onView,
 }: GenerationCardProps) {
+  const cardRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [hasRequestedMedia, setHasRequestedMedia] = useState(false);
+  const shouldLoadMedia = hasRequestedMedia;
+
+  useEffect(() => {
+    if (hasRequestedMedia) return;
+
+    const element = cardRef.current;
+    if (!element) return;
+
+    if (typeof IntersectionObserver === 'undefined') {
+      setHasRequestedMedia(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return;
+        setHasRequestedMedia(true);
+        observer.disconnect();
+      },
+      { rootMargin: MEDIA_ROOT_MARGIN }
+    );
+
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [hasRequestedMedia]);
   
   const handleClick = useCallback(() => {
     if (selectMode) {
@@ -210,8 +253,11 @@ const GenerationCard = memo(function GenerationCard({
   }, [selectMode, gen, onSelect, onView]);
   
   const handleMouseEnter = useCallback(() => {
-    if (!selectMode && videoRef.current) {
-      videoRef.current.play().catch(() => {});
+    if (!selectMode) {
+      setHasRequestedMedia(true);
+      window.setTimeout(() => {
+        videoRef.current?.play().catch(() => {});
+      }, 0);
     }
   }, [selectMode]);
   
@@ -224,25 +270,32 @@ const GenerationCard = memo(function GenerationCard({
 
   return (
     <div
+      ref={cardRef}
       className={`group relative aspect-video bg-card/60 rounded-xl overflow-hidden cursor-pointer border transition-all ${
         isSelected 
           ? 'border-sky-500 ring-2 ring-sky-500/40' 
           : 'border-border/70 hover:border-border'
       }`}
+      style={CARD_CONTAIN_STYLE}
       onClick={handleClick}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
     >
       {isVideoType(gen) ? (
         <>
-          <video
-            ref={videoRef}
-            src={gen.resultUrl}
-            className="w-full h-full object-cover"
-            muted
-            loop
-            preload="metadata"
-            onMouseEnter={handleMouseEnter}
-            onMouseLeave={handleMouseLeave}
-          />
+          {shouldLoadMedia ? (
+            <video
+              ref={videoRef}
+              src={gen.resultUrl}
+              className="w-full h-full object-cover"
+              muted
+              loop
+              playsInline
+              preload="none"
+            />
+          ) : (
+            <div className="absolute inset-0 bg-gradient-to-br from-card/70 to-background/80" />
+          )}
           <div className="absolute top-2 left-2 px-2 py-1 bg-background/60 backdrop-blur-sm rounded-md flex items-center gap-1">
             <Play className="w-3 h-3 text-foreground" />
             <span className="text-[10px] text-foreground">VIDEO</span>
@@ -253,14 +306,16 @@ const GenerationCard = memo(function GenerationCard({
           {!imageLoaded && (
             <div className="absolute inset-0 bg-card/60 animate-pulse" />
           )}
-          <img
-            src={gen.resultUrl}
-            alt={gen.prompt}
-            className={`w-full h-full object-cover transition-opacity duration-300 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
-            loading="lazy"
-            decoding="async"
-            onLoad={() => setImageLoaded(true)}
-          />
+          {shouldLoadMedia && (
+            <img
+              src={gen.resultUrl}
+              alt={gen.prompt}
+              className={`w-full h-full object-cover transition-opacity duration-300 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+              loading="lazy"
+              decoding="async"
+              onLoad={() => setImageLoaded(true)}
+            />
+          )}
         </>
       )}
       
@@ -309,7 +364,7 @@ export default function HistoryPage() {
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Generation | null>(null);
-  const [filter, setFilter] = useState<'all' | 'video' | 'image' | 'character'>('all');
+  const [filter, setFilter] = useState<HistoryFilter>('all');
   const [characterCards, setCharacterCards] = useState<CharacterCard[]>([]);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -320,7 +375,9 @@ export default function HistoryPage() {
   const [unwatermarkUrl, setUnwatermarkUrl] = useState<string | null>(null);
   const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
   const loadingRef = useRef(false);
-  const pageSize = 50;
+  const lastResyncAtRef = useRef(0);
+  const lastLoadedHistoryKindRef = useRef<HistoryMediaKind | null>(null);
+  const historyMediaKindRef = useRef<HistoryMediaKind>('all');
 
   const videoBadgeByModelId = useMemo(
     () =>
@@ -390,7 +447,18 @@ export default function HistoryPage() {
     [imageBadgeByApiModel, imageBadgeByModelId, videoBadgeByModelId]
   );
 
-  const loadHistory = useCallback(async (pageNum: number, append = false, force = false) => {
+  const historyMediaKind = getHistoryMediaKind(filter);
+
+  useEffect(() => {
+    historyMediaKindRef.current = historyMediaKind;
+  }, [historyMediaKind]);
+
+  const loadHistory = useCallback(async (
+    pageNum: number,
+    append = false,
+    force = false,
+    kindOverride?: HistoryMediaKind
+  ) => {
     if (loadingRef.current && !force) return;
     loadingRef.current = true;
     
@@ -403,7 +471,15 @@ export default function HistoryPage() {
     try {
       // Add cache-busting timestamp to prevent browser caching
       const timestamp = Date.now();
-      const res = await fetch(`/api/user/history?page=${pageNum}&limit=${pageSize}&_t=${timestamp}`, {
+      const requestKind = kindOverride || historyMediaKindRef.current;
+      const params = new URLSearchParams({
+        page: String(pageNum),
+        limit: String(HISTORY_PAGE_SIZE),
+        kind: requestKind,
+        status: HISTORY_STATUS_FILTER,
+        _t: String(timestamp),
+      });
+      const res = await fetch(`/api/user/history?${params.toString()}`, {
         cache: 'no-store',
       });
       if (res.ok) {
@@ -428,7 +504,7 @@ export default function HistoryPage() {
           );
         }
         
-        setHasMore(newGenerations.length === pageSize);
+        setHasMore(Boolean(data.hasMore ?? newGenerations.length === HISTORY_PAGE_SIZE));
       }
     } catch (err) {
       console.error('Failed to load history:', err);
@@ -576,10 +652,35 @@ export default function HistoryPage() {
       setPage(1);
       setGenerations([]);
       setHasMore(true);
-      loadHistory(1, false, true); // force load
+      lastResyncAtRef.current = Date.now();
+      const initialHistoryKind = historyMediaKindRef.current;
+      lastLoadedHistoryKindRef.current = initialHistoryKind;
+      loadHistory(1, false, true, initialHistoryKind); // force load
       loadModelCatalogs();
       loadPendingTasks();
-      loadCharacterCards();
+      let idleCallbackId: number | null = null;
+      let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+      if (typeof window.requestIdleCallback === 'function') {
+        idleCallbackId = window.requestIdleCallback(() => {
+          void loadCharacterCards();
+        }, { timeout: 3000 });
+      } else {
+        timeoutId = setTimeout(() => {
+          void loadCharacterCards();
+        }, 1200);
+      }
+
+      return () => {
+        if (idleCallbackId !== null) {
+          window.cancelIdleCallback(idleCallbackId);
+        }
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+        abortControllers.forEach(controller => controller.abort());
+        abortControllers.clear();
+      };
     }
 
     return () => {
@@ -587,6 +688,19 @@ export default function HistoryPage() {
       abortControllers.clear();
     };
   }, [session?.user?.id, loadCharacterCards, loadHistory, loadModelCatalogs, loadPendingTasks]);
+
+  useEffect(() => {
+    if (!session?.user?.id || !initialLoadRef.current || filter === 'character') return;
+    if (lastLoadedHistoryKindRef.current === historyMediaKind) return;
+
+    lastLoadedHistoryKindRef.current = historyMediaKind;
+    setPage(1);
+    setGenerations([]);
+    setHasMore(true);
+    setSelectMode(false);
+    setSelectedIds(new Set());
+    void loadHistory(1, false, true, historyMediaKind);
+  }, [filter, historyMediaKind, loadHistory, session?.user?.id]);
 
   // 使用 ref 保存 loadHistory 函数避免闭包问题
   const loadHistoryRef = useRef(loadHistory);
@@ -603,6 +717,12 @@ export default function HistoryPage() {
     if (!session?.user?.id || !initialLoadRef.current) return;
 
     const resync = () => {
+      const now = Date.now();
+      if (now - lastResyncAtRef.current < HISTORY_RESYNC_INTERVAL_MS) {
+        return;
+      }
+
+      lastResyncAtRef.current = now;
       void loadPendingTasks();
       void loadHistory(1, false, true);
     };
@@ -789,7 +909,7 @@ export default function HistoryPage() {
   };
 
   // 切换选择
-  const toggleSelect = (id: string) => {
+  const toggleSelect = useCallback((id: string) => {
     setSelectedIds(prev => {
       const next = new Set(prev);
       if (next.has(id)) {
@@ -799,7 +919,7 @@ export default function HistoryPage() {
       }
       return next;
     });
-  };
+  }, []);
 
   // 全选/取消全选
   const toggleSelectAll = () => {
@@ -1057,6 +1177,8 @@ export default function HistoryPage() {
                             src={card.avatarUrl}
                             alt="生成中..."
                             className="w-full h-full object-cover"
+                            loading="lazy"
+                            decoding="async"
                           />
                         ) : (
                           <User className="w-16 h-16 text-foreground/30" />
@@ -1169,7 +1291,7 @@ export default function HistoryPage() {
                 onClick={() => {
                   const nextPage = page + 1;
                   setPage(nextPage);
-                  loadHistory(nextPage, true);
+                  loadHistory(nextPage, true, false, historyMediaKind);
                 }}
                 disabled={loadingMore}
                 className="px-4 py-2 rounded-lg bg-card/60 border border-border/70 text-foreground/70 text-sm hover:text-foreground hover:border-border transition disabled:opacity-50"
@@ -1296,6 +1418,8 @@ function CharacterCardHistoryItem({ card }: { card: CharacterCard }) {
             src={card.avatarUrl}
             alt={card.characterName}
             className="w-full h-full object-cover"
+            loading="lazy"
+            decoding="async"
           />
         ) : (
           <User className="w-16 h-16 text-emerald-300/30" />
@@ -1445,12 +1569,15 @@ function FullscreenViewer({
             controls
             autoPlay
             loop
+            playsInline
+            preload="metadata"
           />
         ) : (
           <img
             src={gen.resultUrl}
             alt={gen.prompt}
             className={`max-w-full max-h-full w-auto h-auto ${isFullscreen ? '' : 'rounded-xl border border-border/70'} object-contain`}
+            decoding="async"
           />
         )}
       </div>

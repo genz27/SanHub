@@ -1,33 +1,32 @@
-'use client';
 import Link from 'next/link';
 import { ArrowRight, Video, Image as ImageIcon, Sparkles, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AnimatedBackground } from '@/components/ui/animated-background';
-import { useSiteConfig } from '@/components/providers/site-config-provider';
+import { getPublicSiteConfig } from '@/lib/site-config';
 
-export default function LandingPage() {
-  const siteConfig = useSiteConfig();
+export default async function LandingPage() {
+  const siteConfig = await getPublicSiteConfig();
 
-  // Parse tagline into two lines
+  // Split the tagline into two balanced hero lines.
   const taglineParts = siteConfig.siteTagline.split(' ');
   const taglineLine1 = taglineParts.slice(0, 2).join(' ');
   const taglineLine2 = taglineParts.slice(2).join(' ');
 
   return (
     <div className="min-h-screen text-foreground relative flex flex-col overflow-hidden">
-      {/* 动态背景 */}
+      {/* Animated background */}
       <AnimatedBackground variant="home" />
       
       {/* Main Content - Full viewport centered */}
       <main className="flex-1 flex flex-col items-center justify-center px-6 relative z-10">
         <div className="max-w-5xl mx-auto text-center space-y-12 animate-rise">
-          {/* Logo Badge */}
+          {/* Logo badge */}
           <div className="chip backdrop-blur-sm animate-float">
             <Sparkles className="w-4 h-4 text-sky-300" />
             <span className="text-sm text-foreground/70">AI 创作平台</span>
           </div>
 
-          {/* English Tagline */}
+          {/* English tagline */}
           <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-light tracking-tight leading-[1.05]">
             <span className="bg-gradient-to-r from-foreground via-foreground/80 to-foreground/60 bg-clip-text text-transparent animate-shimmer">
               {taglineLine1}
@@ -38,7 +37,7 @@ export default function LandingPage() {
             </span>
           </h1>
 
-          {/* Chinese Description */}
+          {/* Product description */}
           <div className="space-y-4 max-w-2xl mx-auto">
             <h2 className="text-xl md:text-2xl font-light text-foreground/80">
               {siteConfig.siteDescription}

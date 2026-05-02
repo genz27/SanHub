@@ -1079,19 +1079,69 @@ export async function refundGenerationBalance(
   }
 }
 
+export type UserGenerationKindFilter = 'all' | 'video' | 'image';
+export type UserGenerationStatusFilter =
+  | 'all'
+  | 'active'
+  | 'terminal'
+  | 'pending'
+  | 'processing'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
+
+export interface GetUserGenerationsOptions {
+  kind?: UserGenerationKindFilter;
+  status?: UserGenerationStatusFilter;
+}
+
 export async function getUserGenerations(
   userId: string,
   limit = 50,
-  offset = 0
+  offset = 0,
+  options: GetUserGenerationsOptions = {}
 ): Promise<Generation[]> {
   await initializeDatabase();
   const db = getAdapter();
   const safeLimit = Math.max(Number(limit) || 50, 1);
   const safeOffset = Math.max(Number(offset) || 0, 0);
+  const whereClauses = ['user_id = ?'];
+  const values: any[] = [userId];
+
+  if (options.kind === 'video') {
+    whereClauses.push('type LIKE ?');
+    values.push('%video%');
+  } else if (options.kind === 'image') {
+    whereClauses.push('type NOT LIKE ?');
+    whereClauses.push('type <> ?');
+    values.push('%video%', 'character-card');
+  }
+
+  switch (options.status) {
+    case 'active':
+      whereClauses.push("status IN ('pending', 'processing')");
+      break;
+    case 'terminal':
+      whereClauses.push("(status IN ('completed', 'failed', 'cancelled') OR status IS NULL)");
+      break;
+    case 'completed':
+      whereClauses.push("(status = 'completed' OR status IS NULL)");
+      break;
+    case 'pending':
+    case 'processing':
+    case 'failed':
+    case 'cancelled':
+      whereClauses.push('status = ?');
+      values.push(options.status);
+      break;
+    case 'all':
+    default:
+      break;
+  }
 
   const [rows] = await db.execute(
-    `SELECT * FROM generations WHERE user_id = ? ORDER BY created_at DESC LIMIT ${safeLimit} OFFSET ${safeOffset}`,
-    [userId]
+    `SELECT * FROM generations WHERE ${whereClauses.join(' AND ')} ORDER BY created_at DESC LIMIT ${safeLimit} OFFSET ${safeOffset}`,
+    values
   );
 
   return (rows as any[]).map((row) => ({

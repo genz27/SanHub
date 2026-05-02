@@ -32,24 +32,29 @@ export interface Task {
   errorMessage?: string;
   result?: Generation;
   createdAt: number;
+  persisted?: boolean;
 }
 
 interface ResultGalleryProps {
   generations: Generation[];
   tasks?: Task[];
   onRemoveTask?: (taskId: string) => void;
+  onClearFailedTasks?: () => void;
   onRemoveGeneration?: (generation: Generation) => void;
   onReuseGeneration?: (generation: Generation, target: 'image' | 'video') => void;
   busyGenerationId?: string | null;
+  clearingFailedTasks?: boolean;
 }
 
 export function ResultGallery({
   generations,
   tasks = [],
   onRemoveTask,
+  onClearFailedTasks,
   onRemoveGeneration,
   onReuseGeneration,
   busyGenerationId = null,
+  clearingFailedTasks = false,
 }: ResultGalleryProps) {
   const [selected, setSelected] = useState<Generation | null>(null);
   const [selectedFailedTask, setSelectedFailedTask] = useState<Task | null>(null);
@@ -100,6 +105,7 @@ export function ResultGallery({
   const failedTasks = tasks.filter(t => t.status === 'failed' || t.status === 'cancelled');
   
   const totalCount = generations.length + activeTasks.length;
+  const failedCount = failedTasks.length;
 
   useEffect(() => {
     if (!selectedFailedTask) return;
@@ -132,7 +138,7 @@ export function ResultGallery({
       <div className="surface overflow-hidden flex flex-col h-full">
         {/* Header */}
         <div className="p-4 sm:p-6 border-b border-border/70 shrink-0">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-card/60 border border-border/70 rounded-xl flex items-center justify-center">
                 <Sparkles className="w-5 h-5 text-foreground" />
@@ -142,9 +148,25 @@ export function ResultGallery({
                 <p className="text-sm text-foreground/40">
                   {activeTasks.length > 0 ? `${activeTasks.length} 个任务进行中 · ` : ''}
                   {generations.length} 个作品
+                  {failedCount > 0 ? ` · ${failedCount} 个错误` : ''}
                 </p>
               </div>
             </div>
+            {failedCount > 0 && onClearFailedTasks && (
+              <button
+                type="button"
+                onClick={onClearFailedTasks}
+                disabled={clearingFailedTasks}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-300 transition-colors hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {clearingFailedTasks ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="w-3.5 h-3.5" />
+                )}
+                清理错误
+              </button>
+            )}
           </div>
         </div>
 
@@ -271,7 +293,8 @@ export function ResultGallery({
                         className="w-full h-full object-cover"
                         muted
                         loop
-                        preload="metadata"
+                        playsInline
+                        preload="none"
                         onMouseEnter={(e) => e.currentTarget.play()}
                         onMouseLeave={(e) => {
                           e.currentTarget.pause();
@@ -395,6 +418,7 @@ export function ResultGallery({
                     src={selected.resultUrl}
                     alt={selected.prompt}
                     className="max-h-full max-w-full rounded-xl border border-border/70 object-contain"
+                    decoding="async"
                   />
                 )}
               </div>
