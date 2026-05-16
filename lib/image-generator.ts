@@ -368,10 +368,19 @@ function buildOpenAIImageInput(
   return refs.length === 1 ? refs[0] : refs;
 }
 
+function isGoogleGeminiNativeBaseUrl(baseUrl: string): boolean {
+  return baseUrl.toLowerCase().includes('generativelanguage.googleapis.com');
+}
+
+function isGeminiCompatibleImageModel(model: string): boolean {
+  const lower = model.toLowerCase();
+  return lower.includes('gemini') || lower.includes('banana') || lower.includes('nano-banana');
+}
+
 function normalizeGeminiNativeModel(apiModel: string, baseUrl: string): string {
   const model = apiModel.trim();
   const lower = model.toLowerCase();
-  const isGoogleNative = baseUrl.toLowerCase().includes('generativelanguage.googleapis.com');
+  const isGoogleNative = isGoogleGeminiNativeBaseUrl(baseUrl);
 
   if (!isGoogleNative) {
     if (/^gemini-3\.0-pro-image-(square|landscape|portrait|four-three|three-four)(-2k|-4k)?$/.test(lower)) {
@@ -466,6 +475,7 @@ async function generateWithOpenAI(
 ): Promise<GenerateResult> {
   const key = getNextApiKey(apiKey, channelId);
   const url = `${baseUrl.replace(/\/$/, '')}/v1/images/generations`;
+  const isGeminiModel = isGeminiCompatibleImageModel(target.model);
 
   const payload: Record<string, unknown> = {
     model: target.model,
@@ -477,9 +487,9 @@ async function generateWithOpenAI(
   // 添加尺寸参数：管理员配置的分辨率映射 > 显式 size > 硬编码兜底
   if (target.size) {
     payload.size = target.size;
-  } else if (request.size) {
+  } else if (request.size && !isGeminiModel) {
     payload.size = request.size;
-  } else if (request.aspectRatio) {
+  } else if (request.aspectRatio && !isGeminiModel) {
     const sizeMap: Record<string, string> = {
       '1:1': '1024x1024',
       '16:9': '1792x1024',
@@ -499,11 +509,21 @@ async function generateWithOpenAI(
     payload.quality = request.quality;
   }
 
-  if (request.imageSize) {
-    const googleConfig: Record<string, string> = {};
-    if (request.aspectRatio) googleConfig.aspect_ratio = request.aspectRatio;
-    googleConfig.image_size = request.imageSize;
-    if (typeof payload.size === 'string') googleConfig.size = payload.size;
+  const googleConfig: Record<string, string> = {};
+  if (request.aspectRatio) {
+    googleConfig.aspect_ratio = request.aspectRatio;
+  }
+  const compatibleImageSize = request.imageSize || (isGeminiModel ? inferGeminiImageSize(request.size) : undefined);
+  if (compatibleImageSize) {
+    googleConfig.image_size = compatibleImageSize;
+  }
+  if (typeof payload.size === 'string') {
+    googleConfig.size = payload.size;
+  }
+  if (isGeminiModel && request.size && !compatibleImageSize && !ASPECT_RATIO_PATTERN.test(request.size)) {
+    googleConfig.size = request.size.replace(/×/g, 'x');
+  }
+  if (Object.keys(googleConfig).length > 0) {
     payload.extra_body = { google: { image_config: googleConfig } };
   }
 
@@ -606,6 +626,7 @@ async function generateWithGemini(
     headers: {
       'Content-Type': 'application/json',
       'x-goog-api-key': key,
+      'Authorization': `Bearer ${key}`,
       ...(request.idempotencyKey
         ? {
             'Idempotency-Key': request.idempotencyKey,
@@ -1337,13 +1358,21 @@ export async function generateImage(request: ImageGenerateRequest): Promise<Gene
       break;
 
     case 'gemini':
-      result = await generateWithGemini(
-        request,
-        effectiveBaseUrl,
-        effectiveApiKey,
-        resolvedTarget.model,
-        channel.id
-      );
+      result = isGoogleGeminiNativeBaseUrl(effectiveBaseUrl)
+        ? await generateWithGemini(
+            request,
+            effectiveBaseUrl,
+            effectiveApiKey,
+            resolvedTarget.model,
+            channel.id
+          )
+        : await generateWithOpenAI(
+            request,
+            effectiveBaseUrl,
+            effectiveApiKey,
+            resolvedTarget,
+            channel.id
+          );
       break;
 
     case 'modelscope':

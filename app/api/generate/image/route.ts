@@ -17,6 +17,7 @@ import { saveMediaAsync } from '@/lib/media-storage';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { fetchReferenceImage } from '@/lib/reference-image';
 import { assertPromptsAllowed, isPromptBlockedError } from '@/lib/prompt-blocklist';
+import { resolveImageSize } from '@/lib/v1-images';
 import type { ChannelType, Generation, GenerationType } from '@/types';
 
 export const maxDuration = 600;
@@ -36,6 +37,19 @@ const IMAGE_TYPE_BY_CHANNEL: Record<ChannelType, GenerationType> = {
   flow2api: 'gemini-image',
   grok2api: 'gemini-image',
 };
+
+function inferImageSizeLabel(size?: string): string | undefined {
+  if (!size) return undefined;
+  const normalized = size.trim().replace(/×/g, 'x');
+  if (/^(512|1K|2K|4K)$/i.test(normalized)) return normalized.toUpperCase();
+  const match = normalized.match(/^(\d+)x(\d+)$/i);
+  if (!match) return undefined;
+  const maxSide = Math.max(Number(match[1]), Number(match[2]));
+  if (maxSide >= 3000) return '4K';
+  if (maxSide >= 1500) return '2K';
+  if (maxSide <= 768) return '512';
+  return '1K';
+}
 
 class RouteResponseError extends Error {
   constructor(public response: NextResponse) {
@@ -192,6 +206,10 @@ export async function POST(request: NextRequest) {
       googleImageConfig.image_size
     );
     const clientRequestId = firstString(payload.clientRequestId, payload.client_request_id) || '';
+    const resolvedInputSize = resolveImageSize(size);
+    const effectiveAspectRatio = aspectRatio || resolvedInputSize.aspectRatio;
+    const effectiveImageSize = imageSize || inferImageSizeLabel(size);
+    const effectiveSize = resolvedInputSize.size || size;
 
     if (clientRequestId && !CLIENT_REQUEST_ID_PATTERN.test(clientRequestId)) {
       return NextResponse.json({ error: 'Invalid client request id' }, { status: 400 });
@@ -216,8 +234,8 @@ export async function POST(request: NextRequest) {
     const resolvedTarget = resolveImageTarget(
       model.apiModel,
       model.resolutions,
-      aspectRatio,
-      imageSize
+      effectiveAspectRatio,
+      effectiveImageSize
     );
 
     // 检查用户
@@ -344,9 +362,9 @@ export async function POST(request: NextRequest) {
       const generateRequest: ImageGenerateRequest = {
         modelId,
         prompt: prompt || '',
-        size: resolvedTarget.size || size,
-        aspectRatio,
-        imageSize,
+        size: resolvedTarget.size || effectiveSize,
+        aspectRatio: effectiveAspectRatio,
+        imageSize: effectiveImageSize,
         quality,
         images: imageList.length > 0 ? imageList : undefined,
       };
@@ -371,9 +389,9 @@ export async function POST(request: NextRequest) {
       const generationParams: Generation['params'] = {
         model: model.apiModel,
         modelId,
-        aspectRatio,
-        imageSize,
-        size: resolvedTarget.size || size,
+        aspectRatio: effectiveAspectRatio,
+        imageSize: effectiveImageSize,
+        size: resolvedTarget.size || effectiveSize,
         quality,
         imageCount: imageList.length,
         progress: 0,
