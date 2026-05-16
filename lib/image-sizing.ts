@@ -132,6 +132,60 @@ export function compatibleGeminiSizeForConfig(aspectRatio?: string, imageSize?: 
   return sizeMap[normalizedImageSize]?.[normalizedRatio] || sizeMap['2K'][normalizedRatio];
 }
 
+
+const GEMINI_ASPECT_MODEL_SUFFIX: Record<string, string> = {
+  '1:1': 'square',
+  '16:9': 'landscape',
+  '9:16': 'portrait',
+  '4:3': 'four-three',
+  '3:4': 'three-four',
+};
+
+function geminiAspectModelFamily(model: string): 'pro' | 'flash' | undefined {
+  const lower = model.toLowerCase();
+  if (lower.includes('3.1') || lower.includes('flash') || lower.includes('banana2') || lower.includes('banana-2')) {
+    return 'flash';
+  }
+  if (lower.includes('3.0') || lower.includes('3-pro') || lower.includes('pro') || lower.includes('banana')) {
+    return 'pro';
+  }
+  return undefined;
+}
+
+function geminiAspectSizeSuffix(imageSize?: string): string {
+  const normalized = imageSize?.trim().toUpperCase();
+  if (normalized === '4K') return '-4k';
+  if (normalized === '2K') return '-2k';
+  return '';
+}
+
+export function resolveGeminiAspectSpecificModel(
+  model: string,
+  request: ImageSizingRequest,
+  targetSize?: string
+): string {
+  const targetPixelSize = normalizePixelSize(targetSize);
+  const explicitPixelSize = normalizePixelSize(request.size);
+  const aspectRatio =
+    normalizeAspectRatio(request.aspectRatio) ||
+    normalizeAspectRatio(request.size) ||
+    normalizeAspectRatio(targetSize) ||
+    aspectRatioOfSize(targetPixelSize) ||
+    aspectRatioOfSize(explicitPixelSize);
+  const suffix = aspectRatio ? GEMINI_ASPECT_MODEL_SUFFIX[aspectRatio] : undefined;
+  if (!suffix) return model;
+
+  const family = geminiAspectModelFamily(model);
+  if (!family) return model;
+
+  const imageSize = request.imageSize || inferImageSizeLabel(targetPixelSize) || inferImageSizeLabel(explicitPixelSize);
+  const sizeSuffix = geminiAspectSizeSuffix(imageSize);
+  if (family === 'flash') {
+    return `gemini-3.1-flash-image-${suffix}${sizeSuffix}`;
+  }
+  return `gemini-3.0-pro-image-${suffix}${sizeSuffix}`;
+}
+
 export function resolveGeminiCompatibleImageSize(
   request: ImageSizingRequest,
   targetSize?: string

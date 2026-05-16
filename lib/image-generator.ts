@@ -12,6 +12,7 @@ import {
   inferImageSizeLabel,
   normalizeAspectRatio,
   normalizePixelSize,
+  resolveGeminiAspectSpecificModel,
   resolveGeminiCompatibleImageSize,
 } from './image-sizing';
 import type { GenerateResult } from '@/types';
@@ -376,6 +377,11 @@ function isGoogleGeminiNativeBaseUrl(baseUrl: string): boolean {
   return baseUrl.toLowerCase().includes('generativelanguage.googleapis.com');
 }
 
+function isApi9GeminiCompatibleBaseUrl(baseUrl: string): boolean {
+  const lower = baseUrl.toLowerCase();
+  return lower.includes('api9.de');
+}
+
 function isGeminiCompatibleImageModel(model: string): boolean {
   const lower = model.toLowerCase();
   return lower.includes('gemini') || lower.includes('banana') || lower.includes('nano-banana');
@@ -473,16 +479,19 @@ async function generateWithOpenAI(
 ): Promise<GenerateResult> {
   const key = getNextApiKey(apiKey, channelId);
   const url = `${baseUrl.replace(/\/$/, '')}/v1/images/generations`;
-  const isGeminiModel = isGeminiCompatibleImageModel(target.model);
   const normalizedRequest: ImageGenerateRequest = {
     ...request,
     size: normalizePixelSize(request.size) || request.size,
     aspectRatio: normalizeAspectRatio(request.aspectRatio) || normalizeAspectRatio(request.size) || request.aspectRatio,
   };
+  const upstreamModel = isApi9GeminiCompatibleBaseUrl(baseUrl)
+    ? resolveGeminiAspectSpecificModel(target.model, normalizedRequest, target.size)
+    : target.model;
+  const isGeminiModel = isGeminiCompatibleImageModel(upstreamModel);
   const compatibleGeminiSize = isGeminiModel ? resolveGeminiCompatibleSize(normalizedRequest, target.size) : undefined;
 
   const payload: Record<string, unknown> = {
-    model: target.model,
+    model: upstreamModel,
     prompt: request.prompt,
     n: 1,
     response_format: 'url',
