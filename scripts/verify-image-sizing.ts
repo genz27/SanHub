@@ -8,10 +8,17 @@ import {
 
 assert.equal(normalizeAspectRatio('16：9'), '16:9');
 assert.equal(normalizeAspectRatio(' １６ ： ９ '), '16:9');
+assert.equal(normalizeAspectRatio('21:9'), '21:9');
+assert.equal(normalizeAspectRatio('２１：９'), '21:9');
 
 assert.equal(
   resolveGeminiCompatibleImageSize({ aspectRatio: '16：9', imageSize: '2K' }, '16:9'),
   '2048x1152'
+);
+
+assert.equal(
+  resolveGeminiCompatibleImageSize({ aspectRatio: '21:9', imageSize: '4K' }, undefined),
+  '5120x2160'
 );
 
 assert.deepEqual(

@@ -8,6 +8,21 @@ export type ResolvedImageSize = Pick<ImageSizingRequest, 'size' | 'aspectRatio' 
 
 export const PIXEL_SIZE_PATTERN = /^\d+[x×]\d+$/i;
 export const ASPECT_RATIO_PATTERN = /^\d+:\d+$/;
+const CANONICAL_ASPECT_RATIOS = new Set([
+  '1:1',
+  '16:9',
+  '9:16',
+  '21:9',
+  '4:3',
+  '3:4',
+  '3:2',
+  '2:3',
+  '4:5',
+  '5:4',
+]);
+const ASPECT_RATIO_ALIASES: Record<string, string> = {
+  '7:3': '21:9',
+};
 
 const FULL_WIDTH_DIGIT_OFFSET = '０'.charCodeAt(0) - '0'.charCodeAt(0);
 
@@ -39,8 +54,12 @@ export function normalizeAspectRatio(aspectRatio?: string): string | undefined {
   if (!ASPECT_RATIO_PATTERN.test(normalized)) return undefined;
   const [width, height] = normalized.split(':').map(Number);
   if (!width || !height) return undefined;
+  const exact = `${width}:${height}`;
+  if (ASPECT_RATIO_ALIASES[exact]) return ASPECT_RATIO_ALIASES[exact];
+  if (CANONICAL_ASPECT_RATIOS.has(exact)) return exact;
   const divisor = greatestCommonDivisor(width, height);
-  return `${width / divisor}:${height / divisor}`;
+  const reduced = `${width / divisor}:${height / divisor}`;
+  return ASPECT_RATIO_ALIASES[reduced] || reduced;
 }
 
 export function aspectRatioOfSize(size?: string): string | undefined {
