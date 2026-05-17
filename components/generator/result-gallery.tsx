@@ -1,9 +1,8 @@
 'use client';
 /* eslint-disable @next/next/no-img-element */
 
-import { useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import {
-  Download,
   Maximize2,
   X,
   Play,
@@ -17,7 +16,6 @@ import {
 } from 'lucide-react';
 import type { Generation } from '@/types';
 import { formatDate } from '@/lib/utils';
-import { downloadAsset } from '@/lib/download';
 import { toast } from '@/components/ui/toaster';
 
 // 任务类型
@@ -46,6 +44,209 @@ interface ResultGalleryProps {
   clearingFailedTasks?: boolean;
 }
 
+const MEDIA_ROOT_MARGIN = '320px 0px';
+const CARD_CONTAIN_STYLE: CSSProperties = {
+  contentVisibility: 'auto',
+  containIntrinsicSize: '240px 135px',
+  contain: 'layout paint style',
+};
+
+function openAssetInNewTab(url: string) {
+  if (!url) {
+    toast({
+      title: '打开失败',
+      description: '文件地址不存在',
+      variant: 'destructive',
+    });
+    return;
+  }
+
+  const link = document.createElement('a');
+  link.href = url;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+const isVideoGeneration = (gen: Generation) => gen.type.includes('video');
+const isReusableGeneration = (
+  gen: Generation,
+  onReuseGeneration?: ResultGalleryProps['onReuseGeneration']
+) => !isVideoGeneration(gen) && typeof onReuseGeneration === 'function';
+
+interface GenerationResultCardProps {
+  generation: Generation;
+  index: number;
+  busyGenerationId: string | null;
+  deferMedia: boolean;
+  onSelect: (generation: Generation) => void;
+  onRemoveGeneration?: (generation: Generation) => void;
+}
+
+const GenerationResultCard = memo(function GenerationResultCard({
+  generation,
+  index,
+  busyGenerationId,
+  deferMedia,
+  onSelect,
+  onRemoveGeneration,
+}: GenerationResultCardProps) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [hasRequestedMedia, setHasRequestedMedia] = useState(!deferMedia);
+  const shouldLoadMedia = hasRequestedMedia;
+  const isVideo = isVideoGeneration(generation);
+  const openTitle = isVideo ? '打开视频地址' : '打开图片地址';
+
+  useEffect(() => {
+    if (!deferMedia) {
+      setHasRequestedMedia(true);
+    }
+  }, [deferMedia]);
+
+  useEffect(() => {
+    if (!deferMedia || hasRequestedMedia) return;
+
+    const element = cardRef.current;
+    if (!element) return;
+
+    if (typeof IntersectionObserver === 'undefined') {
+      setHasRequestedMedia(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return;
+        setHasRequestedMedia(true);
+        observer.disconnect();
+      },
+      { rootMargin: MEDIA_ROOT_MARGIN }
+    );
+
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [deferMedia, hasRequestedMedia]);
+
+  const handleClick = useCallback(() => {
+    onSelect(generation);
+  }, [generation, onSelect]);
+
+  const handleMouseEnter = useCallback(() => {
+    setHasRequestedMedia(true);
+    window.setTimeout(() => {
+      videoRef.current?.play().catch(() => {});
+    }, 0);
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    if (!videoRef.current) return;
+    videoRef.current.pause();
+    videoRef.current.currentTime = 0;
+  }, []);
+
+  return (
+    <div
+      ref={cardRef}
+      className="group relative aspect-video bg-card/60 rounded-xl overflow-hidden cursor-pointer border border-border/70 hover:border-border transition-colors"
+      style={deferMedia ? CARD_CONTAIN_STYLE : undefined}
+      onClick={handleClick}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
+      {isVideo ? (
+        <>
+          {shouldLoadMedia ? (
+            <video
+              ref={videoRef}
+              src={generation.resultUrl}
+              className="w-full h-full object-cover"
+              muted
+              loop
+              playsInline
+              preload="none"
+            />
+          ) : (
+            <div className="absolute inset-0 bg-gradient-to-br from-card/70 to-background/80" />
+          )}
+          <div className="absolute top-2 left-2 px-2 py-1 bg-background/70 rounded-md flex items-center gap-1">
+            <span className="text-[10px] font-medium text-foreground">#{index + 1}</span>
+            <Play className="w-3 h-3 text-foreground" />
+          </div>
+        </>
+      ) : (
+        <>
+          {!imageLoaded && <div className="absolute inset-0 bg-card/60 animate-pulse" />}
+          {shouldLoadMedia && (
+            <img
+              src={generation.resultUrl}
+              alt={generation.prompt}
+              className={`w-full h-full object-cover transition-opacity duration-300 ${
+                imageLoaded ? 'opacity-100' : 'opacity-0'
+              }`}
+              loading="lazy"
+              decoding="async"
+              draggable={false}
+              onLoad={() => setImageLoaded(true)}
+            />
+          )}
+          <div className="absolute top-2 left-2 px-2 py-1 bg-background/70 rounded-md">
+            <span className="text-[10px] font-medium text-foreground">#{index + 1}</span>
+          </div>
+        </>
+      )}
+      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity">
+        <div className="w-14 h-14 bg-background/70 rounded-full flex items-center justify-center">
+          <Maximize2 className="w-6 h-6 text-foreground" />
+        </div>
+      </div>
+      <div
+        className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              openAssetInNewTab(generation.resultUrl);
+            }}
+            className="w-8 h-8 bg-background/70 border border-border/70 rounded-lg flex items-center justify-center text-foreground hover:bg-background/90 transition-colors"
+            title={openTitle}
+            aria-label={openTitle}
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+          </button>
+          {onRemoveGeneration && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemoveGeneration(generation);
+              }}
+              disabled={busyGenerationId === generation.id}
+              className="w-8 h-8 bg-background/70 border border-border/70 rounded-lg flex items-center justify-center text-foreground hover:bg-red-500/40 transition-colors disabled:cursor-not-allowed disabled:opacity-70"
+              title="删除作品"
+            >
+              {busyGenerationId === generation.id ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="w-3.5 h-3.5" />
+              )}
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-background/80 via-background/30 to-transparent">
+        <p className="text-xs text-foreground/80 truncate">{generation.prompt || '无提示词'}</p>
+      </div>
+    </div>
+  );
+});
+
 export function ResultGallery({
   generations,
   tasks = [],
@@ -58,43 +259,20 @@ export function ResultGallery({
 }: ResultGalleryProps) {
   const [selected, setSelected] = useState<Generation | null>(null);
   const [selectedFailedTask, setSelectedFailedTask] = useState<Task | null>(null);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-
-  const downloadFile = async (url: string, id: string, type: string) => {
-    if (!url) {
-      toast({
-        title: '下载失败',
-        description: '文件地址不存在',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    const extension = type.includes('video') ? 'mp4' : 'png';
-    try {
-      await downloadAsset(url, `sanhub-${id}.${extension}`);
-    } catch (err) {
-      console.error('Download failed', err);
-      toast({
-        title: '下载失败',
-        description: '请稍后重试',
-        variant: 'destructive',
-      });
-    }
-  };
-
-  const isVideo = (gen: Generation) => gen.type.includes('video');
-  const canReuse = (gen: Generation) => !isVideo(gen) && typeof onReuseGeneration === 'function';
+  const canReuse = (gen: Generation) => isReusableGeneration(gen, onReuseGeneration);
   const isTaskVideo = (task: Task) => task.type?.includes('video') || task.model?.includes('video');
-  const handleRemoveGeneration = (generation: Generation) => {
+  const handleSelectGeneration = useCallback((generation: Generation) => {
+    setSelected(generation);
+  }, []);
+  const handleRemoveGeneration = useCallback((generation: Generation) => {
     if (!onRemoveGeneration) return;
     void onRemoveGeneration(generation);
-  };
-  const handleReuseGeneration = (generation: Generation, target: 'image' | 'video') => {
+  }, [onRemoveGeneration]);
+  const handleReuseGeneration = useCallback((generation: Generation, target: 'image' | 'video') => {
     if (!onReuseGeneration) return;
     setSelected(null);
     void onReuseGeneration(generation, target);
-  };
+  }, [onReuseGeneration]);
 
   // 过滤出正在进行的任务（不包括已完成的，已完成的会在 generations 中显示）
   // 同时排除已经存在于 generations 中的任务（通过 id 匹配）
@@ -106,6 +284,7 @@ export function ResultGallery({
   
   const totalCount = generations.length + activeTasks.length;
   const failedCount = failedTasks.length;
+  const deferCompletedMedia = generations.length > 12;
 
   useEffect(() => {
     if (!selectedFailedTask) return;
@@ -135,7 +314,7 @@ export function ResultGallery({
 
   return (
     <>
-      <div className="surface overflow-hidden flex flex-col h-full">
+      <div className="surface bg-card overflow-hidden flex flex-col h-full">
         {/* Header */}
         <div className="p-4 sm:p-6 border-b border-border/70 shrink-0">
           <div className="flex items-center justify-between gap-3">
@@ -170,7 +349,7 @@ export function ResultGallery({
           </div>
         </div>
 
-        <div ref={scrollContainerRef} className="p-4 sm:p-6 flex-1 overflow-y-auto min-h-0">
+        <div className="p-4 sm:p-6 flex-1 overflow-y-auto overscroll-contain min-h-0 [contain:layout_paint] [scrollbar-gutter:stable]">
           {totalCount === 0 && failedTasks.length === 0 ? (
             <div className="h-64 flex flex-col items-center justify-center border border-dashed border-border/70 rounded-xl">
               <div className="w-16 h-16 bg-card/60 rounded-2xl flex items-center justify-center mb-4">
@@ -207,7 +386,7 @@ export function ResultGallery({
                     )}
                   </div>
                   {/* 任务类型标签 */}
-                  <div className="absolute top-2 left-2 px-2 py-1 bg-sky-500/40 backdrop-blur-sm rounded-md flex items-center gap-1">
+                  <div className="absolute top-2 left-2 px-2 py-1 bg-sky-500/50 rounded-md flex items-center gap-1">
                     {isTaskVideo(task) ? (
                       <>
                         <Play className="w-3 h-3 text-foreground" />
@@ -224,7 +403,7 @@ export function ResultGallery({
                   {onRemoveTask && (
                     <button
                       onClick={() => onRemoveTask(task.id)}
-                      className="absolute top-2 right-2 p-1.5 bg-card/70 border border-border/70 backdrop-blur-sm rounded-md hover:bg-red-500/40 transition-colors"
+                      className="absolute top-2 right-2 p-1.5 bg-background/70 border border-border/70 rounded-md hover:bg-red-500/40 transition-colors"
                     >
                       <X className="w-3 h-3 text-foreground" />
                     </button>
@@ -268,7 +447,7 @@ export function ResultGallery({
                         e.stopPropagation();
                         onRemoveTask(task.id);
                       }}
-                      className="absolute top-2 right-2 p-1.5 bg-card/70 border border-border/70 backdrop-blur-sm rounded-md hover:bg-card/90 transition-colors"
+                      className="absolute top-2 right-2 p-1.5 bg-background/70 border border-border/70 rounded-md hover:bg-background/90 transition-colors"
                     >
                       <X className="w-3 h-3 text-foreground" />
                     </button>
@@ -281,88 +460,15 @@ export function ResultGallery({
 
               {/* 已完成的生成结果 */}
               {generations.map((gen, index) => (
-                <div
+                <GenerationResultCard
                   key={gen.id}
-                  className="group relative aspect-video bg-card/60 rounded-xl overflow-hidden cursor-pointer border border-border/70 hover:border-border transition-all"
-                  onClick={() => setSelected(gen)}
-                >
-                  {isVideo(gen) ? (
-                    <>
-                      <video
-                        src={gen.resultUrl}
-                        className="w-full h-full object-cover"
-                        muted
-                        loop
-                        playsInline
-                        preload="none"
-                        onMouseEnter={(e) => e.currentTarget.play()}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.pause();
-                          e.currentTarget.currentTime = 0;
-                        }}
-                      />
-                      <div className="absolute top-2 left-2 px-2 py-1 bg-card/70 border border-border/70 backdrop-blur-sm rounded-md flex items-center gap-1">
-                        <span className="text-[10px] font-medium text-foreground">#{index + 1}</span>
-                        <Play className="w-3 h-3 text-foreground" />
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <img
-                        src={gen.resultUrl}
-                        alt={gen.prompt}
-                        className="w-full h-full object-cover"
-                        loading="lazy"
-                        decoding="async"
-                      />
-                      <div className="absolute top-2 left-2 px-2 py-1 bg-card/70 border border-border/70 backdrop-blur-sm rounded-md">
-                        <span className="text-[10px] font-medium text-foreground">#{index + 1}</span>
-                      </div>
-                    </>
-                  )}
-                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity">
-                    <div className="w-14 h-14 bg-background/50 backdrop-blur-sm rounded-full flex items-center justify-center">
-                      <Maximize2 className="w-6 h-6 text-foreground" />
-                    </div>
-                  </div>
-                  <div
-                    className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          downloadFile(gen.resultUrl, gen.id, gen.type);
-                        }}
-                        className="w-8 h-8 bg-card/70 border border-border/70 backdrop-blur-sm rounded-lg flex items-center justify-center text-foreground hover:bg-card/90 transition-colors"
-                        title="Download"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                      </button>
-                      {onRemoveGeneration && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleRemoveGeneration(gen);
-                          }}
-                          disabled={busyGenerationId === gen.id}
-                          className="w-8 h-8 bg-card/70 border border-border/70 backdrop-blur-sm rounded-lg flex items-center justify-center text-foreground hover:bg-red-500/40 transition-colors disabled:cursor-not-allowed disabled:opacity-70"
-                          title="删除作品"
-                        >
-                          {busyGenerationId === gen.id ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          ) : (
-                            <Trash2 className="w-3.5 h-3.5" />
-                          )}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-background/80 via-background/30 to-transparent">
-                    <p className="text-xs text-foreground/80 truncate">{gen.prompt || '无提示词'}</p>
-                  </div>
-                </div>
+                  generation={gen}
+                  index={index}
+                  busyGenerationId={busyGenerationId}
+                  deferMedia={deferCompletedMedia}
+                  onSelect={handleSelectGeneration}
+                  onRemoveGeneration={onRemoveGeneration ? handleRemoveGeneration : undefined}
+                />
               ))}
             </div>
           )}
@@ -405,7 +511,7 @@ export function ResultGallery({
               </div>
 
               <div className="flex flex-1 min-h-0 items-center justify-center bg-background/40 p-3 md:p-6">
-                {isVideo(selected) ? (
+                {isVideoGeneration(selected) ? (
                   <video
                     src={selected.resultUrl}
                     className="max-h-full max-w-full rounded-xl border border-border/70 object-contain"
@@ -446,11 +552,11 @@ export function ResultGallery({
                     </>
                   )}
                   <button
-                    onClick={() => downloadFile(selected.resultUrl, selected.id, selected.type)}
+                    onClick={() => openAssetInNewTab(selected.resultUrl)}
                     className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-foreground px-4 py-2.5 text-sm font-medium text-background transition-colors hover:opacity-90"
                   >
-                    <Download className="w-4 h-4" />
-                    下载
+                    <ExternalLink className="w-4 h-4" />
+                    打开
                   </button>
                   {onRemoveGeneration && (
                     <button

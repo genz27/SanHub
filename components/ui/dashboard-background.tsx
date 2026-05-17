@@ -2,9 +2,14 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-export function DashboardBackground() {
+interface DashboardBackgroundProps {
+  reducedEffects?: boolean;
+}
+
+export function DashboardBackground({ reducedEffects = false }: DashboardBackgroundProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  const shouldReduceEffects = reducedEffects || prefersReducedMotion;
 
   // 检测用户是否偏好减少动画
   useEffect(() => {
@@ -19,7 +24,7 @@ export function DashboardBackground() {
   // 粒子动画 - 性能优化版
   useEffect(() => {
     // 如果用户偏好减少动画，跳过粒子效果
-    if (prefersReducedMotion) return;
+    if (shouldReduceEffects) return;
 
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -126,7 +131,7 @@ export function DashboardBackground() {
       cancelAnimationFrame(animationId);
       clearTimeout(resizeTimeout);
     };
-  }, [prefersReducedMotion]);
+  }, [shouldReduceEffects]);
 
   // 渐变球样式 - 使用 will-change 优化 GPU 渲染
   const blobStyle = {
@@ -141,7 +146,7 @@ export function DashboardBackground() {
       <div className="absolute inset-0 bg-gradient-to-br from-background via-background/80 to-background" />
 
       {/* 渐变球 - 使用 CSS 动画（GPU 加速），减少动画时暂停 */}
-      {!prefersReducedMotion && (
+      {!shouldReduceEffects && (
         <>
           {/* Glow A */}
           <div 
@@ -181,33 +186,13 @@ export function DashboardBackground() {
         </>
       )}
 
-      {/* 静态渐变球 - 当用户偏好减少动画时显示 */}
-      {prefersReducedMotion && (
-        <>
-          <div 
-            className="absolute w-[400px] h-[400px] rounded-full opacity-15 blur-[80px]"
-            style={{
-              background: 'radial-gradient(circle, hsl(var(--glow-a) / 0.35) 0%, transparent 70%)',
-              top: '-10%',
-              left: '-5%',
-            }}
-          />
-          <div 
-            className="absolute w-[350px] h-[350px] rounded-full opacity-12 blur-[70px]"
-            style={{
-              background: 'radial-gradient(circle, hsl(var(--glow-b) / 0.35) 0%, transparent 70%)',
-              top: '30%',
-              right: '-5%',
-            }}
-          />
-        </>
-      )}
-
       {/* 粒子画布 - 仅在非减少动画模式下显示 */}
-      <canvas
-        ref={canvasRef}
-        className="absolute inset-0 opacity-50"
-      />
+      {!shouldReduceEffects && (
+        <canvas
+          ref={canvasRef}
+          className="absolute inset-0 opacity-50"
+        />
+      )}
 
       {/* Subtle fade */}
       <div className="absolute bottom-0 left-0 right-0 h-28 bg-gradient-to-t from-background to-transparent" />
