@@ -938,7 +938,7 @@ export function VideoGenerationView({
       
       {/* 底部创作面板 */}
       <div className={cn(
-        "surface order-1 shrink-0 overflow-visible",
+        "surface order-2 shrink-0 overflow-visible mt-4",
         embedded && "min-h-[15rem]",
         (availableModels.length === 0 || isVideoLimitReached) && "opacity-50 pointer-events-none"
       )}>
@@ -1134,7 +1134,7 @@ export function VideoGenerationView({
       </div>
 
       {/* 结果区域 - 移动端在下面，桌面端在上面 */}
-      <div className="order-2 mt-4 flex-1 min-h-0 overflow-hidden">
+      <div className="order-1 flex-1 min-h-0 overflow-hidden">
         <ResultGallery
           generations={generations}
           tasks={tasks}
