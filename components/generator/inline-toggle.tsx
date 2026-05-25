@@ -18,7 +18,7 @@ export function InlineToggle({
   return (
     <label
       className={cn(
-        'inline-flex h-9 cursor-pointer select-none items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
+        'inline-flex h-9 cursor-pointer select-none items-center gap-2 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors',
         checked
           ? 'border-sky-500/30 bg-sky-500/10 text-foreground'
           : 'border-border/70 bg-card/50 text-foreground/65',

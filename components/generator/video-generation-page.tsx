@@ -1021,118 +1021,114 @@ export function VideoGenerationView({
           </div>
 
           {/* 参数行：选择器 + 按钮 */}
-          <div className="flex flex-wrap items-center gap-2">
-            {/* 模型选择 */}
-            <div className="w-full sm:w-auto sm:min-w-[180px] flex-1">
-              <CustomSelect
-                value={selectedModelId}
-                onValueChange={setSelectedModelId}
-                options={availableModels.map((m) => ({
-                  value: m.id,
-                  label: m.name,
-                  description: m.description,
-                  highlight: m.highlight,
-                }))}
-                placeholder="选择模型"
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between w-full">
+            {/* Left Parameter Group */}
+            <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-0">
+              {/* 模型选择 */}
+              <div className="w-full sm:w-[220px] flex-shrink-0">
+                <CustomSelect
+                  value={selectedModelId}
+                  onValueChange={setSelectedModelId}
+                  options={availableModels.map((m) => ({
+                    value: m.id,
+                    label: m.name,
+                    description: m.description,
+                    highlight: m.highlight,
+                  }))}
+                  placeholder="选择模型"
+                />
+              </div>
+
+              {/* 时长选择 */}
+              {currentModel && (
+                <div className="w-[calc(50%-0.32rem)] sm:w-[100px] flex-initial">
+                  <CustomSelect
+                    value={duration}
+                    onValueChange={setDuration}
+                    options={currentModel.durations.map((d) => ({
+                      value: d.value,
+                      label: d.label,
+                    }))}
+                    placeholder="时长"
+                  />
+                </div>
+              )}
+
+              {/* 比例选择 */}
+              {currentModel && (
+                <div className="w-[calc(50%-0.32rem)] sm:w-[120px] flex-initial">
+                  <CustomSelect
+                    value={aspectRatio}
+                    onValueChange={setAspectRatio}
+                    options={currentModel.aspectRatios.map((r) => ({
+                      value: r.value,
+                      label: r.label,
+                    }))}
+                    placeholder="比例"
+                  />
+                </div>
+              )}
+
+              {/* 保留提示词 */}
+              <InlineToggle
+                checked={keepPrompt}
+                onCheckedChange={setKeepPrompt}
+                label="保留输入"
               />
+
+              {/* 错误提示 */}
+              {error && (
+                <div className="flex items-center gap-1.5 text-xs text-red-400">
+                  <AlertCircle className="w-3 h-3" />
+                  <span>{error}</span>
+                </div>
+              )}
             </div>
 
-            {/* 时长选择 */}
-            {currentModel && (
-              <div className="w-[calc(50%-0.25rem)] sm:w-[100px] flex-initial">
-                <CustomSelect
-                  value={duration}
-                  onValueChange={setDuration}
-                  options={currentModel.durations.map((d) => ({
-                    value: d.value,
-                    label: d.label,
-                  }))}
-                  placeholder="时长"
-                />
-              </div>
-            )}
+            {/* Right Action Group */}
+            <div className="flex items-center gap-2 shrink-0 justify-end w-full lg:w-auto">
+              {/* 抽卡按钮 */}
+              {siteConfig.gachaEnabled && (
+                <button
+                  onClick={handleGachaMode}
+                  disabled={submitting || compressing || hasChinese}
+                  className={cn(
+                    'inline-flex h-9 items-center gap-2 rounded-lg border px-3.5 text-xs font-medium transition-all',
+                    submitting || compressing || hasChinese
+                      ? 'cursor-not-allowed border-border/70 bg-card/50 text-foreground/40'
+                      : 'border-amber-500/30 bg-amber-500/12 text-amber-200 hover:bg-amber-500/18'
+                  )}
+                  title="一次性提交 3 个相同参数的视频任务"
+                >
+                  <Dices className="w-4 h-4" />
+                  <span>抽卡 x3</span>
+                </button>
+              )}
 
-            {/* 比例选择 */}
-            {currentModel && (
-              <div className="w-[calc(50%-0.25rem)] sm:w-[120px] flex-initial">
-                <CustomSelect
-                  value={aspectRatio}
-                  onValueChange={setAspectRatio}
-                  options={currentModel.aspectRatios.map((r) => ({
-                    value: r.value,
-                    label: r.label,
-                  }))}
-                  placeholder="比例"
-                />
-              </div>
-            )}
-
-            {/* 保留提示词 */}
-            <InlineToggle
-              checked={keepPrompt}
-              onCheckedChange={setKeepPrompt}
-              label="保留输入"
-            />
-
-            {/* 中文警告提示（暂时禁用）*/}
-            {/* {hasChinese && (
-              <div className="flex items-center gap-1.5 text-xs text-amber-400">
-                <AlertCircle className="w-3 h-3" />
-                <span>提示词中包含中文字符，请使用英文输入</span>
-              </div>
-            )} */}
-
-            {/* 错误提示 */}
-            {error && (
-              <div className="flex items-center gap-1.5 text-xs text-red-400">
-                <AlertCircle className="w-3 h-3" />
-                <span>{error}</span>
-              </div>
-            )}
-
-            <div className="flex-1" />
-
-            {/* 抽卡按钮 */}
-            {siteConfig.gachaEnabled && (
+              {/* 生成按钮 */}
               <button
-                onClick={handleGachaMode}
+                onClick={handleGenerate}
                 disabled={submitting || compressing || hasChinese}
                 className={cn(
-                  'inline-flex h-9 items-center gap-2 rounded-full border px-3.5 text-xs font-medium transition-all',
+                  'inline-flex h-9 items-center justify-center gap-2 px-5 rounded-lg font-medium text-sm transition-all',
                   submitting || compressing || hasChinese
-                    ? 'cursor-not-allowed border-border/70 bg-card/50 text-foreground/40'
-                    : 'border-amber-500/30 bg-amber-500/12 text-amber-200 hover:bg-amber-500/18'
+                    ? 'bg-card/60 text-foreground/40 cursor-not-allowed'
+                    : 'bg-gradient-to-r from-sky-500 to-emerald-500 text-white hover:opacity-90'
                 )}
-                title="一次性提交 3 个相同参数的视频任务"
               >
-                <Dices className="w-4 h-4" />
-                <span>抽卡 x3</span>
+                {submitting || compressing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>{compressing ? '处理图片中...' : '提交中...'}</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4" />
+                    <span>立即生成</span>
+                  </>
+                )}
               </button>
-            )}
-
-            {/* 生成按钮 */}
-            <button
-              onClick={handleGenerate}
-              disabled={submitting || compressing || hasChinese}
-              className={cn(
-                'flex items-center gap-2 px-5 py-2 rounded-lg font-medium text-sm transition-all',
-                submitting || compressing || hasChinese
-                  ? 'bg-card/60 text-foreground/40 cursor-not-allowed'
-                  : 'bg-gradient-to-r from-sky-500 to-emerald-500 text-white hover:opacity-90'
-              )}
-            >
-              {submitting || compressing ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>{compressing ? '处理图片中...' : '提交中...'}</span>
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-4 h-4" />
-                  <span>立即生成</span>
-                </>
-              )}
-            </button>
+            </div>
           </div>
         </div>
       </div>

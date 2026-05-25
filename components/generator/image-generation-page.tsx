@@ -887,146 +887,152 @@ export function ImageGenerationPage({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="w-full sm:w-auto sm:min-w-[180px] flex-1">
-              <CustomSelect
-                value={selectedModelId}
-                onValueChange={setSelectedModelId}
-                options={availableModels.map((model) => ({
-                  value: model.id,
-                  label: model.name,
-                  description: model.description,
-                  highlight: model.highlight,
-                }))}
-                placeholder="选择模型"
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between w-full">
+            {/* Left Parameter Group */}
+            <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-0">
+              <div className="w-full sm:w-[220px] flex-shrink-0">
+                <CustomSelect
+                  value={selectedModelId}
+                  onValueChange={setSelectedModelId}
+                  options={availableModels.map((model) => ({
+                    value: model.id,
+                    label: model.name,
+                    description: model.description,
+                    highlight: model.highlight,
+                  }))}
+                  placeholder="选择模型"
+                />
+              </div>
+
+              {currentModel?.features.imageSize && currentModel.imageSizes && (
+                <div className="w-[calc(50%-0.32rem)] sm:w-[100px] flex-initial">
+                  <CustomSelect
+                    value={imageSize}
+                    onValueChange={setImageSize}
+                    options={currentModel.imageSizes.map((size) => ({
+                      value: size,
+                      label: size,
+                    }))}
+                    placeholder="分辨率"
+                  />
+                </div>
+              )}
+
+              {currentModel && (
+                <div className="w-[calc(50%-0.32rem)] sm:w-[100px] flex-initial">
+                  <CustomSelect
+                    value={aspectRatio}
+                    onValueChange={setAspectRatio}
+                    options={currentModel.aspectRatios.map((ratio) => ({
+                      value: ratio,
+                      label: ratio,
+                    }))}
+                    placeholder="比例"
+                  />
+                </div>
+              )}
+
+              {currentModel && getCurrentResolutionDisplay() && (
+                <div className="inline-flex h-9 items-center justify-center px-2.5 rounded-lg border border-border/40 bg-card/30 text-foreground/50 text-[11px] font-mono whitespace-nowrap shadow-sm backdrop-blur-sm">
+                  {getCurrentResolutionDisplay()}
+                </div>
+              )}
+
+              <div className="hidden sm:block h-4 w-px bg-border/40" />
+
+              {(() => {
+                if (!currentModel) return null;
+                if (currentModel.channelType !== 'apexerapi' && currentModel.channelType !== 'openai-compatible' && currentModel.channelType !== 'openai-chat') return null;
+                if (!currentModel.apiModel.toLowerCase().includes('gpt-image-2')) return null;
+                const qOpts = currentModel.features.qualityOptions;
+                const allQualities = [
+                  { value: 'low', label: '低' },
+                  { value: 'medium', label: '中' },
+                  { value: 'high', label: '高' },
+                ];
+                const available = qOpts && qOpts.length > 0
+                  ? allQualities.filter(q => qOpts.includes(q.value))
+                  : allQualities;
+                if (available.length === 0) return null;
+                const safeValue = available.some(q => q.value === quality) ? quality : available[0].value;
+                if (safeValue !== quality) {
+                  queueMicrotask(() => setQuality(safeValue));
+                }
+                return (
+                  <div className="flex items-center gap-1.5 h-9">
+                    <span className="text-xs text-foreground/50 whitespace-nowrap">质量</span>
+                    <div className="w-[68px]">
+                      <CustomSelect
+                        value={safeValue}
+                        onValueChange={setQuality}
+                        options={available}
+                        placeholder="画质"
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <InlineToggle
+                checked={keepPrompt}
+                onCheckedChange={setKeepPrompt}
+                label="保留输入"
               />
+
+              {error && (
+                <div className="flex items-center gap-1.5 text-xs text-red-400">
+                  <AlertCircle className="w-3 h-3" />
+                  <span>{error}</span>
+                </div>
+              )}
             </div>
 
-            {currentModel?.features.imageSize && currentModel.imageSizes && (
-              <div className="w-[calc(50%-0.25rem)] sm:w-[100px] flex-initial">
-                <CustomSelect
-                  value={imageSize}
-                  onValueChange={setImageSize}
-                  options={currentModel.imageSizes.map((size) => ({
-                    value: size,
-                    label: size,
-                  }))}
-                  placeholder="分辨率"
-                />
-              </div>
-            )}
+            {/* Right Action Group */}
+            <div className="flex items-center gap-2 shrink-0 justify-end w-full lg:w-auto">
+              {siteConfig.gachaEnabled && (
+                <button
+                  onClick={handleGachaMode}
+                  disabled={submitting || compressing}
+                  className={cn(
+                    'inline-flex h-9 items-center gap-2 rounded-lg border px-3.5 text-xs font-medium transition-all',
+                    submitting || compressing
+                      ? 'cursor-not-allowed border-border/70 bg-card/50 text-foreground/40'
+                      : 'border-amber-500/30 bg-amber-500/12 text-amber-200 hover:bg-amber-500/18'
+                  )}
+                  title="一次性提交 3 个相同参数的任务"
+                >
+                  {compressing || submitting ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Dices className="w-4 h-4" />
+                  )}
+                  <span>抽卡 x3</span>
+                </button>
+              )}
 
-            {currentModel && (
-              <div className="w-[calc(50%-0.25rem)] sm:w-[100px] flex-initial">
-                <CustomSelect
-                  value={aspectRatio}
-                  onValueChange={setAspectRatio}
-                  options={currentModel.aspectRatios.map((ratio) => ({
-                    value: ratio,
-                    label: ratio,
-                  }))}
-                  placeholder="比例"
-                />
-              </div>
-            )}
-
-            {currentModel && (
-              <span className="text-xs text-foreground/40 w-full sm:w-auto text-left pl-1 sm:pl-0">{getCurrentResolutionDisplay()}</span>
-            )}
-
-            <div className="hidden sm:block h-5 w-px bg-border/50" />
-
-            {(() => {
-              if (!currentModel) return null;
-              if (currentModel.channelType !== 'apexerapi' && currentModel.channelType !== 'openai-compatible' && currentModel.channelType !== 'openai-chat') return null;
-              if (!currentModel.apiModel.toLowerCase().includes('gpt-image-2')) return null;
-              const qOpts = currentModel.features.qualityOptions;
-              const allQualities = [
-                { value: 'low', label: '低' },
-                { value: 'medium', label: '中' },
-                { value: 'high', label: '高' },
-              ];
-              const available = qOpts && qOpts.length > 0
-                ? allQualities.filter(q => qOpts.includes(q.value))
-                : allQualities;
-              if (available.length === 0) return null;
-              const safeValue = available.some(q => q.value === quality) ? quality : available[0].value;
-              if (safeValue !== quality) {
-                queueMicrotask(() => setQuality(safeValue));
-              }
-              return (
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs text-foreground/50 whitespace-nowrap">质量</span>
-                  <div className="w-[68px]">
-                    <CustomSelect
-                      value={safeValue}
-                      onValueChange={setQuality}
-                      options={available}
-                      placeholder="画质"
-                    />
-                  </div>
-                </div>
-              );
-            })()}
-
-            <InlineToggle
-              checked={keepPrompt}
-              onCheckedChange={setKeepPrompt}
-              label="保留输入"
-            />
-
-            {error && (
-              <div className="flex items-center gap-1.5 text-xs text-red-400">
-                <AlertCircle className="w-3 h-3" />
-                <span>{error}</span>
-              </div>
-            )}
-
-            <div className="flex-1" />
-
-            {siteConfig.gachaEnabled && (
               <button
-                onClick={handleGachaMode}
+                onClick={handleGenerate}
                 disabled={submitting || compressing}
                 className={cn(
-                  'inline-flex h-9 items-center gap-2 rounded-full border px-3.5 text-xs font-medium transition-all',
+                  'inline-flex h-9 items-center justify-center gap-2 px-5 rounded-lg font-medium text-sm transition-all',
                   submitting || compressing
-                    ? 'cursor-not-allowed border-border/70 bg-card/50 text-foreground/40'
-                    : 'border-amber-500/30 bg-amber-500/12 text-amber-200 hover:bg-amber-500/18'
+                    ? 'bg-card/60 text-foreground/40 cursor-not-allowed'
+                    : 'bg-gradient-to-r from-sky-500 to-emerald-500 text-white hover:opacity-90'
                 )}
-                title="一次性提交 3 个相同参数的任务"
               >
-                {compressing || submitting ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                {submitting || compressing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>{compressing ? '处理图片中...' : '提交中...'}</span>
+                  </>
                 ) : (
-                  <Dices className="w-4 h-4" />
+                  <>
+                    <Sparkles className="w-4 h-4" />
+                    <span>立即生成</span>
+                  </>
                 )}
-                <span>抽卡 x3</span>
               </button>
-            )}
-
-            <button
-              onClick={handleGenerate}
-              disabled={submitting || compressing}
-              className={cn(
-                'flex items-center gap-2 px-5 py-2 rounded-lg font-medium text-sm transition-all',
-                submitting || compressing
-                  ? 'bg-card/60 text-foreground/40 cursor-not-allowed'
-                  : 'bg-gradient-to-r from-sky-500 to-emerald-500 text-white hover:opacity-90'
-              )}
-            >
-              {submitting || compressing ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>{compressing ? '处理图片中...' : '提交中...'}</span>
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-4 h-4" />
-                  <span>立即生成</span>
-                </>
-              )}
-            </button>
+            </div>
           </div>
         </div>
       </div>
