@@ -48,51 +48,51 @@ export default async function LandingPage() {
           </div>
 
           {/* Features */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-3xl mx-auto">
-            <div className="surface group flex items-center gap-4 px-6 py-5 backdrop-blur-md transition-all duration-300 hover:-translate-y-1 hover:border-sky-500/40 hover:shadow-[0_0_30px_rgba(14,165,233,0.15)]">
-              <div className="w-12 h-12 bg-card/85 border border-border/70 rounded-2xl flex items-center justify-center group-hover:scale-110 group-hover:border-sky-500/30 transition-all duration-300 shadow-[0_4px_12px_rgba(0,0,0,0.2)]">
-                <Video className="w-5 h-5 text-sky-400 group-hover:text-sky-300 transition-colors" />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl mx-auto">
+            <div className="surface group flex items-center gap-3 px-5 py-4 backdrop-blur-sm transition-all hover:-translate-y-0.5">
+              <div className="w-10 h-10 bg-card/70 border border-border/70 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                <Video className="w-5 h-5 text-sky-300" />
               </div>
               <div className="text-left">
-                <p className="text-sm font-semibold text-foreground tracking-wide group-hover:text-sky-200 transition-colors">Sora 视频</p>
-                <p className="text-xs text-foreground/45 mt-0.5 font-light">AI 视频生成</p>
+                <p className="text-sm font-medium text-foreground">Sora 视频</p>
+                <p className="text-xs text-foreground/40">AI 视频生成</p>
               </div>
             </div>
-            <div className="surface group flex items-center gap-4 px-6 py-5 backdrop-blur-md transition-all duration-300 hover:-translate-y-1 hover:border-emerald-500/40 hover:shadow-[0_0_30px_rgba(16,185,129,0.15)]">
-              <div className="w-12 h-12 bg-card/85 border border-border/70 rounded-2xl flex items-center justify-center group-hover:scale-110 group-hover:border-emerald-500/30 transition-all duration-300 shadow-[0_4px_12px_rgba(0,0,0,0.2)]">
-                <ImageIcon className="w-5 h-5 text-emerald-400 group-hover:text-emerald-300 transition-colors" />
+            <div className="surface group flex items-center gap-3 px-5 py-4 backdrop-blur-sm transition-all hover:-translate-y-0.5">
+              <div className="w-10 h-10 bg-card/70 border border-border/70 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                <ImageIcon className="w-5 h-5 text-emerald-300" />
               </div>
               <div className="text-left">
-                <p className="text-sm font-semibold text-foreground tracking-wide group-hover:text-emerald-200 transition-colors">Gemini 图像</p>
-                <p className="text-xs text-foreground/45 mt-0.5 font-light">AI 图像创作</p>
+                <p className="text-sm font-medium text-foreground">Gemini 图像</p>
+                <p className="text-xs text-foreground/40">AI 图像创作</p>
               </div>
             </div>
-            <div className="surface group flex items-center gap-4 px-6 py-5 backdrop-blur-md transition-all duration-300 hover:-translate-y-1 hover:border-amber-500/40 hover:shadow-[0_0_30px_rgba(245,158,11,0.15)]">
-              <div className="w-12 h-12 bg-card/85 border border-border/70 rounded-2xl flex items-center justify-center group-hover:scale-110 group-hover:border-amber-500/30 transition-all duration-300 shadow-[0_4px_12px_rgba(0,0,0,0.2)]">
-                <Zap className="w-5 h-5 text-amber-400 group-hover:text-amber-300 transition-colors" />
+            <div className="surface group flex items-center gap-3 px-5 py-4 backdrop-blur-sm transition-all hover:-translate-y-0.5">
+              <div className="w-10 h-10 bg-card/70 border border-border/70 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                <Zap className="w-5 h-5 text-amber-300" />
               </div>
               <div className="text-left">
-                <p className="text-sm font-semibold text-foreground tracking-wide group-hover:text-amber-200 transition-colors">角色卡</p>
-                <p className="text-xs text-foreground/45 mt-0.5 font-light">视频角色提取</p>
+                <p className="text-sm font-medium text-foreground">角色卡</p>
+                <p className="text-xs text-foreground/40">视频角色提取</p>
               </div>
             </div>
           </div>
 
           {/* CTA Buttons */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-5 pt-6">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
             <Button 
               size="lg" 
-              className="btn-premium-glow bg-gradient-to-r from-sky-400 via-indigo-500 to-emerald-500 hover:from-sky-500 hover:via-indigo-600 hover:to-emerald-600 text-white px-12 h-13 text-base font-semibold rounded-full border border-white/20 transition-all duration-300" 
+              className="bg-foreground text-background px-10 h-12 text-base font-medium rounded-full transition-all hover:scale-[1.02] shadow-[0_12px_40px_rgba(0,0,0,0.35)]" 
               asChild
             >
               <Link href="/register">
-                开始创作 <ArrowRight className="w-4 h-4 ml-2 animate-bounce-horizontal" />
+                开始创作 <ArrowRight className="w-4 h-4 ml-2" />
               </Link>
             </Button>
             <Button 
               size="lg" 
               variant="ghost" 
-              className="text-foreground/80 hover:text-foreground hover:bg-card/80 px-10 h-13 text-base rounded-full border border-border/80 backdrop-blur-sm transition-all duration-300 shadow-[0_4px_15px_rgba(0,0,0,0.15)]" 
+              className="text-foreground/70 hover:text-foreground hover:bg-card/70 px-8 h-12 text-base rounded-full border border-border/70" 
               asChild
             >
               <Link href="/login">已有账号？登录</Link>
