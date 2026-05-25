@@ -1058,15 +1058,15 @@ export default function HistoryPage() {
           </div>
 
           {/* 操作按钮 */}
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto overflow-x-auto no-scrollbar">
             {selectMode ? (
               <>
                 <button
                   onClick={toggleSelectAll}
-                  className="flex items-center gap-2 px-3 py-2 w-full sm:w-auto bg-card/60 text-foreground/60 rounded-lg text-sm hover:bg-card/70 hover:text-foreground transition-all"
+                  className="flex items-center gap-2 px-3 py-2 w-auto whitespace-nowrap shrink-0 flex-1 sm:flex-initial justify-center bg-card/60 text-foreground/60 rounded-lg text-sm hover:bg-card/70 hover:text-foreground transition-all"
                 >
                   {selectedIds.size === filteredGenerations.length ? (
-                    <CheckSquare className="w-4 h-4" />
+                    <CheckSquare className="w-4 h-4 text-sky-400" />
                   ) : (
                     <Square className="w-4 h-4" />
                   )}
@@ -1075,7 +1075,7 @@ export default function HistoryPage() {
                 <button
                   onClick={() => setShowDeleteConfirm('batch')}
                   disabled={selectedIds.size === 0 || deleting}
-                  className="flex items-center gap-2 px-3 py-2 w-full sm:w-auto bg-red-500/20 text-red-400 rounded-lg text-sm hover:bg-red-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center gap-2 px-3 py-2 w-auto whitespace-nowrap shrink-0 flex-1 sm:flex-initial justify-center bg-red-500/20 text-red-400 rounded-lg text-sm hover:bg-red-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Trash2 className="w-4 h-4" />
                   删除选中
@@ -1085,7 +1085,7 @@ export default function HistoryPage() {
                     setSelectMode(false);
                     setSelectedIds(new Set());
                   }}
-                  className="flex items-center gap-2 px-3 py-2 w-full sm:w-auto bg-card/60 text-foreground/60 rounded-lg text-sm hover:bg-card/70 hover:text-foreground transition-all"
+                  className="flex items-center gap-2 px-3 py-2 w-auto whitespace-nowrap shrink-0 flex-1 sm:flex-initial justify-center bg-card/60 text-foreground/60 rounded-lg text-sm hover:bg-card/70 hover:text-foreground transition-all"
                 >
                   <X className="w-4 h-4" />
                   取消
@@ -1096,7 +1096,7 @@ export default function HistoryPage() {
                 <button
                   onClick={() => setSelectMode(true)}
                   disabled={filteredGenerations.length === 0 && filter !== 'character'}
-                  className="flex items-center gap-2 px-3 py-2 w-full sm:w-auto bg-card/60 text-foreground/60 rounded-lg text-sm hover:bg-card/70 hover:text-foreground transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center gap-2 px-3 py-2 w-auto whitespace-nowrap shrink-0 flex-1 sm:flex-initial justify-center bg-card/60 text-foreground/60 rounded-lg text-sm hover:bg-card/70 hover:text-foreground transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Edit3 className="w-4 h-4" />
                   管理
@@ -1104,7 +1104,7 @@ export default function HistoryPage() {
                 <button
                   onClick={() => setShowDeleteConfirm('all-media')}
                   disabled={completedGenerations.length === 0 || deleting}
-                  className="flex items-center gap-2 px-3 py-2 w-full sm:w-auto bg-red-500/20 text-red-400 rounded-lg text-sm hover:bg-red-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center gap-2 px-3 py-2 w-auto whitespace-nowrap shrink-0 flex-1 sm:flex-initial justify-center bg-red-500/20 text-red-400 rounded-lg text-sm hover:bg-red-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Trash2 className="w-4 h-4" />
                   清空媒体
@@ -1112,7 +1112,7 @@ export default function HistoryPage() {
                 <button
                   onClick={() => setShowDeleteConfirm('all-characters')}
                   disabled={completedCharacterCards.length === 0 || deleting}
-                  className="flex items-center gap-2 px-3 py-2 w-full sm:w-auto bg-emerald-500/15 text-emerald-300 rounded-lg text-sm hover:bg-emerald-500/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center gap-2 px-3 py-2 w-auto whitespace-nowrap shrink-0 flex-1 sm:flex-initial justify-center bg-emerald-500/15 text-emerald-300 rounded-lg text-sm hover:bg-emerald-500/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <User className="w-4 h-4" />
                   清空角色卡
@@ -1121,7 +1121,7 @@ export default function HistoryPage() {
                   <button
                     onClick={() => setShowDeleteConfirm('all-errors')}
                     disabled={deleting}
-                    className="flex items-center gap-2 px-3 py-2 w-full sm:w-auto bg-red-500/15 text-red-300 rounded-lg text-sm hover:bg-red-500/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex items-center gap-2 px-3 py-2 w-auto whitespace-nowrap shrink-0 flex-1 sm:flex-initial justify-center bg-red-500/15 text-red-300 rounded-lg text-sm hover:bg-red-500/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <X className="w-4 h-4" />
                     清除错误 ({stats.failed})

@@ -846,7 +846,7 @@ export function ImageGenerationPage({
 
       <div
         className={cn(
-          'surface order-2 shrink-0 overflow-visible mt-4',
+          'surface order-1 shrink-0 overflow-visible',
           embedded && 'min-h-[15rem]',
           (availableModels.length === 0 || isImageLimitReached) && 'opacity-50 pointer-events-none'
         )}
@@ -1031,7 +1031,7 @@ export function ImageGenerationPage({
         </div>
       </div>
 
-      <div className="order-1 flex-1 min-h-0 overflow-hidden">
+      <div className="order-2 mt-4 flex-1 min-h-0 overflow-hidden">
         <ResultGallery
           generations={generations}
           tasks={tasks}
