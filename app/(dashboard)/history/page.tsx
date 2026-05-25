@@ -21,6 +21,7 @@ import {
   Edit3,
   ExternalLink,
   Droplets,
+  Calendar,
 } from 'lucide-react';
 import { toast } from '@/components/ui/toaster';
 import type { Generation, CharacterCard, SafeImageModel, SafeVideoModel } from '@/types';
@@ -196,7 +197,7 @@ function CollapsibleText({
   );
 }
 
-// Memoized 卡片组件 - 避免不必要的重渲染
+// Memoized 列表行组件 - 避免不必要的重渲染
 interface GenerationCardProps {
   gen: Generation;
   badge: Badge;
@@ -204,6 +205,8 @@ interface GenerationCardProps {
   selectMode: boolean;
   onSelect: (id: string) => void;
   onView: (gen: Generation) => void;
+  onDownload: (url: string, id: string, type: string) => void;
+  onDelete: (id: string) => void;
 }
 
 const GenerationCard = memo(function GenerationCard({
@@ -213,9 +216,10 @@ const GenerationCard = memo(function GenerationCard({
   selectMode,
   onSelect,
   onView,
+  onDownload,
+  onDelete,
 }: GenerationCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [hasRequestedMedia, setHasRequestedMedia] = useState(false);
   const shouldLoadMedia = hasRequestedMedia;
@@ -251,104 +255,140 @@ const GenerationCard = memo(function GenerationCard({
       onView(gen);
     }
   }, [selectMode, gen, onSelect, onView]);
-  
-  const handleMouseEnter = useCallback(() => {
-    if (!selectMode) {
-      setHasRequestedMedia(true);
-      window.setTimeout(() => {
-        videoRef.current?.play().catch(() => {});
-      }, 0);
-    }
-  }, [selectMode]);
-  
-  const handleMouseLeave = useCallback(() => {
-    if (videoRef.current) {
-      videoRef.current.pause();
-      videoRef.current.currentTime = 0;
-    }
-  }, []);
+
+  const isVideo = isVideoType(gen);
 
   return (
     <div
       ref={cardRef}
-      className={`group relative aspect-video bg-card/60 rounded-xl overflow-hidden cursor-pointer border transition-all duration-300 ${
+      className={`w-full flex gap-4 p-4 bg-card/25 hover:bg-card/35 border rounded-2xl transition-all duration-300 relative group cursor-pointer ${
         isSelected 
-          ? 'border-sky-500 ring-2 ring-sky-500/40 shadow-[0_0_20px_rgba(14,165,233,0.25)]' 
-          : 'border-border/70 hover:border-sky-500/50 hover:scale-[1.02] hover:shadow-[0_8px_24px_rgba(0,0,0,0.4),0_0_15px_rgba(14,165,233,0.15)]'
+          ? 'border-sky-500 ring-1 ring-sky-500/30 bg-sky-500/5 shadow-[0_0_15px_rgba(14,165,233,0.15)]' 
+          : 'border-border/50 hover:border-sky-500/25'
       }`}
-      style={CARD_CONTAIN_STYLE}
       onClick={handleClick}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
     >
-      {isVideoType(gen) ? (
-        <>
-          {shouldLoadMedia ? (
-            <video
-              ref={videoRef}
-              src={gen.resultUrl}
-              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-              muted
-              loop
-              playsInline
-              preload="none"
-            />
-          ) : (
-            <div className="absolute inset-0 bg-gradient-to-br from-card/70 to-background/80" />
-          )}
-          <div className="absolute top-2.5 left-2.5 px-2.5 py-1 bg-card/75 border border-border/80 backdrop-blur-md rounded-lg flex items-center gap-1.5 shadow-[0_2px_8px_rgba(0,0,0,0.2)]">
-            <Play className="w-3 h-3 text-sky-400 animate-pulse" />
-            <span className="text-[10px] font-bold text-sky-400">VIDEO</span>
-          </div>
-        </>
-      ) : (
-        <>
-          {!imageLoaded && (
-            <div className="absolute inset-0 bg-card/60 animate-pulse" />
-          )}
-          {shouldLoadMedia && (
-            <img
-              src={gen.resultUrl}
-              alt={gen.prompt}
-              className={`w-full h-full object-cover transition-all duration-500 group-hover:scale-105 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
-              loading="lazy"
-              decoding="async"
-              onLoad={() => setImageLoaded(true)}
-            />
-          )}
-        </>
-      )}
-      
-      {/* 选择模式下的复选框 */}
-      {selectMode && (
-        <div className="absolute top-2.5 left-2.5 z-10">
-          <div className={`w-6 h-6 rounded-md flex items-center justify-center transition-all ${
-            isSelected 
-              ? 'bg-sky-500 shadow-[0_0_10px_rgba(14,165,233,0.5)]' 
-              : 'bg-card/75 border border-border backdrop-blur-md'
-          }`}>
-            {isSelected && <Check className="w-4 h-4 text-foreground" />}
-          </div>
-        </div>
-      )}
-      
-      {!selectMode && (
-        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-300 bg-gradient-to-t from-background/40 via-transparent to-transparent">
-          <div className="w-12 h-12 bg-background/85 border border-border/80 rounded-full flex items-center justify-center shadow-lg transform translate-y-2 group-hover:translate-y-0 transition-transform duration-300 backdrop-blur-sm">
-            <Maximize2 className="w-5 h-5 text-foreground/90" />
-          </div>
-        </div>
-      )}
-      <div className="absolute top-2.5 right-2.5">
-        <span className="px-2.5 py-1 bg-card/75 border border-border/85 backdrop-blur-md text-foreground/90 text-[10px] font-bold rounded-lg flex items-center gap-1.5 shadow-[0_2px_8px_rgba(0,0,0,0.2)]">
-          <badge.icon className="w-3 h-3 text-sky-400" />
-          {badge.label}
+      {/* Left Column: Media Thumbnail */}
+      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl bg-card/50 border border-border/60 flex items-center justify-center shrink-0 relative overflow-hidden select-none">
+        {/* Status Badge */}
+        <span className="absolute top-1 left-1 z-10 px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 text-[9px] font-medium border border-emerald-500/20">
+          已完成
         </span>
+        
+        {isVideo ? (
+          <>
+            {shouldLoadMedia ? (
+              <img
+                src={gen.resultUrl}
+                alt=""
+                className="w-full h-full object-cover"
+                loading="lazy"
+              />
+            ) : (
+              <div className="absolute inset-0 bg-gradient-to-br from-card/70 to-background/80" />
+            )}
+            <div className="absolute inset-0 bg-black/25 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center shadow-lg">
+                <Play className="w-3.5 h-3.5 fill-white text-white translate-x-0.5" />
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            {!imageLoaded && (
+              <div className="absolute inset-0 bg-card/60 animate-pulse" />
+            )}
+            {shouldLoadMedia && (
+              <img
+                src={gen.resultUrl}
+                alt={gen.prompt}
+                className={`w-full h-full object-cover transition-opacity duration-300 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+                loading="lazy"
+                decoding="async"
+                onLoad={() => setImageLoaded(true)}
+              />
+            )}
+          </>
+        )}
+
+        {/* Select Mode Checkbox Overlay */}
+        {selectMode && (
+          <div className="absolute inset-0 bg-background/50 flex items-center justify-center z-10">
+            <div className={`w-6 h-6 rounded-md flex items-center justify-center border transition-all ${
+              isSelected 
+                ? 'bg-sky-500 border-sky-500 text-white shadow-md' 
+                : 'bg-card/90 border-border'
+            }`}>
+              {isSelected && <Check className="w-4 h-4" />}
+            </div>
+          </div>
+        )}
       </div>
-      <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-background/90 via-background/45 to-transparent pointer-events-none">
-        <p className="text-xs text-foreground/90 font-medium truncate tracking-wide">{gen.prompt || '无提示词'}</p>
-        <p className="text-[9px] text-foreground/45 mt-1 font-light">{formatDate(gen.createdAt)}</p>
+
+      {/* Center Column: Main text details */}
+      <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
+        <div>
+          <div className="flex items-start justify-between gap-3 mb-1.5">
+            {/* Prompt Description */}
+            <h3 className="text-sm font-medium text-foreground line-clamp-1 flex-1 pr-2">
+              {gen.prompt || '无提示词'}
+            </h3>
+            {/* Top-Right Channel Badge */}
+            <span className="text-[10px] text-foreground/45 font-medium px-2 py-0.5 bg-card/30 border border-border/50 rounded-md whitespace-nowrap hidden sm:inline-block">
+              {badge.label}
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 text-xs text-foreground/50">
+            {/* Format Badge */}
+            <span className="px-2 py-0.5 bg-card/45 border border-border/60 rounded-md text-[10px] text-foreground/60 flex items-center gap-1 font-medium select-none">
+              {isVideo ? <Video className="w-3 h-3 text-sky-400" /> : <ImageIcon className="w-3 h-3 text-emerald-400" />}
+              {isVideo ? '视频' : '图像'}
+            </span>
+            {/* Creation Date */}
+            <span className="text-[10px] text-foreground/40 flex items-center gap-1 font-light select-none">
+              <Calendar className="w-3 h-3 text-foreground/30" />
+              {formatDate(gen.createdAt)}
+            </span>
+          </div>
+        </div>
+
+        {/* Bottom Actions Row - Only visible in normal mode */}
+        {!selectMode && (
+          <div className="mt-3 flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => onDownload(gen.resultUrl, gen.id, gen.type)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-card/50 hover:bg-card border border-border hover:border-border/80 text-[11px] font-medium rounded-lg text-foreground/80 hover:text-foreground transition-all shadow-sm"
+              title="下载到本地"
+            >
+              <Download className="w-3 h-3" />
+              下载
+            </button>
+            <button
+              onClick={() => onView(gen)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-card/50 hover:bg-card border border-border hover:border-border/80 text-[11px] font-medium rounded-lg text-foreground/80 hover:text-foreground transition-all shadow-sm"
+            >
+              查看
+            </button>
+            <button
+              onClick={() => onDelete(gen.id)}
+              className="inline-flex items-center justify-center p-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 hover:border-red-500/40 text-red-400 hover:text-red-300 rounded-lg transition-all"
+              title="删除作品"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
       </div>
+
+      {/* Right Ellipsis Menu Button on Hover */}
+      {!selectMode && (
+        <div className="absolute right-4 top-4 opacity-0 group-hover:opacity-100 transition-all hidden sm:block" onClick={(e) => e.stopPropagation()}>
+          <button className="p-1.5 hover:bg-card rounded-lg text-foreground/40 hover:text-foreground/80 transition-colors">
+            <span className="text-sm font-bold block leading-none">···</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 });
@@ -368,6 +408,8 @@ export default function HistoryPage() {
   const [characterCards, setCharacterCards] = useState<CharacterCard[]>([]);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortOrder, setSortOrder] = useState<'latest' | 'oldest'>('latest');
   const [deleting, setDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<'single' | 'batch' | 'all-media' | 'all-characters' | 'all-errors' | null>(null);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
@@ -908,6 +950,35 @@ export default function HistoryPage() {
     }
   };
 
+  // 删除单个角色卡
+  const handleDeleteSingleCharacter = async (cardId: string) => {
+    setDeleting(true);
+    try {
+      const res = await fetch('/api/user/character-cards', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cardId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      toast({
+        title: '删除成功',
+        description: '已删除该角色卡',
+      });
+      
+      loadCharacterCards();
+    } catch (error) {
+      toast({
+        title: '删除失败',
+        description: error instanceof Error ? error.message : '删除失败',
+        variant: 'destructive',
+      });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   // 切换选择
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds(prev => {
@@ -977,6 +1048,50 @@ export default function HistoryPage() {
     return pendingTasks.filter(t => !isTaskVideoType(t.type));
   }, [pendingTasks, filter]);
 
+  // Live search and sort on completed generations
+  const searchedGenerations = useMemo(() => {
+    let result = [...filteredGenerations];
+    
+    // Live Search
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(
+        (g) =>
+          (g.prompt || '').toLowerCase().includes(q) ||
+          (g.params?.model || '').toLowerCase().includes(q)
+      );
+    }
+    
+    // Live Sort
+    result.sort((a, b) => {
+      const timeA = a.createdAt || 0;
+      const timeB = b.createdAt || 0;
+      return sortOrder === 'latest' ? timeB - timeA : timeA - timeB;
+    });
+    
+    return result;
+  }, [filteredGenerations, searchQuery, sortOrder]);
+
+  // Live search and sort on completed character cards
+  const searchedCharacterCards = useMemo(() => {
+    let result = [...completedCharacterCards];
+    
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter((c) =>
+        (c.characterName || '').toLowerCase().includes(q)
+      );
+    }
+    
+    result.sort((a, b) => {
+      const timeA = a.createdAt || 0;
+      const timeB = b.createdAt || 0;
+      return sortOrder === 'latest' ? timeB - timeA : timeA - timeB;
+    });
+    
+    return result;
+  }, [completedCharacterCards, searchQuery, sortOrder]);
+
   // 缓存统计数据
   const stats = useMemo(() => ({
     total: completedGenerations.length,
@@ -991,65 +1106,52 @@ export default function HistoryPage() {
     <>
       <div className="max-w-7xl mx-auto flex flex-col h-[calc(100vh-100px)] pb-20 lg:pb-8">
         {/* Header */}
-        <div className="shrink-0 flex flex-col md:flex-row md:items-end md:justify-between gap-3 lg:gap-4 mb-4">
+        <div className="shrink-0 flex flex-col md:flex-row md:items-end md:justify-between gap-3 lg:gap-4 mb-4 select-none">
           <div>
-            <h1 className="text-2xl lg:text-3xl font-extralight text-foreground">创作历史</h1>
-            <p className="text-foreground/50 text-sm lg:text-base mt-0.5 font-light">查看和管理您的所有作品</p>
+            <h1 className="text-2xl lg:text-3xl font-extralight text-foreground">历史记录</h1>
+            <p className="text-foreground/50 text-xs lg:text-sm mt-0.5 font-light">查看和管理您的所有作品</p>
           </div>
-          
-          {/* Stats - 移动端简化显示 */}
-          <div className="flex items-center gap-3 lg:gap-6 overflow-x-auto no-scrollbar -mx-2 px-2 lg:mx-0 lg:px-0">
-            {stats.pending > 0 && (
-              <>
-                <div className="text-center min-w-[56px] lg:min-w-[72px] shrink-0">
-                  <p className="text-xl lg:text-2xl font-light text-sky-300">{stats.pending}</p>
-                  <p className="text-[10px] lg:text-xs text-foreground/40">进行中</p>
-                </div>
-                <div className="hidden lg:block w-px h-8 bg-card/70" />
-              </>
-            )}
-            <div className="text-center min-w-[56px] lg:min-w-[72px] shrink-0">
-              <p className="text-xl lg:text-2xl font-light text-foreground">{stats.total}</p>
-              <p className="text-[10px] lg:text-xs text-foreground/40">总作品</p>
-            </div>
-            <div className="hidden lg:block w-px h-8 bg-card/70" />
-            <div className="text-center min-w-[56px] lg:min-w-[72px] shrink-0">
-              <p className="text-xl lg:text-2xl font-light text-foreground">{stats.videos}</p>
-              <p className="text-[10px] lg:text-xs text-foreground/40">视频</p>
-            </div>
-            <div className="hidden lg:block w-px h-8 bg-card/70" />
-            <div className="text-center min-w-[56px] lg:min-w-[72px] shrink-0">
-              <p className="text-xl lg:text-2xl font-light text-foreground">{stats.images}</p>
-              <p className="text-[10px] lg:text-xs text-foreground/40">图像</p>
-            </div>
-            <div className="hidden lg:block w-px h-8 bg-card/70" />
-            <div className="text-center min-w-[56px] lg:min-w-[72px] shrink-0">
-              <p className="text-xl lg:text-2xl font-light text-emerald-300">{stats.characters}</p>
-              <p className="text-[10px] lg:text-xs text-foreground/40">角色卡</p>
-            </div>
-            {stats.failed > 0 && (
-              <>
-                <div className="hidden lg:block w-px h-8 bg-card/70" />
-                <div className="text-center min-w-[56px] lg:min-w-[72px] shrink-0">
-                  <p className="text-xl lg:text-2xl font-light text-red-400">{stats.failed}</p>
-                  <p className="text-[10px] lg:text-xs text-foreground/40">失败</p>
-                </div>
-              </>
-            )}
+        </div>
+
+        {/* Top Horizontal Stats Card */}
+        <div className="shrink-0 bg-card/40 border border-border/70 rounded-2xl p-4 flex justify-between items-center w-full mb-6 text-center select-none shadow-sm backdrop-blur-sm">
+          <div className="flex-1 min-w-0">
+            <p className="text-xl sm:text-2xl font-light text-sky-400">{stats.pending}</p>
+            <p className="text-[10px] sm:text-xs text-foreground/45 mt-1 font-light">进行中</p>
+          </div>
+          <div className="w-px h-6 bg-border/40 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xl sm:text-2xl font-light text-foreground">{stats.total}</p>
+            <p className="text-[10px] sm:text-xs text-foreground/45 mt-1 font-light">总作品</p>
+          </div>
+          <div className="w-px h-6 bg-border/40 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xl sm:text-2xl font-light text-foreground">{stats.videos}</p>
+            <p className="text-[10px] sm:text-xs text-foreground/45 mt-1 font-light">视频</p>
+          </div>
+          <div className="w-px h-6 bg-border/40 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xl sm:text-2xl font-light text-foreground">{stats.images}</p>
+            <p className="text-[10px] sm:text-xs text-foreground/45 mt-1 font-light">图像</p>
+          </div>
+          <div className="w-px h-6 bg-border/40 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xl sm:text-2xl font-light text-emerald-400">{stats.characters}</p>
+            <p className="text-[10px] sm:text-xs text-foreground/45 mt-1 font-light">角色卡</p>
           </div>
         </div>
 
         {/* Filter Tabs & Actions */}
-        <div className="shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 lg:gap-4 mb-4">
+        <div className="shrink-0 flex flex-row items-center justify-between gap-3 lg:gap-4 mb-4 select-none">
           <div className="flex items-center gap-1.5 lg:gap-2 overflow-x-auto no-scrollbar -mx-2 px-2">
             {(['all', 'video', 'image', 'character'] as const).map((f) => (
               <button
                 key={f}
                 onClick={() => setFilter(f)}
-                className={`px-3 lg:px-4 py-1.5 lg:py-2 rounded-lg text-xs lg:text-sm transition-all shrink-0 ${
+                className={`px-4 py-1.5 rounded-full text-xs font-medium transition-all shrink-0 ${
                   filter === f
-                    ? 'bg-foreground text-background'
-                    : 'bg-card/60 text-foreground/60 hover:bg-card/70 hover:text-foreground'
+                    ? 'bg-foreground text-background shadow-md'
+                    : 'bg-card/60 text-foreground/60 hover:bg-card/75 hover:text-foreground'
                 }`}
               >
                 {f === 'all' ? '全部' : f === 'video' ? '视频' : f === 'image' ? '图像' : '角色卡'}
@@ -1057,27 +1159,27 @@ export default function HistoryPage() {
             ))}
           </div>
 
-          {/* 操作按钮 */}
-          <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto overflow-x-auto no-scrollbar">
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2">
             {selectMode ? (
               <>
                 <button
                   onClick={toggleSelectAll}
-                  className="flex items-center gap-2 px-3 py-2 w-auto whitespace-nowrap shrink-0 flex-1 sm:flex-initial justify-center bg-card/60 text-foreground/60 rounded-lg text-sm hover:bg-card/70 hover:text-foreground transition-all"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-card/60 text-foreground/60 rounded-full text-xs hover:bg-card/70 hover:text-foreground transition-all font-medium border border-border/80"
                 >
-                  {selectedIds.size === filteredGenerations.length ? (
-                    <CheckSquare className="w-4 h-4 text-sky-400" />
+                  {selectedIds.size === searchedGenerations.length ? (
+                    <CheckSquare className="w-3.5 h-3.5 text-sky-400" />
                   ) : (
-                    <Square className="w-4 h-4" />
+                    <Square className="w-3.5 h-3.5" />
                   )}
                   {selectedIds.size > 0 ? `已选 ${selectedIds.size}` : '全选'}
                 </button>
                 <button
                   onClick={() => setShowDeleteConfirm('batch')}
                   disabled={selectedIds.size === 0 || deleting}
-                  className="flex items-center gap-2 px-3 py-2 w-auto whitespace-nowrap shrink-0 flex-1 sm:flex-initial justify-center bg-red-500/20 text-red-400 rounded-lg text-sm hover:bg-red-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 border border-red-500/20 text-red-400 rounded-full text-xs hover:bg-red-500/20 transition-all disabled:opacity-50 font-medium"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <Trash2 className="w-3.5 h-3.5" />
                   删除选中
                 </button>
                 <button
@@ -1085,9 +1187,9 @@ export default function HistoryPage() {
                     setSelectMode(false);
                     setSelectedIds(new Set());
                   }}
-                  className="flex items-center gap-2 px-3 py-2 w-auto whitespace-nowrap shrink-0 flex-1 sm:flex-initial justify-center bg-card/60 text-foreground/60 rounded-lg text-sm hover:bg-card/70 hover:text-foreground transition-all"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-card/60 text-foreground/60 rounded-full text-xs hover:bg-card/70 hover:text-foreground transition-all font-medium border border-border/80"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-3.5 h-3.5" />
                   取消
                 </button>
               </>
@@ -1095,192 +1197,235 @@ export default function HistoryPage() {
               <>
                 <button
                   onClick={() => setSelectMode(true)}
-                  disabled={filteredGenerations.length === 0 && filter !== 'character'}
-                  className="flex items-center gap-2 px-3 py-2 w-auto whitespace-nowrap shrink-0 flex-1 sm:flex-initial justify-center bg-card/60 text-foreground/60 rounded-lg text-sm hover:bg-card/70 hover:text-foreground transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={searchedGenerations.length === 0 && filter !== 'character'}
+                  className="flex items-center gap-1.5 px-4 py-1.5 bg-card/65 text-foreground/75 border border-border/80 hover:border-border rounded-full text-xs hover:text-foreground hover:bg-card transition-all font-medium"
                 >
-                  <Edit3 className="w-4 h-4" />
+                  <Edit3 className="w-3.5 h-3.5" />
                   管理
                 </button>
                 <button
                   onClick={() => setShowDeleteConfirm('all-media')}
                   disabled={completedGenerations.length === 0 || deleting}
-                  className="flex items-center gap-2 px-3 py-2 w-auto whitespace-nowrap shrink-0 flex-1 sm:flex-initial justify-center bg-red-500/20 text-red-400 rounded-lg text-sm hover:bg-red-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 border border-red-500/20 text-red-400 rounded-full text-xs hover:bg-red-500/20 transition-all disabled:opacity-50 font-medium"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <Trash2 className="w-3.5 h-3.5" />
                   清空媒体
                 </button>
-                <button
-                  onClick={() => setShowDeleteConfirm('all-characters')}
-                  disabled={completedCharacterCards.length === 0 || deleting}
-                  className="flex items-center gap-2 px-3 py-2 w-auto whitespace-nowrap shrink-0 flex-1 sm:flex-initial justify-center bg-emerald-500/15 text-emerald-300 rounded-lg text-sm hover:bg-emerald-500/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <User className="w-4 h-4" />
-                  清空角色卡
-                </button>
-                {stats.failed > 0 && (
-                  <button
-                    onClick={() => setShowDeleteConfirm('all-errors')}
-                    disabled={deleting}
-                    className="flex items-center gap-2 px-3 py-2 w-auto whitespace-nowrap shrink-0 flex-1 sm:flex-initial justify-center bg-red-500/15 text-red-300 rounded-lg text-sm hover:bg-red-500/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <X className="w-4 h-4" />
-                    清除错误 ({stats.failed})
-                  </button>
-                )}
               </>
             )}
           </div>
         </div>
 
-        {/* Content */}
-        <div className="flex-1 min-h-0 bg-card/60 border border-border/70 rounded-2xl overflow-hidden backdrop-blur-sm flex flex-col">
-          <div className={`shrink-0 p-4 sm:p-6 border-b border-border/70 ${filter === 'character' ? 'bg-gradient-to-r from-emerald-500/10 to-sky-500/10' : 'bg-gradient-to-r from-sky-500/10 to-emerald-500/10'}`}>
-            <div className="flex items-center gap-3">
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${filter === 'character' ? 'bg-gradient-to-br from-emerald-500/25 to-sky-500/25' : 'bg-gradient-to-br from-sky-500/25 to-emerald-500/25'}`}>
-                {filter === 'character' ? <User className="w-5 h-5 text-emerald-300" /> : <History className="w-5 h-5 text-sky-300" />}
-              </div>
-              <div>
-                <h2 className="text-lg font-medium text-foreground">{filter === 'character' ? '角色卡库' : '作品库'}</h2>
-                <p className="text-sm text-foreground/40">{filter === 'character' ? `${completedCharacterCards.length} 个角色` : `${filteredGenerations.length} 个作品`}</p>
-              </div>
-            </div>
+        {/* Search & Sort Bar */}
+        <div className="shrink-0 flex items-center gap-3 mb-4 w-full">
+          <div className="relative flex-1">
+            <span className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-foreground/35">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </span>
+            <input
+              type="text"
+              placeholder="搜索作品..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full h-9 pl-9 pr-4 text-xs bg-card/50 border border-border/70 hover:border-border rounded-lg outline-none focus:ring-1 focus:ring-sky-500/30 text-foreground placeholder:text-foreground/30 transition-all"
+            />
           </div>
+          <div className="w-[110px] shrink-0 select-none">
+            <select
+              value={sortOrder}
+              onChange={(e) => setSortOrder(e.target.value as 'latest' | 'oldest')}
+              className="w-full h-9 px-3 text-xs bg-card/50 border border-border/70 hover:border-border rounded-lg outline-none focus:ring-1 focus:ring-sky-500/30 text-foreground/80 cursor-pointer appearance-none transition-all"
+              style={{
+                backgroundImage: `url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%23ffffff' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E")`,
+                backgroundPosition: 'right 0.5rem center',
+                backgroundSize: '1.25rem',
+                backgroundRepeat: 'no-repeat',
+                paddingRight: '1.75rem'
+              }}
+            >
+              <option value="latest" className="bg-card text-foreground">最新创建</option>
+              <option value="oldest" className="bg-card text-foreground">最早创建</option>
+            </select>
+          </div>
+        </div>
 
-          <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6">
+        {/* Main Content Area */}
+        <div className="flex-1 min-h-0 bg-card/25 border border-border/50 rounded-2xl overflow-hidden backdrop-blur-sm flex flex-col shadow-sm">
+          <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5">
             {loading ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {Array.from({ length: 8 }).map((_, i) => (
-                  <SkeletonCard key={i} />
+              <div className="space-y-3">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="w-full flex gap-4 p-4 bg-card/20 border border-border/50 rounded-2xl animate-pulse">
+                    <div className="w-20 h-20 sm:w-24 sm:h-24 bg-card/60 rounded-xl shrink-0" />
+                    <div className="flex-1 min-w-0 space-y-3 py-1">
+                      <div className="h-4 bg-card/60 rounded w-1/3" />
+                      <div className="h-3 bg-card/60 rounded w-1/4" />
+                      <div className="h-2 bg-card/60 rounded w-1/2" />
+                    </div>
+                  </div>
                 ))}
               </div>
             ) : filter === 'character' ? (
-              // 角色卡专属显示
-              completedCharacterCards.length === 0 && processingCharacterCards.length === 0 ? (
-                <div className="h-64 flex flex-col items-center justify-center border border-dashed border-border/70 rounded-xl">
+              // Character card listing row tile
+              searchedCharacterCards.length === 0 && processingCharacterCards.length === 0 ? (
+                <div className="h-64 flex flex-col items-center justify-center border border-dashed border-border/60 rounded-xl select-none">
                   <div className="w-16 h-16 bg-gradient-to-br from-emerald-500/10 to-sky-500/10 rounded-2xl flex items-center justify-center mb-4">
-                    <User className="w-8 h-8 text-emerald-300/50" />
+                    <User className="w-8 h-8 text-emerald-300/40" />
                   </div>
-                  <p className="text-foreground/40">暂无角色卡</p>
-                  <p className="text-foreground/30 text-sm mt-1">去视频页面生成你的第一个角色卡</p>
+                  <p className="text-foreground/40 text-sm">暂无角色卡</p>
+                  <p className="text-foreground/30 text-xs mt-1">去视频页面生成你的第一个角色卡</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-                  {/* 进行中的角色卡任务 */}
+                <div className="space-y-3">
+                  {/* Processing Character Card items */}
                   {processingCharacterCards.map((card) => (
                     <div
                       key={card.id}
-                      className="bg-card/60 border border-sky-500/30 rounded-xl overflow-hidden"
+                      className="w-full flex gap-4 p-4 bg-card/25 border border-sky-500/20 rounded-2xl relative"
                     >
-                      <div className="aspect-square bg-gradient-to-br from-emerald-500/10 to-sky-500/10 flex items-center justify-center relative">
+                      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl bg-card/50 border border-border/60 flex items-center justify-center shrink-0 relative overflow-hidden select-none">
+                        <span className="absolute top-1 left-1 z-10 px-2 py-0.5 rounded bg-sky-500/20 text-sky-400 text-[9px] font-medium border border-sky-500/20">
+                          生成中
+                        </span>
                         {card.avatarUrl ? (
                           <img
                             src={card.avatarUrl}
-                            alt="生成中..."
+                            alt=""
                             className="w-full h-full object-cover"
                             loading="lazy"
-                            decoding="async"
                           />
                         ) : (
-                          <User className="w-16 h-16 text-foreground/30" />
+                          <User className="w-10 h-10 text-emerald-300/40" />
                         )}
                         <div className="absolute inset-0 bg-background/60 flex items-center justify-center">
-                          <Loader2 className="w-8 h-8 text-foreground animate-spin" />
+                          <Loader2 className="w-6 h-6 text-foreground animate-spin" />
                         </div>
                       </div>
-                      <div className="p-3 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <h3 className="text-sm font-medium text-foreground truncate">生成中...</h3>
-                          <span className="px-2 py-0.5 text-[10px] rounded-md bg-sky-500/15 text-sky-300">
-                            {card.status === 'processing' ? '生成中' : '等待中'}
-                          </span>
+                      <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
+                        <div>
+                          <div className="flex items-start justify-between gap-3 mb-1.5">
+                            <h3 className="text-sm font-medium text-foreground truncate">生成中...</h3>
+                            <span className="px-2 py-0.5 text-[10px] rounded-md bg-sky-500/15 text-sky-300 whitespace-nowrap">
+                              {card.status === 'processing' ? '生成中' : '等待中'}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-foreground/40">{formatDate(card.createdAt)}</p>
                         </div>
-                        <p className="text-[10px] text-foreground/40">{formatDate(card.createdAt)}</p>
                       </div>
                     </div>
                   ))}
-                  {/* 已完成的角色卡 */}
-                  {completedCharacterCards.map((card) => (
-                    <CharacterCardHistoryItem key={card.id} card={card} />
-                  ))}
-                </div>
-              )
-            ) : filteredGenerations.length === 0 && filteredTasks.length === 0 ? (
-              <div className="h-64 flex flex-col items-center justify-center border border-dashed border-border/70 rounded-xl">
-                <div className="w-16 h-16 bg-card/60 rounded-2xl flex items-center justify-center mb-4">
-                  <ImageIcon className="w-8 h-8 text-foreground/30" />
-                </div>
-                <p className="text-foreground/40">暂无{filter === 'video' ? '视频' : filter === 'image' ? '图像' : ''}作品</p>
-                <p className="text-foreground/30 text-sm mt-1">开始创作你的第一个作品</p>
-              </div>
-            ) : (
-              <>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {/* Pending 任务 */}
-                  {filteredTasks.map((task) => {
-                    const badge = resolveTaskBadge(task);
-                    return (
-                      <div
-                        key={task.id}
-                        className="group relative aspect-video bg-card/60 rounded-xl overflow-hidden border border-sky-500/30"
-                      >
-                        {/* 加载动画 */}
-                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-sky-500/10 to-emerald-500/10">
-                          <Loader2 className="w-8 h-8 text-foreground/60 animate-spin mb-2" />
-                          <p className="text-xs text-foreground/60">
-                            {task.status === 'processing' ? '生成中...' : '排队中...'}
-                          </p>
-                          {/* 进度显示 */}
-                          {typeof task.progress === 'number' && task.progress > 0 && (
-                            <div className="mt-2 w-24">
-                              <div className="h-1.5 bg-card/70 rounded-full overflow-hidden">
-                                <div 
-                                  className="h-full bg-gradient-to-r from-sky-500 to-emerald-500 transition-all duration-300"
-                                  style={{ width: `${task.progress}%` }}
-                                />
-                              </div>
-                              <p className="text-[10px] text-foreground/50 text-center mt-1">{task.progress}%</p>
-                            </div>
-                          )}
-                        </div>
-                        {/* 类型标签 */}
-                        <div className="absolute top-2 left-2 px-2 py-1 bg-sky-500/40 backdrop-blur-sm rounded-md flex items-center gap-1">
-                          {isTaskVideoType(task.type) ? (
-                            <Play className="w-3 h-3 text-foreground" />
-                          ) : (
-                            <ImageIcon className="w-3 h-3 text-foreground" />
-                          )}
-                          <span className="text-[10px] text-foreground">
-                            {task.status === 'processing' ? '生成中' : '排队中'}
-                          </span>
-                        </div>
-                        <div className="absolute top-2 right-2">
-                          <span className="px-2 py-1 bg-background/60 backdrop-blur-sm text-foreground text-[10px] rounded-md flex items-center gap-1">
-                            <badge.icon className="w-3 h-3" />
-                            {badge.label}
-                          </span>
-                        </div>
-                        <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-background/80 via-background/30 to-transparent">
-                          <p className="text-xs text-foreground/80 truncate">{task.prompt || '无提示词'}</p>
-                          <p className="text-[10px] text-foreground/40 mt-1">{formatDate(task.createdAt)}</p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  
-                  {/* 已完成的作品 - 使用 memo 优化的卡片组件 */}
-                  {filteredGenerations.map((gen) => (
-                    <GenerationCard
-                      key={gen.id}
-                      gen={gen}
-                      badge={resolveGenerationBadge(gen)}
-                      isSelected={selectedIds.has(gen.id)}
-                      selectMode={selectMode}
-                      onSelect={toggleSelect}
-                      onView={setSelected}
+                  {/* Completed Character Card items */}
+                  {searchedCharacterCards.map((card) => (
+                    <CharacterCardHistoryItem 
+                      key={card.id} 
+                      card={card} 
+                      onDelete={handleDeleteSingleCharacter}
                     />
                   ))}
                 </div>
-              </>
+              )
+            ) : searchedGenerations.length === 0 && filteredTasks.length === 0 ? (
+              <div className="h-64 flex flex-col items-center justify-center border border-dashed border-border/60 rounded-xl select-none">
+                <div className="w-16 h-16 bg-card/60 rounded-2xl flex items-center justify-center mb-4">
+                  <ImageIcon className="w-8 h-8 text-foreground/30" />
+                </div>
+                <p className="text-foreground/40 text-sm">暂无{filter === 'video' ? '视频' : filter === 'image' ? '图像' : ''}作品</p>
+                <p className="text-foreground/30 text-xs mt-1">开始创作你的第一个作品</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {/* Generating tasks listing (row tile) */}
+                {filteredTasks.map((task) => {
+                  const badge = resolveTaskBadge(task);
+                  const progress = task.progress || 0;
+                  const isVideo = isTaskVideoType(task.type);
+                  const remainingMinutes = progress > 0 ? Math.max(1, Math.ceil((100 - progress) / 35)) : 2;
+
+                  return (
+                    <div
+                      key={task.id}
+                      className="w-full flex flex-col sm:flex-row gap-4 p-4 bg-card/20 border border-sky-500/20 hover:border-sky-500/30 rounded-2xl transition-all duration-300 relative group"
+                    >
+                      {/* Left: Thumbnail/Progress Ring Box */}
+                      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl bg-card/50 border border-border/60 flex items-center justify-center shrink-0 relative overflow-hidden select-none">
+                        <span className="absolute top-1 left-1 z-10 px-2 py-0.5 rounded bg-sky-500/20 text-sky-400 text-[9px] font-medium border border-sky-500/20">
+                          生成中
+                        </span>
+                        
+                        {/* Circular Progress Ring */}
+                        <div className="relative w-12 h-12 flex items-center justify-center">
+                          <svg className="w-full h-full transform -rotate-90">
+                            <circle cx="24" cy="24" r="18" stroke="currentColor" className="text-border/30" strokeWidth="2.5" fill="transparent" />
+                            <circle cx="24" cy="24" r="18" stroke="currentColor" className="text-sky-400 transition-all duration-500" strokeWidth="2.5" fill="transparent"
+                              strokeDasharray={2 * Math.PI * 18}
+                              strokeDashoffset={2 * Math.PI * 18 * (1 - progress / 100)}
+                            />
+                          </svg>
+                          <span className="absolute text-[10px] font-mono font-medium text-sky-300">{progress}%</span>
+                        </div>
+                      </div>
+
+                      {/* Center Metadata details */}
+                      <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
+                        <div>
+                          <div className="flex items-start justify-between gap-3 mb-1.5">
+                            <h3 className="text-sm font-medium text-foreground line-clamp-1 flex-1 pr-2">
+                              {task.prompt || '无提示词'}
+                            </h3>
+                            <span className="text-[10px] text-foreground/45 font-medium px-2 py-0.5 bg-card/30 border border-border/50 rounded-md whitespace-nowrap hidden sm:inline-block">
+                              {badge.label}
+                            </span>
+                          </div>
+                          
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-foreground/50">
+                            <span className="px-2 py-0.5 bg-card/45 border border-border/60 rounded-md text-[10px] text-foreground/60 flex items-center gap-1 font-medium select-none">
+                              {isVideo ? <Video className="w-3 h-3 text-sky-400" /> : <ImageIcon className="w-3 h-3 text-emerald-400" />}
+                              {isVideo ? '视频' : '图像'}
+                            </span>
+                            <span className="text-[10px] text-foreground/40 flex items-center gap-1 font-light select-none">
+                              <Calendar className="w-3 h-3 text-foreground/30" />
+                              {formatDate(task.createdAt)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Bottom: progress bar & remaining time */}
+                        <div className="mt-3 flex items-center gap-3 w-full max-w-sm">
+                          <div className="flex-1 h-1 bg-card/60 border border-border/40 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-gradient-to-r from-sky-400 to-sky-300 transition-all duration-500 rounded-full"
+                              style={{ width: `${progress}%` }}
+                            />
+                          </div>
+                          <span className="text-[10px] text-sky-400 font-medium whitespace-nowrap select-none">
+                            剩余 {remainingMinutes} 分钟
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Completed Generations list row */}
+                {searchedGenerations.map((gen) => (
+                  <GenerationCard
+                    key={gen.id}
+                    gen={gen}
+                    badge={resolveGenerationBadge(gen)}
+                    isSelected={selectedIds.has(gen.id)}
+                    selectMode={selectMode}
+                    onSelect={toggleSelect}
+                    onView={setSelected}
+                    onDownload={downloadFile}
+                    onDelete={(id) => {
+                      setDeleteTargetId(id);
+                      setShowDeleteConfirm('single');
+                    }}
+                  />
+                ))}
+              </div>
             )}
           </div>
           
@@ -1407,45 +1552,65 @@ export default function HistoryPage() {
   );
 }
 
-// 角色卡历史记录专属卡片组件
-function CharacterCardHistoryItem({ card }: { card: CharacterCard }) {
+// 角色卡历史记录专属行组件
+function CharacterCardHistoryItem({ 
+  card, 
+  onDelete 
+}: { 
+  card: CharacterCard; 
+  onDelete: (id: string) => void; 
+}) {
   return (
-    <div className="group relative bg-gradient-to-br from-emerald-500/5 to-sky-500/5 rounded-xl overflow-hidden border border-emerald-500/20 hover:border-emerald-500/40 transition-all">
-      {/* 头像区域 - 正方形 */}
-      <div className="aspect-square bg-gradient-to-br from-emerald-500/10 to-sky-500/10 flex items-center justify-center">
+    <div className="w-full flex gap-4 p-4 bg-gradient-to-br from-emerald-500/5 to-sky-500/5 hover:from-emerald-500/10 hover:to-sky-500/10 border border-emerald-500/20 hover:border-emerald-500/40 rounded-2xl transition-all duration-300 relative group">
+      {/* Left: Avatar */}
+      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl bg-card/50 border border-border/60 flex items-center justify-center shrink-0 relative overflow-hidden select-none">
+        <span className="absolute top-1 left-1 z-10 px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 text-[9px] font-medium border border-emerald-500/20">
+          已完成
+        </span>
         {card.avatarUrl ? (
           <img
             src={card.avatarUrl}
             alt={card.characterName}
             className="w-full h-full object-cover"
             loading="lazy"
-            decoding="async"
           />
         ) : (
-          <User className="w-16 h-16 text-emerald-300/30" />
+          <User className="w-10 h-10 text-emerald-300/45" />
         )}
       </div>
 
-      {/* 角色卡标识 */}
-      <div className="absolute top-2 right-2">
-        <span className="px-2 py-1 bg-gradient-to-r from-emerald-500/80 to-sky-500/80 backdrop-blur-sm text-foreground text-[10px] rounded-md flex items-center gap-1">
-          <User className="w-3 h-3" />
-          角色卡
-        </span>
-      </div>
+      {/* Center & Right */}
+      <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
+        <div>
+          <div className="flex items-start justify-between gap-3 mb-1.5">
+            <h3 className="text-sm font-medium text-foreground truncate flex-1">
+              @{card.characterName || '未命名角色'}
+            </h3>
+            <span className="text-[10px] text-foreground/45 font-medium px-2 py-0.5 bg-card/30 border border-border/50 rounded-md whitespace-nowrap">
+              角色卡
+            </span>
+          </div>
 
-      {/* 信息区域 */}
-      <div className="p-3 bg-gradient-to-t from-background/60 to-transparent absolute bottom-0 left-0 right-0">
-        <h3 className="text-sm font-medium text-foreground truncate">
-          {card.characterName || '未命名角色'}
-        </h3>
-        <p className="text-[10px] text-foreground/50 mt-1">{formatDate(card.createdAt)}</p>
-      </div>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-foreground/50">
+            <span className="px-2 py-0.5 bg-card/45 border border-border/60 rounded-md text-[10px] text-foreground/60 flex items-center gap-1 font-medium select-none">
+              <User className="w-3 h-3 text-emerald-400" />
+              角色卡
+            </span>
+            <span className="text-[10px] text-foreground/40 flex items-center gap-1 font-light select-none">
+              <Calendar className="w-3 h-3 text-foreground/30" />
+              {formatDate(card.createdAt)}
+            </span>
+          </div>
+        </div>
 
-      {/* Hover 效果 */}
-      <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/20 to-sky-500/20 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center">
-        <div className="w-12 h-12 bg-card/70 backdrop-blur-sm rounded-full flex items-center justify-center">
-          <User className="w-5 h-5 text-foreground" />
+        <div className="mt-3 flex items-center justify-end" onClick={(e) => e.stopPropagation()}>
+          <button
+            onClick={() => onDelete(card.id)}
+            className="inline-flex items-center justify-center p-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 hover:border-red-500/40 text-red-400 hover:text-red-300 rounded-lg transition-all"
+            title="删除角色卡"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
     </div>
