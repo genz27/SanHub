@@ -32,7 +32,7 @@ export function ConfirmDialog({
             取消
           </button>
           <button
-            onClick={onConfirm}
+            onClick={() => { onConfirm(); onClose(); }}
             disabled={loading}
             className={'flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r text-foreground rounded-xl font-medium hover:opacity-90 disabled:opacity-50 ' + variantColors[variant]}
           >
