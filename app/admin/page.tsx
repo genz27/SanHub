@@ -91,34 +91,37 @@ export default function AdminPage() {
   const avgBalance = stats && stats.totalUsers > 0 ? Math.round(totalBalance / stats.totalUsers) : 0;
 
   const statCards = [
-    { 
-      label: '注册用户', 
-      value: stats?.totalUsers || 0, 
-      icon: Users, 
+    {
+      label: '注册用户',
+      value: stats?.totalUsers || 0,
+      icon: Users,
       color: 'from-blue-500 to-cyan-500',
       bgColor: 'bg-blue-500/20',
-      iconColor: 'text-blue-400'
+      iconColor: 'text-blue-400',
+      href: '/admin/users' as const,
     },
-    { 
-      label: '总积分', 
-      value: formatBalance(totalBalance), 
-      icon: Coins, 
+    {
+      label: '总积分',
+      value: formatBalance(totalBalance),
+      icon: Coins,
       color: 'from-green-500 to-emerald-500',
       bgColor: 'bg-green-500/20',
-      iconColor: 'text-green-400'
+      iconColor: 'text-green-400',
+      href: '/admin/redemption' as const,
     },
-    { 
-      label: '活跃用户', 
-      value: activeUsers, 
-      icon: Activity, 
+    {
+      label: '活跃用户',
+      value: activeUsers,
+      icon: Activity,
       color: 'from-sky-500 to-sky-500',
       bgColor: 'bg-sky-500/20',
-      iconColor: 'text-sky-400'
+      iconColor: 'text-sky-400',
+      href: '/admin/users' as const,
     },
-    { 
-      label: '平均积分', 
-      value: avgBalance, 
-      icon: TrendingUp, 
+    {
+      label: '平均积分',
+      value: avgBalance,
+      icon: TrendingUp,
       color: 'from-orange-500 to-amber-500',
       bgColor: 'bg-orange-500/20',
       iconColor: 'text-orange-400'
@@ -148,22 +151,33 @@ export default function AdminPage() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      {statCards.map((stat, index) => (
-          <div 
-            key={index}
-            className="bg-card/60 backdrop-blur-sm border border-border/70 rounded-2xl p-5 hover:border-border/70 transition-all duration-300"
-          >
-            <div className="flex items-center gap-4">
-              <div className={`w-12 h-12 ${stat.bgColor} rounded-xl flex items-center justify-center`}>
-                <stat.icon className={`w-6 h-6 ${stat.iconColor}`} />
-              </div>
-              <div>
-                <p className="text-2xl font-semibold text-foreground">{stat.value}</p>
-                <p className="text-sm text-foreground/50">{stat.label}</p>
+        {statCards.map((stat, index) => {
+          const cardContent = (
+            <div
+              className={`bg-card/60 backdrop-blur-sm border border-border/70 rounded-2xl p-5 hover:border-border/70 transition-all duration-300${stat.href ? ' cursor-pointer hover:scale-[1.02]' : ''}`}
+            >
+              <div className="flex items-center gap-4">
+                <div className={`w-12 h-12 ${stat.bgColor} rounded-xl flex items-center justify-center`}>
+                  <stat.icon className={`w-6 h-6 ${stat.iconColor}`} />
+                </div>
+                <div>
+                  <p className="text-2xl font-semibold text-foreground">{stat.value}</p>
+                  <p className="text-sm text-foreground/50">{stat.label}</p>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+
+          return stat.href ? (
+            <Link key={index} href={stat.href}>
+              {cardContent}
+            </Link>
+          ) : (
+            <div key={index}>
+              {cardContent}
+            </div>
+          );
+        })}
       </div>
 
       {/* Quick Links */}

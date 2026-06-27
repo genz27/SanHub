@@ -416,6 +416,8 @@ function buildModelPreset(channelType: ImageAdminChannelType, presetId: ModelPre
   return { form, ratioRows, sizeGroups };
 }
 
+const MODEL_PAGE_SIZE = 10;
+
 export default function ImageChannelsPage() {
   const [channels, setChannels] = useState<ImageChannel[]>([]);
   const [models, setModels] = useState<ImageModel[]>([]);
@@ -426,6 +428,7 @@ export default function ImageChannelsPage() {
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [showChannelModal, setShowChannelModal] = useState(false);
   const [showModelModal, setShowModelModal] = useState(false);
+  const [modelPage, setModelPage] = useState<Record<string, number>>({});
   const [searchQuery, setSearchQuery] = useState('');
 
   // Channel form
@@ -1411,6 +1414,12 @@ export default function ImageChannelsPage() {
           <div className="space-y-3">
             {filteredChannels.map(channel => {
               const channelModels = getChannelModels(channel.id);
+              const currentModelPage = modelPage[channel.id] || 1;
+              const totalModelPages = Math.max(1, Math.ceil(channelModels.length / MODEL_PAGE_SIZE));
+              const paginatedModels = channelModels.slice(
+                (currentModelPage - 1) * MODEL_PAGE_SIZE,
+                currentModelPage * MODEL_PAGE_SIZE,
+              );
               const isExpanded = expandedChannels.has(channel.id);
               const typeInfo = CHANNEL_TYPES.find(t => t.value === channel.type);
 
@@ -1662,7 +1671,7 @@ export default function ImageChannelsPage() {
                       {channelModels.length === 0 ? (
                         <p className="text-center text-foreground/30 py-4">暂无模型</p>
                       ) : (
-                        channelModels.map(model => (
+                        paginatedModels.map(model => (
                           <div key={model.id} className="flex items-center justify-between p-3 bg-card/60 rounded-xl hover:bg-card/70 transition-colors">
                             <div className="flex items-center gap-3">
                               <ImageIcon className="w-4 h-4 text-sky-400" />
@@ -1694,6 +1703,27 @@ export default function ImageChannelsPage() {
                             </div>
                           </div>
                         ))
+                      )}
+                      {totalModelPages > 1 && (
+                        <div className="flex items-center justify-center gap-2 pt-2">
+                          <button
+                            onClick={() => setModelPage(prev => ({ ...prev, [channel.id]: Math.max(1, currentModelPage - 1) }))}
+                            disabled={currentModelPage <= 1}
+                            className="px-3 py-1.5 text-xs rounded-lg bg-card/70 text-foreground/60 hover:text-foreground hover:bg-card/60 disabled:opacity-30 disabled:cursor-not-allowed"
+                          >
+                            上一页
+                          </button>
+                          <span className="text-xs text-foreground/50">
+                            {currentModelPage}/{totalModelPages} 页
+                          </span>
+                          <button
+                            onClick={() => setModelPage(prev => ({ ...prev, [channel.id]: Math.min(totalModelPages, currentModelPage + 1) }))}
+                            disabled={currentModelPage >= totalModelPages}
+                            className="px-3 py-1.5 text-xs rounded-lg bg-card/70 text-foreground/60 hover:text-foreground hover:bg-card/60 disabled:opacity-30 disabled:cursor-not-allowed"
+                          >
+                            下一页
+                          </button>
+                        </div>
                       )}
                     </div>
                   )}
