@@ -6,7 +6,6 @@ const nextConfig = {
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: '**' },
-      { protocol: 'http', hostname: '**' },
     ],
     minimumCacheTTL: 3600,
     deviceSizes: [640, 750, 828, 1080, 1200, 1920],
@@ -18,9 +17,6 @@ const nextConfig = {
       bodySizeLimit: '50mb',
     },
   },
-  
-  // Keep Next.js response compression enabled in production.
-  compress: true,
   
   // Production response hardening.
   poweredByHeader: false,

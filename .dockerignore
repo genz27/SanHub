@@ -46,6 +46,12 @@ Dockerfile
 docker-compose.yml
 .dockerignore
 
+# Local dev / tooling
+.tmp
+.lh
+mobileUI
+scripts
+
 # Data (keep prompts templates)
 data/*.db
 data/*.db-*
