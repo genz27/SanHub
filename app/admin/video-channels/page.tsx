@@ -5,6 +5,7 @@ import { Loader2, Save, Plus, Trash2, Edit2,
   Layers, ChevronDown, ChevronUp, Video, RefreshCw, Search } from 'lucide-react';
 import { toast } from '@/components/ui/toaster';
 import { Modal } from '@/components/ui/modal';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ChannelFormFields } from '@/components/admin/channel-form-fields';
 import { ModelBasicFields, FeaturesCheckboxGroup } from '@/components/admin/model-basic-fields';
 import type {
@@ -280,6 +281,21 @@ export default function VideoChannelsPage() {
   const [showModelModal, setShowModelModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [modelPage, setModelPage] = useState<Record<string, number>>({});
+  const [confirm, setConfirm] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    variant: 'danger' | 'warning' | 'default';
+    confirmLabel: string;
+    onConfirm: () => void;
+  }>({
+    open: false,
+    title: '',
+    message: '',
+    variant: 'danger',
+    confirmLabel: '确定',
+    onConfirm: () => {},
+  });
 
   // Channel form
   const [editingChannel, setEditingChannel] = useState<string | null>(null);
@@ -338,8 +354,7 @@ export default function VideoChannelsPage() {
     }
   };
 
-  const migrateFromLegacy = async () => {
-    if (!confirm('确定要从旧配置迁移吗？这将创建默认的 Sora 视频渠道和模型。')) return;
+  const doMigrate = async () => {
     setMigrating(true);
     try {
       const res = await fetch('/api/admin/migrate-video-models', { method: 'POST' });
@@ -352,6 +367,17 @@ export default function VideoChannelsPage() {
     } finally {
       setMigrating(false);
     }
+  };
+
+  const migrateFromLegacy = () => {
+    setConfirm({
+      open: true,
+      title: '迁移确认',
+      message: '确定要从旧配置迁移吗？这将创建默认的 Sora 视频渠道和模型。',
+      variant: 'warning',
+      confirmLabel: '开始迁移',
+      onConfirm: doMigrate,
+    });
   };
 
   const filteredChannels = useMemo(() => {
@@ -562,8 +588,12 @@ export default function VideoChannelsPage() {
   };
 
   const saveChannel = async () => {
-    if (!channelForm.name || !channelForm.type) {
-      toast({ title: '请填写名称和类型', variant: 'destructive' });
+    if (!channelForm.name) {
+      toast({ title: '请填写渠道名称', variant: 'destructive' });
+      return;
+    }
+    if (!channelForm.type) {
+      toast({ title: '请选择渠道类型', variant: 'destructive' });
       return;
     }
     setSaving(true);
@@ -612,7 +642,6 @@ export default function VideoChannelsPage() {
   };
 
   const deleteChannel = async (id: string) => {
-    if (!confirm('确定删除该渠道？渠道下的所有模型也会被删除。')) return;
     try {
       const res = await fetch(`/api/admin/video-channels?id=${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('删除失败');
@@ -621,6 +650,17 @@ export default function VideoChannelsPage() {
     } catch {
       toast({ title: '删除失败', variant: 'destructive' });
     }
+  };
+
+  const confirmDeleteChannel = (channel: VideoChannel) => {
+    setConfirm({
+      open: true,
+      title: '删除渠道',
+      message: `确定删除渠道 "${channel.name}"？该渠道下的所有模型也会被删除。`,
+      variant: 'danger',
+      confirmLabel: '删除',
+      onConfirm: () => deleteChannel(channel.id),
+    });
   };
 
   const toggleChannelEnabled = async (channel: VideoChannel) => {
@@ -833,7 +873,6 @@ export default function VideoChannelsPage() {
   };
 
   const deleteModel = async (id: string) => {
-    if (!confirm('确定删除该模型？')) return;
     try {
       const res = await fetch(`/api/admin/video-models?id=${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('删除失败');
@@ -842,6 +881,17 @@ export default function VideoChannelsPage() {
     } catch {
       toast({ title: '删除失败', variant: 'destructive' });
     }
+  };
+
+  const confirmDeleteModel = (model: VideoModel) => {
+    setConfirm({
+      open: true,
+      title: '删除模型',
+      message: `确定删除模型 "${model.name}"？`,
+      variant: 'danger',
+      confirmLabel: '删除',
+      onConfirm: () => deleteModel(model.id),
+    });
   };
 
   const toggleModelEnabled = async (model: VideoModel) => {
@@ -1320,6 +1370,20 @@ export default function VideoChannelsPage() {
         </div>
       </Modal>
 
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        open={confirm.open}
+        onClose={() => setConfirm({ ...confirm, open: false })}
+        onConfirm={() => {
+          confirm.onConfirm();
+          setConfirm({ ...confirm, open: false });
+        }}
+        title={confirm.title}
+        message={confirm.message}
+        variant={confirm.variant}
+        confirmLabel={confirm.confirmLabel}
+      />
+
       {/* Channels List */}
       <div className="space-y-4">
         <h2 className="text-lg font-semibold text-foreground">渠道列表</h2>
@@ -1422,7 +1486,7 @@ export default function VideoChannelsPage() {
                       <button onClick={() => startEditChannel(channel)} className="p-2 text-foreground/40 hover:text-foreground hover:bg-card/70 rounded-lg">
                         <Edit2 className="w-4 h-4" />
                       </button>
-                      <button onClick={() => deleteChannel(channel.id)} className="p-2 text-foreground/40 hover:text-red-400 hover:bg-red-500/10 rounded-lg">
+                      <button onClick={() => confirmDeleteChannel(channel)} className="p-2 text-foreground/40 hover:text-red-400 hover:bg-red-500/10 rounded-lg">
                         <Trash2 className="w-4 h-4" />
                       </button>
                       <button onClick={() => toggleExpand(channel.id)} className="p-2 text-foreground/40 hover:text-foreground hover:bg-card/70 rounded-lg">
@@ -1572,7 +1636,7 @@ export default function VideoChannelsPage() {
                                 <button onClick={() => startEditModel(model)} className="p-1.5 text-foreground/40 hover:text-foreground hover:bg-card/70 rounded-lg">
                                   <Edit2 className="w-3.5 h-3.5" />
                                 </button>
-                                <button onClick={() => deleteModel(model.id)} className="p-1.5 text-foreground/40 hover:text-red-400 hover:bg-red-500/10 rounded-lg">
+                                <button onClick={() => confirmDeleteModel(model)} className="p-1.5 text-foreground/40 hover:text-red-400 hover:bg-red-500/10 rounded-lg">
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
                               </div>

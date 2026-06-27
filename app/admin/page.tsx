@@ -3,10 +3,11 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
-import { Users, Coins, Loader2, Settings, ChevronRight, TrendingUp, Activity, Zap, BarChart3, Ticket, History } from 'lucide-react';
+import { Users, Coins, ChevronRight, TrendingUp, Activity, BarChart3, Ticket, History, MessageSquare, Image, Video, Key, Megaphone, Globe, UserPlus } from 'lucide-react';
 import type { SafeUser, StatsOverview } from '@/types';
 import { formatBalance } from '@/lib/utils';
 import { toast } from '@/components/ui/toaster';
+import { StatCardSkeleton, TableRowSkeleton, Skeleton } from '@/components/ui/skeleton';
 
 export default function AdminPage() {
   const { data: session } = useSession();
@@ -77,11 +78,36 @@ export default function AdminPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 animate-spin text-foreground/30" />
-          <p className="text-sm text-foreground/40">加载数据中...</p>
+      <div className="space-y-8">
+        <div>
+          <Skeleton className="w-24 h-9" />
+          <Skeleton className="w-36 h-4 mt-2" />
         </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)}
+        </div>
+        <div>
+          <Skeleton className="w-24 h-6 mb-4" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-36 rounded-2xl" />
+            ))}
+          </div>
+        </div>
+        {isAdmin && (
+          <div>
+            <Skeleton className="w-24 h-6 mb-4" />
+            <div className="bg-card/60 border border-border/70 rounded-2xl overflow-hidden">
+              <div className="flex items-center gap-4 px-5 py-4 border-b border-border/70">
+                <Skeleton className="w-32 h-5" />
+                <Skeleton className="w-24 h-5" />
+                <Skeleton className="w-16 h-5 ml-auto" />
+                <Skeleton className="w-16 h-5" />
+              </div>
+              <TableRowSkeleton cols={4} rows={5} />
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -89,6 +115,18 @@ export default function AdminPage() {
   const totalBalance = stats?.totalPoints || 0;
   const activeUsers = stats?.activeUsers || 0;
   const avgBalance = stats && stats.totalUsers > 0 ? Math.round(totalBalance / stats.totalUsers) : 0;
+
+  // Compute trends from dailyStats (last element = today, second-to-last = yesterday)
+  const dailyStatsArr = stats?.dailyStats || [];
+  const last = dailyStatsArr[dailyStatsArr.length - 1];
+  const prev = dailyStatsArr.length >= 2 ? dailyStatsArr[dailyStatsArr.length - 2] : null;
+  const todayUsersNum = stats?.todayUsers || 0;
+
+  const userTrend = todayUsersNum - (prev?.users || 0);
+  const pointsTrend = (last?.points || 0) - (prev?.points || 0);
+  const activeTrend = todayUsersNum - (prev?.users || 0);
+  const prevAvg = prev && prev.users > 0 ? Math.round(prev.points / prev.users) : 0;
+  const avgTrend = prevAvg > 0 ? avgBalance - prevAvg : 0;
 
   const statCards = [
     {
@@ -99,6 +137,7 @@ export default function AdminPage() {
       bgColor: 'bg-blue-500/20',
       iconColor: 'text-blue-400',
       href: '/admin/users' as const,
+      trend: userTrend,
     },
     {
       label: '总积分',
@@ -108,6 +147,7 @@ export default function AdminPage() {
       bgColor: 'bg-green-500/20',
       iconColor: 'text-green-400',
       href: '/admin/redemption' as const,
+      trend: pointsTrend,
     },
     {
       label: '活跃用户',
@@ -117,6 +157,7 @@ export default function AdminPage() {
       bgColor: 'bg-sky-500/20',
       iconColor: 'text-sky-400',
       href: '/admin/users' as const,
+      trend: activeTrend,
     },
     {
       label: '平均积分',
@@ -124,7 +165,8 @@ export default function AdminPage() {
       icon: TrendingUp,
       color: 'from-orange-500 to-amber-500',
       bgColor: 'bg-orange-500/20',
-      iconColor: 'text-orange-400'
+      iconColor: 'text-orange-400',
+      trend: avgTrend,
     },
   ];
 
@@ -134,8 +176,14 @@ export default function AdminPage() {
     { href: '/admin/stats', label: '数据统计', desc: '查看生成量和用户增长', icon: BarChart3, color: 'from-sky-500/20 to-sky-500/20', roles: ['admin', 'moderator'] },
     { href: '/admin/redemption', label: '卡密管理', desc: '生成和管理积分卡密', icon: Ticket, color: 'from-green-500/20 to-emerald-500/20', roles: ['admin', 'moderator'] },
     { href: '/admin/generations', label: '生成记录', desc: '管理所有生成历史', icon: History, color: 'from-orange-500/20 to-amber-500/20', roles: ['admin'] },
+    { href: '/admin/models', label: '聊天模型', desc: '管理 AI 对话模型', icon: MessageSquare, color: 'from-violet-500/20 to-purple-500/20', roles: ['admin'] },
+    { href: '/admin/image-channels', label: '图像渠道', desc: '管理图像生成渠道和模型', icon: Image, color: 'from-cyan-500/20 to-teal-500/20', roles: ['admin'] },
+    { href: '/admin/video-channels', label: '视频渠道', desc: '管理视频生成渠道和模型', icon: Video, color: 'from-pink-500/20 to-rose-500/20', roles: ['admin'] },
     { href: '/admin/pricing', label: '积分定价', desc: '配置各服务消耗积分', icon: Coins, color: 'from-emerald-500/20 to-amber-500/20', roles: ['admin'] },
-    { href: '/admin/image-channels', label: '图像渠道', desc: '管理图像生成渠道和模型', icon: Settings, color: 'from-cyan-500/20 to-teal-500/20', roles: ['admin'] },
+    { href: '/admin/tokens', label: 'Sora Token', desc: '管理 Sora Token', icon: Key, color: 'from-yellow-500/20 to-orange-500/20', roles: ['admin'] },
+    { href: '/admin/announcement', label: '公告管理', desc: '管理系统公告', icon: Megaphone, color: 'from-red-500/20 to-pink-500/20', roles: ['admin'] },
+    { href: '/admin/site', label: '网站配置', desc: '配置网站基本信息', icon: Globe, color: 'from-indigo-500/20 to-blue-500/20', roles: ['admin'] },
+    { href: '/admin/invites', label: '邀请码', desc: '管理邀请码', icon: UserPlus, color: 'from-teal-500/20 to-cyan-500/20', roles: ['admin'] },
   ];
 
   const userRole = session?.user?.role || 'user';
@@ -165,6 +213,22 @@ export default function AdminPage() {
                   <p className="text-sm text-foreground/50">{stat.label}</p>
                 </div>
               </div>
+              {stat.trend !== undefined && (
+                <div className="mt-3 flex items-center gap-1">
+                  {stat.trend > 0 ? (
+                    <span className="text-xs text-green-400 flex items-center gap-0.5">
+                      <TrendingUp className="w-3 h-3" /> +{stat.trend}
+                    </span>
+                  ) : stat.trend < 0 ? (
+                    <span className="text-xs text-red-400 flex items-center gap-0.5">
+                      <TrendingUp className="w-3 h-3 rotate-180" /> {stat.trend}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-foreground/30">持平</span>
+                  )}
+                  <span className="text-xs text-foreground/30">较昨日</span>
+                </div>
+              )}
             </div>
           );
 
@@ -268,4 +332,3 @@ export default function AdminPage() {
     </div>
   );
 }
-

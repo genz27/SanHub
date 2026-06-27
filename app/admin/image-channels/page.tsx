@@ -5,6 +5,7 @@ import { Loader2, Save, Plus, Trash2, Edit2,
   Layers, ChevronDown, ChevronUp, Image as ImageIcon, RefreshCw, Download, Check, Search } from 'lucide-react';
 import { toast } from '@/components/ui/toaster';
 import { Modal } from '@/components/ui/modal';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ChannelFormFields } from '@/components/admin/channel-form-fields';
 import { ModelBasicFields, FeaturesCheckboxGroup } from '@/components/admin/model-basic-fields';
 import type { ImageChannel, ImageModel, ImageModelFeatures } from '@/types';
@@ -432,6 +433,8 @@ export default function ImageChannelsPage() {
   const [showModelModal, setShowModelModal] = useState(false);
   const [modelPage, setModelPage] = useState<Record<string, number>>({});
   const [searchQuery, setSearchQuery] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState<{type: 'channel'|'model'|'migrate', id?: string} | null>(null);
+  const [channelFieldErrors, setChannelFieldErrors] = useState<{name?: boolean}>({});
 
   // Channel form
   const [editingChannel, setEditingChannel] = useState<string | null>(null);
@@ -533,28 +536,15 @@ export default function ImageChannelsPage() {
     }
   };
 
-  const migrateFromLegacy = async () => {
-    if (!confirm('确定要从旧配置迁移吗？这将创建默认的渠道和模型配置。')) return;
-    setMigrating(true);
-    try {
-      const res = await fetch('/api/admin/migrate-models', { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || '迁移失败');
-      }
-      toast({ title: `迁移成功：${data.channels} 个渠道，${data.models} 个模型` });
-      loadData();
-    } catch (err) {
-      toast({ title: '迁移失败', description: err instanceof Error ? err.message : '未知错误', variant: 'destructive' });
-    } finally {
-      setMigrating(false);
-    }
+  const migrateFromLegacy = () => {
+    setConfirmDelete({type: 'migrate'});
   };
 
   const resetChannelForm = () => {
     setChannelForm(createEmptyChannelForm());
     setEditingChannel(null);
     setShowChannelModal(false);
+    setChannelFieldErrors({});
   };
 
   const resetModelForm = () => {
@@ -708,10 +698,14 @@ export default function ImageChannelsPage() {
   };
 
   const saveChannel = async () => {
-    if (!channelForm.name || !channelForm.type) {
-      toast({ title: '请填写名称和类型', variant: 'destructive' });
+    const errors: {name?: boolean} = {};
+    if (!channelForm.name) errors.name = true;
+    if (Object.keys(errors).length > 0) {
+      setChannelFieldErrors(errors);
+      toast({ title: '请填写名称', variant: 'destructive' });
       return;
     }
+    setChannelFieldErrors({});
     setSaving(true);
     try {
       const res = await fetch('/api/admin/image-channels', {
@@ -733,16 +727,8 @@ export default function ImageChannelsPage() {
     }
   };
 
-  const deleteChannel = async (id: string) => {
-    if (!confirm('确定删除该渠道？渠道下的所有模型也会被删除。')) return;
-    try {
-      const res = await fetch(`/api/admin/image-channels?id=${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('删除失败');
-      toast({ title: '渠道已删除' });
-      loadData();
-    } catch {
-      toast({ title: '删除失败', variant: 'destructive' });
-    }
+  const deleteChannel = (id: string) => {
+    setConfirmDelete({type: 'channel', id});
   };
 
   const toggleChannelEnabled = async (channel: ImageChannel) => {
@@ -869,8 +855,37 @@ export default function ImageChannelsPage() {
     }
   };
 
-  const deleteModel = async (id: string) => {
-    if (!confirm('确定删除该模型？')) return;
+  const deleteModel = (id: string) => {
+    setConfirmDelete({type: 'model', id});
+  };
+
+  const executeMigrate = async () => {
+    setMigrating(true);
+    try {
+      const res = await fetch('/api/admin/migrate-models', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '迁移失败');
+      toast({ title: `迁移成功：${data.channels} 个渠道，${data.models} 个模型` });
+      loadData();
+    } catch (err) {
+      toast({ title: '迁移失败', description: err instanceof Error ? err.message : '未知错误', variant: 'destructive' });
+    } finally {
+      setMigrating(false);
+    }
+  };
+
+  const executeDeleteChannel = async (id: string) => {
+    try {
+      const res = await fetch(`/api/admin/image-channels?id=${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('删除失败');
+      toast({ title: '渠道已删除' });
+      loadData();
+    } catch {
+      toast({ title: '删除失败', variant: 'destructive' });
+    }
+  };
+
+  const executeDeleteModel = async (id: string) => {
     try {
       const res = await fetch(`/api/admin/image-models?id=${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('删除失败');
@@ -879,6 +894,15 @@ export default function ImageChannelsPage() {
     } catch {
       toast({ title: '删除失败', variant: 'destructive' });
     }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!confirmDelete) return;
+    const { type, id } = confirmDelete;
+    setConfirmDelete(null);
+    if (type === 'migrate') await executeMigrate();
+    else if (type === 'channel' && id) await executeDeleteChannel(id);
+    else if (type === 'model' && id) await executeDeleteModel(id);
   };
 
   const toggleModelEnabled = async (model: ImageModel) => {
@@ -1165,7 +1189,11 @@ export default function ImageChannelsPage() {
 
           <ChannelFormFields
             name={channelForm.name}
-            onNameChange={(v) => setChannelForm({ ...channelForm, name: v })}
+            onNameChange={(v) => {
+              setChannelForm({ ...channelForm, name: v });
+              if (channelFieldErrors.name) setChannelFieldErrors({});
+            }}
+            nameError={channelFieldErrors.name}
             type={channelForm.type}
             onTypeChange={(v) => handleChannelTypeChange(v as ImageAdminChannelType)}
             typeOptions={CHANNEL_TYPES.map(t => ({value: t.value, label: t.label, description: t.description}))}
@@ -1705,6 +1733,22 @@ export default function ImageChannelsPage() {
           </div>
         )}
       </div>
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={handleConfirmDelete}
+        title={
+          confirmDelete?.type === 'migrate' ? '确认迁移' :
+          confirmDelete?.type === 'channel' ? '确认删除渠道' :
+          confirmDelete?.type === 'model' ? '确认删除模型' : ''
+        }
+        message={
+          confirmDelete?.type === 'migrate' ? '确定要从旧配置迁移吗？这将创建默认的渠道和模型配置。' :
+          confirmDelete?.type === 'channel' ? '确定删除该渠道？渠道下的所有模型也会被删除。' :
+          confirmDelete?.type === 'model' ? '确定删除该模型？' : ''
+        }
+        variant={confirmDelete?.type === 'migrate' ? 'warning' : 'danger'}
+      />
     </div>
   );
 }

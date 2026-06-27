@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import {
-  MessageSquare, Loader2, Save, Eye, EyeOff, Plus, Trash2, 
+  MessageSquare, Loader2, Save, Eye, EyeOff, Plus, Trash2,
   AlertCircle, Check, X, Edit2, Power
 } from 'lucide-react';
 import { toast } from '@/components/ui/toaster';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import type { ChatModel } from '@/types';
 
 export default function ModelsPage() {
@@ -15,6 +16,7 @@ export default function ModelsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [form, setForm] = useState({
     name: '',
     apiUrl: '',
@@ -101,12 +103,13 @@ export default function ModelsPage() {
     }
   };
 
-  const deleteModel = async (id: string) => {
-    if (!confirm('确定删除该模型？')) return;
+  const deleteModel = async () => {
+    if (!deleteConfirmId) return;
     try {
-      const res = await fetch(`/api/chat/models?id=${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/chat/models?id=${deleteConfirmId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('删除失败');
       toast({ title: '模型已删除' });
+      setDeleteConfirmId(null);
       loadModels();
     } catch (err) {
       toast({ title: '删除失败', variant: 'destructive' });
@@ -324,7 +327,7 @@ export default function ModelsPage() {
                       <Edit2 className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => deleteModel(model.id)}
+                      onClick={() => setDeleteConfirmId(model.id)}
                       className="p-2 text-foreground/40 hover:text-red-400 hover:bg-red-500/10 rounded-lg"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -343,7 +346,14 @@ export default function ModelsPage() {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={deleteConfirmId !== null}
+        onClose={() => setDeleteConfirmId(null)}
+        onConfirm={deleteModel}
+        title="删除模型"
+        message="确定删除该模型？"
+      />
     </div>
   );
 }
-

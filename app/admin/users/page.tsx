@@ -2,16 +2,18 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
-import { User, Ban, Check, Search, Edit2, Key, Coins, Loader2, ShieldAlert } from 'lucide-react';
-import type { SafeUser } from '@/types';
+import { User, Users, Ban, Check, Search, Edit2, Key, Coins, Loader2, ShieldAlert, ArrowUp, ArrowDown } from 'lucide-react';
+import type { SafeUser, StatsOverview } from '@/types';
 import { formatBalance, formatDate, cn } from '@/lib/utils';
 import { PaginationControls } from '@/components/admin/pagination';
+import { StatCardSkeleton } from '@/components/ui/skeleton';
 
 const USERS_PAGE_SIZE = 20;
 
 export default function UsersPage() {
   const { data: session } = useSession();
   const [users, setUsers] = useState<SafeUser[]>([]);
+  const [stats, setStats] = useState<StatsOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetching, setFetching] = useState(false);
   const [page, setPage] = useState(1);
@@ -88,6 +90,14 @@ export default function UsersPage() {
     return () => clearTimeout(handle);
   }, [loadUsers]);
 
+  // Fetch user stats overview
+  useEffect(() => {
+    fetch('/api/admin/stats?days=2')
+      .then((res) => res.ok && res.json())
+      .then((data) => data?.data && setStats(data.data))
+      .catch(() => {});
+  }, []);
+
   const selectUser = (user: SafeUser) => {
     setSelectedUser(user);
     setEditMode(null);
@@ -141,10 +151,15 @@ export default function UsersPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 animate-spin text-foreground/30" />
-          <p className="text-sm text-foreground/40">加载用户数据...</p>
+      <div className="flex h-full flex-col gap-6">
+        <div>
+          <h1 className="text-3xl font-light text-foreground">用户管理</h1>
+          <p className="text-foreground/50 mt-1">管理用户账号、余额和权限</p>
+        </div>
+        <div className="grid grid-cols-3 gap-4">
+          <StatCardSkeleton />
+          <StatCardSkeleton />
+          <StatCardSkeleton />
         </div>
       </div>
     );
@@ -153,12 +168,36 @@ export default function UsersPage() {
   const totalPages = Math.max(1, Math.ceil(total / USERS_PAGE_SIZE));
   const currentPageCount = users.length;
 
+  // Calculate new user trend (vs yesterday)
+  const dailyStats = stats?.dailyStats || [];
+  const yesterdayUsers = dailyStats.length >= 2 ? dailyStats[dailyStats.length - 2].users : 0;
+  const todayUsersTrend = yesterdayUsers > 0 ? ((stats?.todayUsers || 0) - yesterdayUsers) / yesterdayUsers : 0;
+
   return (
     <div className="flex h-full flex-col gap-6 lg:h-[calc(100vh-170px)]">
       <div>
         <h1 className="text-3xl font-light text-foreground">用户管理</h1>
         <p className="text-foreground/50 mt-1">管理用户账号、余额和权限 · 共 {total} 条</p>
       </div>
+
+      {/* User stats overview */}
+      {stats && (
+        <div className="grid grid-cols-3 gap-4">
+          <StatCard icon={Users} label="总用户" value={stats.totalUsers} />
+          <StatCard
+            icon={Check}
+            label="活跃用户"
+            value={stats.activeUsers}
+            sub={`${stats.totalUsers > 0 ? Math.round((stats.activeUsers / stats.totalUsers) * 100) : 0}%`}
+          />
+          <StatCard
+            icon={User}
+            label="今日新增"
+            value={stats.todayUsers}
+            trend={todayUsersTrend}
+          />
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-6 flex-1 min-h-0 items-stretch lg:grid-cols-[minmax(320px,360px)_minmax(0,1fr)]">
         <div className="h-full min-h-0 flex flex-col overflow-hidden rounded-3xl border border-border/70 bg-card/50 backdrop-blur-sm">
@@ -474,6 +513,49 @@ export default function UsersPage() {
               <p className="mt-1 text-sm text-foreground/30">搜索结果为空时，左侧列表和详情会一起收敛，避免出现失配状态。</p>
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatCard({
+  icon: Icon,
+  label,
+  value,
+  sub,
+  trend,
+}: {
+  icon: typeof User;
+  label: string;
+  value: number;
+  sub?: string;
+  trend?: number;
+}) {
+  return (
+    <div className="bg-card/60 border border-border/70 rounded-2xl p-5 relative overflow-hidden">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.05),transparent_55%)] pointer-events-none" />
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 bg-sky-500/20 rounded-xl flex items-center justify-center">
+          <Icon className="w-5 h-5 text-sky-400" />
+        </div>
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <p className="text-2xl font-semibold text-foreground">{value.toLocaleString()}</p>
+            {trend !== undefined && trend !== 0 && (
+              <span className={cn(
+                'flex items-center gap-0.5 text-xs font-medium',
+                trend > 0 ? 'text-green-400' : 'text-red-400'
+              )}>
+                {trend > 0 ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
+                {Math.abs(Math.round(trend * 100))}%
+              </span>
+            )}
+            {sub && (
+              <span className="text-xs text-foreground/40">{sub}</span>
+            )}
+          </div>
+          <p className="text-sm text-foreground/50">{label}</p>
         </div>
       </div>
     </div>

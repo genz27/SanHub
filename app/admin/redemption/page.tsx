@@ -17,6 +17,7 @@ import type { RedemptionBatchResult, RedemptionBatchSummary, RedemptionCode } fr
 import { formatDate } from '@/lib/utils';
 import { toast } from '@/components/ui/toaster';
 import { PaginationControls } from '@/components/admin/pagination';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 const REDEMPTION_PAGE_SIZE = 50;
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
@@ -91,6 +92,8 @@ export default function RedemptionPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [deletingBatchId, setDeletingBatchId] = useState<string | null>(null);
+  const [pendingDeleteCodeId, setPendingDeleteCodeId] = useState<string | null>(null);
+  const [pendingDeleteBatchId, setPendingDeleteBatchId] = useState<string | null>(null);
 
   const [count, setCount] = useState(10);
   const [points, setPoints] = useState(100);
@@ -201,8 +204,6 @@ export default function RedemptionPage() {
   };
 
   const handleDeleteCode = async (id: string) => {
-    if (!confirm('确定删除这条卡密吗？')) return;
-
     try {
       const res = await fetch('/api/admin/redemption', {
         method: 'DELETE',
@@ -226,8 +227,6 @@ export default function RedemptionPage() {
   };
 
   const handleDeleteBatch = async (batchId: string) => {
-    if (!confirm('确定删除这个批次里所有未使用卡密吗？已使用的记录会保留。')) return;
-
     try {
       setDeletingBatchId(batchId);
       const res = await fetch('/api/admin/redemption', {
@@ -464,7 +463,7 @@ export default function RedemptionPage() {
                         {isActive ? '取消查看' : '查看批次'}
                       </button>
                       <button
-                        onClick={() => handleDeleteBatch(batch.batchId)}
+                        onClick={() => setPendingDeleteBatchId(batch.batchId)}
                         disabled={batch.unusedCount === 0 || deletingBatchId === batch.batchId}
                         className="px-3 py-2 rounded-xl bg-red-500/10 border border-red-500/20 text-sm text-red-300 hover:bg-red-500/20 disabled:opacity-40"
                       >
@@ -540,7 +539,7 @@ export default function RedemptionPage() {
                             </button>
                             {!code.usedBy && !isExpired && (
                               <button
-                                onClick={() => handleDeleteCode(code.id)}
+                                onClick={() => setPendingDeleteCodeId(code.id)}
                                 className="p-2 text-red-400/60 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
                                 title="删除卡密"
                               >
@@ -652,6 +651,29 @@ export default function RedemptionPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={pendingDeleteCodeId !== null}
+        onClose={() => setPendingDeleteCodeId(null)}
+        onConfirm={() => {
+          const id = pendingDeleteCodeId!;
+          setPendingDeleteCodeId(null);
+          handleDeleteCode(id);
+        }}
+        title="删除卡密"
+        message="确定删除这条卡密吗？"
+      />
+      <ConfirmDialog
+        open={pendingDeleteBatchId !== null}
+        onClose={() => setPendingDeleteBatchId(null)}
+        onConfirm={() => {
+          const batchId = pendingDeleteBatchId!;
+          setPendingDeleteBatchId(null);
+          handleDeleteBatch(batchId);
+        }}
+        title="删除批次"
+        message="确定删除这个批次里所有未使用卡密吗？已使用的记录会保留。"
+      />
     </div>
   );
 }

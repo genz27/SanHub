@@ -5,6 +5,7 @@ import { History, Trash2, Search, Loader2, Eye } from 'lucide-react';
 import { formatDate, cn } from '@/lib/utils';
 import { IMAGE_MODELS } from '@/lib/model-config';
 import { toast } from '@/components/ui/toaster';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { PaginationControls } from '@/components/admin/pagination';
 
 const GENERATIONS_PAGE_SIZE = 50;
@@ -77,6 +78,8 @@ export default function GenerationsPage() {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   const loadRecords = useCallback(async (nextPage = 1, reset = false) => {
     try {
@@ -118,14 +121,20 @@ export default function GenerationsPage() {
     return () => clearTimeout(handle);
   }, [loadRecords, search, statusFilter, typeFilter]);
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('确定删除此记录？')) return;
-    
+  const handleDelete = (id: string) => {
+    setPendingDeleteId(id);
+    setConfirmDialogOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!pendingDeleteId) return;
+    setConfirmDialogOpen(false);
+
     try {
       const res = await fetch('/api/admin/generations', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id }),
+        body: JSON.stringify({ id: pendingDeleteId }),
       });
       if (res.ok) {
         toast({ title: '记录已删除' });
@@ -270,6 +279,16 @@ export default function GenerationsPage() {
           loading={fetching}
         />
       )}
+
+      <ConfirmDialog
+        open={confirmDialogOpen}
+        onClose={() => setConfirmDialogOpen(false)}
+        onConfirm={confirmDelete}
+        title="确认删除"
+        message="确定删除此记录？"
+        confirmLabel="删除"
+        variant="danger"
+      />
     </div>
   );
 }

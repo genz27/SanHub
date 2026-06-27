@@ -16,6 +16,7 @@ import { formatDate } from '@/lib/utils';
 import { toast } from '@/components/ui/toaster';
 import { PaginationControls } from '@/components/admin/pagination';
 import { useSiteConfig } from '@/components/providers/site-config-provider';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 const INVITE_PAGE_SIZE = 50;
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
@@ -86,6 +87,7 @@ export default function InvitesPage() {
   const [showUsed, setShowUsed] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const [count, setCount] = useState(10);
   const [expiresInDays, setExpiresInDays] = useState(0);
@@ -181,14 +183,14 @@ export default function InvitesPage() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('确定删除这条邀请码吗？')) return;
+  const handleDeleteConfirm = async () => {
+    if (!deleteConfirmId) return;
 
     try {
       const res = await fetch('/api/admin/invites', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id }),
+        body: JSON.stringify({ id: deleteConfirmId }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -203,6 +205,8 @@ export default function InvitesPage() {
         description: err instanceof Error ? err.message : '无法删除邀请码',
         variant: 'destructive',
       });
+    } finally {
+      setDeleteConfirmId(null);
     }
   };
 
@@ -345,7 +349,7 @@ export default function InvitesPage() {
             </div>
           </div>
           <p className="text-xs text-foreground/40">
-            邀请码目前不落库存储“批次号”，所以“最近创建结果”是当前管理会话里的即时导出面板。
+            邀请码目前不落库存储"批次号"，所以"最近创建结果"是当前管理会话里的即时导出面板。
           </p>
         </div>
       )}
@@ -430,7 +434,7 @@ export default function InvitesPage() {
                         </button>
                         {!code.usedBy && !isExpired && (
                           <button
-                            onClick={() => handleDelete(code.id)}
+                            onClick={() => setDeleteConfirmId(code.id)}
                             className="p-2 text-red-400/60 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
                             title="删除邀请码"
                           >
@@ -526,6 +530,16 @@ export default function InvitesPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={deleteConfirmId !== null}
+        onClose={() => setDeleteConfirmId(null)}
+        onConfirm={handleDeleteConfirm}
+        title="删除邀请码"
+        message="确定删除这条邀请码吗？删除后无法恢复。"
+        confirmLabel="删除"
+        variant="danger"
+      />
     </div>
   );
 }
