@@ -1,11 +1,10 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import {
-  Loader2, Save, Plus, Trash2, Edit2, Eye, EyeOff,
-  Layers, ChevronDown, ChevronUp, Image as ImageIcon, RefreshCw, Download, Check
-} from 'lucide-react';
+import { Loader2, Save, Plus, Trash2, Edit2, Eye, EyeOff,
+  Layers, ChevronDown, ChevronUp, Image as ImageIcon, RefreshCw, Download, Check, Search } from 'lucide-react';
 import { toast } from '@/components/ui/toaster';
+import { Modal } from '@/components/ui/modal';
 import type { ImageChannel, ImageModel, ImageModelFeatures } from '@/types';
 
 const CHANNEL_TYPES = [
@@ -425,7 +424,10 @@ export default function ImageChannelsPage() {
   const [migrating, setMigrating] = useState(false);
   const [expandedChannels, setExpandedChannels] = useState<Set<string>>(new Set());
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
-  
+  const [showChannelModal, setShowChannelModal] = useState(false);
+  const [showModelModal, setShowModelModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
   // Channel form
   const [editingChannel, setEditingChannel] = useState<string | null>(null);
   const [channelForm, setChannelForm] = useState(() => createEmptyChannelForm());
@@ -491,6 +493,16 @@ export default function ImageChannelsPage() {
     }
   }, [availableSizes, modelForm.defaultImageSize, modelForm.features.imageSize]);
 
+  const filteredChannels = useMemo(() => {
+    if (!searchQuery.trim()) return channels;
+    const q = searchQuery.toLowerCase();
+    return channels.filter((ch) =>
+      ch.name.toLowerCase().includes(q) ||
+      ch.type.toLowerCase().includes(q) ||
+      ch.baseUrl.toLowerCase().includes(q)
+    );
+  }, [channels, searchQuery]);
+
   useEffect(() => {
     loadData();
   }, []);
@@ -537,6 +549,7 @@ export default function ImageChannelsPage() {
   const resetChannelForm = () => {
     setChannelForm(createEmptyChannelForm());
     setEditingChannel(null);
+    setShowChannelModal(false);
   };
 
   const resetModelForm = () => {
@@ -546,6 +559,7 @@ export default function ImageChannelsPage() {
     setEditingModel(null);
     setModelChannelId(null);
     setActiveModelPresetId(null);
+    setShowModelModal(false);
   };
 
   const buildRatioRows = (resolutions: Record<string, string> | undefined) => {
@@ -628,6 +642,7 @@ export default function ImageChannelsPage() {
       enabled: channel.enabled,
     });
     setEditingChannel(channel.id);
+    setShowChannelModal(true);
   };
 
   const startEditModel = (model: ImageModel) => {
@@ -661,6 +676,7 @@ export default function ImageChannelsPage() {
     setEditingModel(model.id);
     setModelChannelId(model.channelId);
     setActiveModelPresetId(null);
+    setShowModelModal(true);
   };
 
   const startAddModel = (channelId: string) => {
@@ -678,6 +694,12 @@ export default function ImageChannelsPage() {
     setEditingModel(null);
     setModelChannelId(channelId);
     setActiveModelPresetId(presetId);
+    setShowModelModal(true);
+  };
+
+  const openAddChannel = () => {
+    resetChannelForm();
+    setShowChannelModal(true);
   };
 
   const saveChannel = async () => {
@@ -1089,7 +1111,14 @@ export default function ImageChannelsPage() {
           <h1 className="text-3xl font-light text-foreground">图像渠道管理</h1>
           <p className="text-foreground/50 mt-1">管理图像生成渠道和模型</p>
         </div>
-        {channels.length === 0 && (
+        <div className="flex items-center gap-3">
+          <button
+            onClick={openAddChannel}
+            className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-500 to-cyan-500 text-foreground rounded-xl font-medium hover:opacity-90"
+          >
+            <Plus className="w-4 h-4" />
+            添加渠道
+          </button>
           <button
             onClick={migrateFromLegacy}
             disabled={migrating}
@@ -1098,235 +1127,136 @@ export default function ImageChannelsPage() {
             {migrating ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
             从旧配置迁移
           </button>
-        )}
-      </div>
-
-      {/* Channel Form */}
-      <div className="bg-card/60 border border-border/70 rounded-2xl p-6 space-y-4">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 bg-blue-500/20 rounded-xl flex items-center justify-center">
-            <Layers className="w-5 h-5 text-blue-400" />
-          </div>
-          <h2 className="text-lg font-semibold text-foreground">
-            {editingChannel ? '编辑渠道' : '添加渠道'}
-          </h2>
-        </div>
-
-        <div className="rounded-2xl border border-border/70 bg-card/50 p-4 space-y-2">
-          <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <p className="text-sm font-medium text-foreground">渠道接入建议</p>
-              <p className="text-sm text-foreground/60 mt-1">{channelFormGuide.summary}</p>
-            </div>
-            <span className="inline-flex items-center rounded-full bg-blue-500/10 px-3 py-1 text-xs text-blue-300 border border-blue-500/20">
-              推荐操作：{channelFormGuide.recommendedAction}
-            </span>
-          </div>
-          <p className="text-xs text-foreground/50">提示：{channelFormGuide.hint}</p>
-          {channelFormGuide.baseUrlExample && (
-            <p className="text-xs text-foreground/50">
-              推荐 Base URL：
-              <code className="ml-1 rounded bg-card/70 px-2 py-1 text-foreground/80">{channelFormGuide.baseUrlExample}</code>
-            </p>
-          )}
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <label className="text-sm text-foreground/70">名称 *</label>
-            <input
-              type="text"
-              value={channelForm.name}
-              onChange={(e) => setChannelForm({ ...channelForm, name: e.target.value })}
-              placeholder="NEWAPI"
-              className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm text-foreground/70">类型 *</label>
-            <select
-              value={channelForm.type}
-              onChange={(e) => handleChannelTypeChange(e.target.value as ImageAdminChannelType)}
-              className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border"
-            >
-              {CHANNEL_TYPES.map(t => (
-                <option key={t.value} value={t.value} className="bg-card/95">{t.label} - {t.description}</option>
-              ))}
-            </select>
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm text-foreground/70">Base URL</label>
-            <input
-              type="text"
-              value={channelForm.baseUrl}
-              onChange={(e) => setChannelForm({ ...channelForm, baseUrl: e.target.value })}
-              placeholder="https://api.example.com"
-              className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm text-foreground/70">API Key（多个用逗号分隔）</label>
-            <div className="relative">
-              <input
-                type={showKeys['channel'] ? 'text' : 'password'}
-                value={channelForm.apiKey}
-                onChange={(e) => setChannelForm({ ...channelForm, apiKey: e.target.value })}
-                placeholder="sk-..."
-                className="w-full px-4 py-3 pr-12 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
-              />
-              <button
-                type="button"
-                onClick={() => setShowKeys({ ...showKeys, channel: !showKeys['channel'] })}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-foreground/40 hover:text-foreground/70"
-              >
-                {showKeys['channel'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-6 pt-2">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={channelForm.enabled}
-              onChange={(e) => setChannelForm({ ...channelForm, enabled: e.target.checked })}
-              className="w-4 h-4 rounded border-border/70 bg-card/60 text-blue-500 focus:ring-blue-500"
-            />
-            <span className="text-sm text-foreground/70">启用</span>
-          </label>
-        </div>
-
-        <div className="flex items-center gap-3 pt-4">
-          <button
-            onClick={saveChannel}
-            disabled={saving}
-            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-500 to-cyan-500 text-foreground rounded-xl font-medium hover:opacity-90 disabled:opacity-50"
-          >
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            {editingChannel ? '更新' : '添加'}
-          </button>
-          {editingChannel && (
-            <button onClick={resetChannelForm} className="px-5 py-2.5 bg-card/70 text-foreground rounded-xl hover:bg-card/80">
-              取消
-            </button>
-          )}
         </div>
       </div>
 
-      {/* Model Form (shown when adding/editing) */}
-      {modelChannelId && (
-        <div className="bg-card/60 border border-border/70 rounded-2xl p-6 space-y-4">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 bg-sky-500/20 rounded-xl flex items-center justify-center">
-            <ImageIcon className="w-5 h-5 text-sky-400" />
-          </div>
-          <h2 className="text-lg font-semibold text-foreground">
-            {editingModel ? '编辑模型' : '添加模型'}
-          </h2>
-        </div>
-
-        {currentEditableChannel && (
-          <div className="rounded-2xl border border-border/70 bg-card/50 p-4 space-y-3">
-            <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+      {/* Channel Modal */}
+      <Modal
+        open={showChannelModal}
+        onClose={resetChannelForm}
+        title={editingChannel ? '编辑渠道' : '添加渠道'}
+        icon={<Layers className="w-5 h-5 text-blue-400" />}
+        size="lg"
+      >
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-border/70 bg-card/50 p-4 space-y-2">
+            <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
               <div>
-                <p className="text-sm font-medium text-foreground">快速预设</p>
-                <p className="text-xs text-foreground/50 mt-1">
-                  点一个预设就会自动填入推荐名称、模型 ID、能力开关和常用比例，后面只需要微调。
-                </p>
+                <p className="text-sm font-medium text-foreground">渠道接入建议</p>
+                <p className="text-sm text-foreground/60 mt-1">{channelFormGuide.summary}</p>
               </div>
-              <span className="text-xs text-foreground/40">
-                当前渠道：{currentEditableChannel.name} / {currentEditableChannel.type}
+              <span className="inline-flex items-center rounded-full bg-blue-500/10 px-3 py-1 text-xs text-blue-300 border border-blue-500/20">
+                推荐操作：{channelFormGuide.recommendedAction}
               </span>
             </div>
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
-              {manualPresetOptions.map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => applyManualPreset(option.id, true)}
-                  className={`rounded-xl border p-4 text-left transition-all ${
-                    activeModelPresetId === option.id
-                      ? 'border-sky-500/50 bg-sky-500/10'
-                      : 'border-border/70 bg-card/60 hover:bg-card/70'
-                  }`}
-                >
-                  <p className="text-sm font-medium text-foreground">{option.label}</p>
-                  <p className="text-xs text-foreground/50 mt-1">{option.description}</p>
-                </button>
-              ))}
-            </div>
+            <p className="text-xs text-foreground/50">提示：{channelFormGuide.hint}</p>
+            {channelFormGuide.baseUrlExample && (
+              <p className="text-xs text-foreground/50">
+                推荐 Base URL：
+                <code className="ml-1 rounded bg-card/70 px-2 py-1 text-foreground/80">{channelFormGuide.baseUrlExample}</code>
+              </p>
+            )}
           </div>
-        )}
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <label className="text-sm text-foreground/70">名称 *</label>
-              <input
-                type="text"
-                value={modelForm.name}
-                onChange={(e) => setModelForm({ ...modelForm, name: e.target.value })}
-                placeholder="GPT-4o Image"
-                className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
-              />
+              <input type="text" value={channelForm.name} onChange={(e) => setChannelForm({ ...channelForm, name: e.target.value })} placeholder="NEWAPI" className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm text-foreground/70">类型 *</label>
+              <select value={channelForm.type} onChange={(e) => handleChannelTypeChange(e.target.value as ImageAdminChannelType)} className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border">
+                {CHANNEL_TYPES.map(t => (<option key={t.value} value={t.value} className="bg-card/95">{t.label} - {t.description}</option>))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm text-foreground/70">Base URL</label>
+              <input type="text" value={channelForm.baseUrl} onChange={(e) => setChannelForm({ ...channelForm, baseUrl: e.target.value })} placeholder="https://api.example.com" className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm text-foreground/70">API Key（多个用逗号分隔）</label>
+              <div className="relative">
+                <input type={showKeys['channel'] ? 'text' : 'password'} value={channelForm.apiKey} onChange={(e) => setChannelForm({ ...channelForm, apiKey: e.target.value })} placeholder="sk-..." className="w-full px-4 py-3 pr-12 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border" />
+                <button type="button" onClick={() => setShowKeys({ ...showKeys, channel: !showKeys['channel'] })} className="absolute right-3 top-1/2 -translate-y-1/2 text-foreground/40 hover:text-foreground/70">
+                  {showKeys['channel'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={channelForm.enabled} onChange={(e) => setChannelForm({ ...channelForm, enabled: e.target.checked })} className="w-4 h-4 rounded border-border/70 bg-card/60 text-blue-500 focus:ring-blue-500" />
+            <span className="text-sm text-foreground/70">启用</span>
+          </label>
+
+          <div className="flex items-center gap-3 pt-2">
+            <button onClick={saveChannel} disabled={saving} className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-500 to-cyan-500 text-foreground rounded-xl font-medium hover:opacity-90 disabled:opacity-50">
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              {editingChannel ? '更新' : '添加'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Model Modal */}
+      <Modal
+        open={showModelModal}
+        onClose={resetModelForm}
+        title={editingModel ? '编辑模型' : '添加模型'}
+        icon={<ImageIcon className="w-5 h-5 text-sky-400" />}
+        size="xl"
+      >
+        <div className="space-y-4">
+          {currentEditableChannel && (
+            <div className="rounded-2xl border border-border/70 bg-card/50 p-4 space-y-3">
+              <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <p className="text-sm font-medium text-foreground">快速预设</p>
+                  <p className="text-xs text-foreground/50 mt-1">点一个预设就会自动填入推荐名称、模型 ID、能力开关和常用比例，后面只需要微调。</p>
+                </div>
+                <span className="text-xs text-foreground/40">当前渠道：{currentEditableChannel.name} / {currentEditableChannel.type}</span>
+              </div>
+              <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
+                {manualPresetOptions.map((option) => (
+                  <button key={option.id} type="button" onClick={() => applyManualPreset(option.id, true)}
+                    className={`rounded-xl border p-4 text-left transition-all ${activeModelPresetId === option.id ? 'border-sky-500/50 bg-sky-500/10' : 'border-border/70 bg-card/60 hover:bg-card/70'}`}>
+                    <p className="text-sm font-medium text-foreground">{option.label}</p>
+                    <p className="text-xs text-foreground/50 mt-1">{option.description}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <label className="text-sm text-foreground/70">名称 *</label>
+              <input type="text" value={modelForm.name} onChange={(e) => setModelForm({ ...modelForm, name: e.target.value })} placeholder="GPT-4o Image" className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border" />
             </div>
             <div className="space-y-2">
               <label className="text-sm text-foreground/70">模型 ID *</label>
-              <input
-                type="text"
-                value={modelForm.apiModel}
-                onChange={(e) => setModelForm({ ...modelForm, apiModel: e.target.value })}
-                placeholder="gpt-4o-image"
-                className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
-              />
+              <input type="text" value={modelForm.apiModel} onChange={(e) => setModelForm({ ...modelForm, apiModel: e.target.value })} placeholder="gpt-4o-image" className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border" />
             </div>
             <div className="space-y-2">
               <label className="text-sm text-foreground/70">描述</label>
-              <input
-                type="text"
-                value={modelForm.description}
-                onChange={(e) => setModelForm({ ...modelForm, description: e.target.value })}
-                placeholder="高质量图像生成"
-                className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
-              />
+              <input type="text" value={modelForm.description} onChange={(e) => setModelForm({ ...modelForm, description: e.target.value })} placeholder="高质量图像生成" className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border" />
             </div>
             <div className="space-y-2">
               <label className="text-sm text-foreground/70">Base URL（可选，覆盖渠道）</label>
-              <input
-                type="text"
-                value={modelForm.baseUrl}
-                onChange={(e) => setModelForm({ ...modelForm, baseUrl: e.target.value })}
-                placeholder="留空使用渠道默认"
-                className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
-              />
+              <input type="text" value={modelForm.baseUrl} onChange={(e) => setModelForm({ ...modelForm, baseUrl: e.target.value })} placeholder="留空使用渠道默认" className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border" />
             </div>
             <div className="space-y-2">
               <label className="text-sm text-foreground/70">API Key（可选，覆盖渠道）</label>
               <div className="relative">
-                <input
-                  type={showKeys['model'] ? 'text' : 'password'}
-                  value={modelForm.apiKey}
-                  onChange={(e) => setModelForm({ ...modelForm, apiKey: e.target.value })}
-                  placeholder="留空使用渠道默认"
-                  className="w-full px-4 py-3 pr-12 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowKeys({ ...showKeys, model: !showKeys['model'] })}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-foreground/40 hover:text-foreground/70"
-                >
+                <input type={showKeys['model'] ? 'text' : 'password'} value={modelForm.apiKey} onChange={(e) => setModelForm({ ...modelForm, apiKey: e.target.value })} placeholder="留空使用渠道默认" className="w-full px-4 py-3 pr-12 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border" />
+                <button type="button" onClick={() => setShowKeys({ ...showKeys, model: !showKeys['model'] })} className="absolute right-3 top-1/2 -translate-y-1/2 text-foreground/40 hover:text-foreground/70">
                   {showKeys['model'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
             </div>
             <div className="space-y-2">
               <label className="text-sm text-foreground/70">每次消耗积分</label>
-              <input
-                type="number"
-                value={modelForm.costPerGeneration}
-                onChange={(e) => setModelForm({ ...modelForm, costPerGeneration: parseInt(e.target.value) || 10 })}
-                className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border"
-              />
+              <input type="number" value={modelForm.costPerGeneration} onChange={(e) => setModelForm({ ...modelForm, costPerGeneration: parseInt(e.target.value) || 10 })} className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border" />
             </div>
           </div>
 
@@ -1334,46 +1264,14 @@ export default function ImageChannelsPage() {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <label className="text-sm text-foreground/70">画面比例与分辨率</label>
-                <button
-                  type="button"
-                  onClick={() => setRatioRows((prev) => [...prev, { ratio: '', resolution: '' }])}
-                  className="text-xs text-foreground/60 hover:text-foreground"
-                >
-                  添加比例
-                </button>
+                <button type="button" onClick={() => setRatioRows((prev) => [...prev, { ratio: '', resolution: '' }])} className="text-xs text-foreground/60 hover:text-foreground">添加比例</button>
               </div>
               <div className="space-y-2">
                 {ratioRows.map((row, index) => (
                   <div key={`${row.ratio}-${index}`} className="grid grid-cols-[140px_1fr_auto] gap-2">
-                    <input
-                      type="text"
-                      value={row.ratio}
-                      onChange={(e) => {
-                        const next = [...ratioRows];
-                        next[index] = { ...next[index], ratio: e.target.value };
-                        setRatioRows(next);
-                      }}
-                      placeholder="1:1"
-                      className="w-full px-3 py-2.5 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
-                    />
-                    <input
-                      type="text"
-                      value={row.resolution}
-                      onChange={(e) => {
-                        const next = [...ratioRows];
-                        next[index] = { ...next[index], resolution: e.target.value };
-                        setRatioRows(next);
-                      }}
-                      placeholder="1024x1024"
-                      className="w-full px-3 py-2.5 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setRatioRows((prev) => prev.filter((_, i) => i !== index))}
-                      className="px-3 py-2.5 text-foreground/40 hover:text-red-400 hover:bg-red-500/10 rounded-xl"
-                    >
-                      删除
-                    </button>
+                    <input type="text" value={row.ratio} onChange={(e) => { const next = [...ratioRows]; next[index] = { ...next[index], ratio: e.target.value }; setRatioRows(next); }} placeholder="1:1" className="w-full px-3 py-2.5 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border" />
+                    <input type="text" value={row.resolution} onChange={(e) => { const next = [...ratioRows]; next[index] = { ...next[index], resolution: e.target.value }; setRatioRows(next); }} placeholder="1024x1024" className="w-full px-3 py-2.5 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border" />
+                    <button type="button" onClick={() => setRatioRows((prev) => prev.filter((_, i) => i !== index))} className="px-3 py-2.5 text-foreground/40 hover:text-red-400 hover:bg-red-500/10 rounded-xl">删除</button>
                   </div>
                 ))}
               </div>
@@ -1385,115 +1283,29 @@ export default function ImageChannelsPage() {
               <div className="flex items-center justify-between">
                 <label className="text-sm text-foreground/70">分辨率档位</label>
                 <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setSizeGroups(buildGeminiProModelGroups(modelForm.apiModel))}
-                    className="text-xs text-blue-400 hover:text-blue-300"
-                    title="填充 Gemini 官方 imageSize / aspectRatio 使用的像素分辨率"
-                  >
-                    填充 Gemini 分辨率
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSizeGroups([...GEMINI_PRO_SIZE_GROUPS_PIXELS])}
-                    className="text-xs text-foreground/60 hover:text-foreground"
-                    title="填充像素分辨率值，仅用于显示"
-                  >
-                    填充像素值
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSizeGroups((prev) => [...prev, { size: '', rows: [{ ratio: '', resolution: '' }] }])}
-                    className="text-xs text-foreground/60 hover:text-foreground"
-                  >
-                    添加档位
-                  </button>
+                  <button type="button" onClick={() => setSizeGroups(buildGeminiProModelGroups(modelForm.apiModel))} className="text-xs text-blue-400 hover:text-blue-300" title="填充 Gemini 官方 imageSize / aspectRatio 使用的像素分辨率">填充 Gemini 分辨率</button>
+                  <button type="button" onClick={() => setSizeGroups([...GEMINI_PRO_SIZE_GROUPS_PIXELS])} className="text-xs text-foreground/60 hover:text-foreground" title="填充像素分辨率值，仅用于显示">填充像素值</button>
+                  <button type="button" onClick={() => setSizeGroups((prev) => [...prev, { size: '', rows: [{ ratio: '', resolution: '' }] }])} className="text-xs text-foreground/60 hover:text-foreground">添加档位</button>
                 </div>
               </div>
               <div className="space-y-3">
                 {sizeGroups.map((group, groupIndex) => (
                   <div key={`${group.size}-${groupIndex}`} className="border border-border/70 rounded-xl p-3 space-y-3">
                     <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={group.size}
-                        onChange={(e) => {
-                          const next = [...sizeGroups];
-                          next[groupIndex] = { ...next[groupIndex], size: e.target.value };
-                          setSizeGroups(next);
-                        }}
-                        placeholder="1K"
-                        className="w-28 px-3 py-2 bg-card/60 border border-border/70 rounded-lg text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
-                      />
+                      <input type="text" value={group.size} onChange={(e) => { const next = [...sizeGroups]; next[groupIndex] = { ...next[groupIndex], size: e.target.value }; setSizeGroups(next); }} placeholder="1K" className="w-28 px-3 py-2 bg-card/60 border border-border/70 rounded-lg text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border" />
                       <span className="text-xs text-foreground/40">如 1K / 2K / 4K</span>
-                      <button
-                        type="button"
-                        onClick={() => setSizeGroups((prev) => prev.filter((_, i) => i !== groupIndex))}
-                        className="ml-auto px-3 py-2 text-foreground/40 hover:text-red-400 hover:bg-red-500/10 rounded-lg"
-                      >
-                        删除档位
-                      </button>
+                      <button type="button" onClick={() => setSizeGroups((prev) => prev.filter((_, i) => i !== groupIndex))} className="ml-auto px-3 py-2 text-foreground/40 hover:text-red-400 hover:bg-red-500/10 rounded-lg">删除档位</button>
                     </div>
                     <div className="space-y-2">
                       {group.rows.map((row, rowIndex) => (
                         <div key={`${row.ratio}-${rowIndex}`} className="grid grid-cols-[140px_1fr_auto] gap-2">
-                          <input
-                            type="text"
-                            value={row.ratio}
-                            onChange={(e) => {
-                              const next = [...sizeGroups];
-                              const rows = [...next[groupIndex].rows];
-                              rows[rowIndex] = { ...rows[rowIndex], ratio: e.target.value };
-                              next[groupIndex] = { ...next[groupIndex], rows };
-                              setSizeGroups(next);
-                            }}
-                            placeholder="1:1"
-                            className="w-full px-3 py-2.5 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
-                          />
-                          <input
-                            type="text"
-                            value={row.resolution}
-                            onChange={(e) => {
-                              const next = [...sizeGroups];
-                              const rows = [...next[groupIndex].rows];
-                              rows[rowIndex] = { ...rows[rowIndex], resolution: e.target.value };
-                              next[groupIndex] = { ...next[groupIndex], rows };
-                              setSizeGroups(next);
-                            }}
-                            placeholder="1024x1024"
-                            className="w-full px-3 py-2.5 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const next = [...sizeGroups];
-                              next[groupIndex] = {
-                                ...next[groupIndex],
-                                rows: next[groupIndex].rows.filter((_, i) => i !== rowIndex),
-                              };
-                              setSizeGroups(next);
-                            }}
-                            className="px-3 py-2.5 text-foreground/40 hover:text-red-400 hover:bg-red-500/10 rounded-xl"
-                          >
-                            删除
-                          </button>
+                          <input type="text" value={row.ratio} onChange={(e) => { const next = [...sizeGroups]; const rows = [...next[groupIndex].rows]; rows[rowIndex] = { ...rows[rowIndex], ratio: e.target.value }; next[groupIndex] = { ...next[groupIndex], rows }; setSizeGroups(next); }} placeholder="1:1" className="w-full px-3 py-2.5 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border" />
+                          <input type="text" value={row.resolution} onChange={(e) => { const next = [...sizeGroups]; const rows = [...next[groupIndex].rows]; rows[rowIndex] = { ...rows[rowIndex], resolution: e.target.value }; next[groupIndex] = { ...next[groupIndex], rows }; setSizeGroups(next); }} placeholder="1024x1024" className="w-full px-3 py-2.5 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border" />
+                          <button type="button" onClick={() => { const next = [...sizeGroups]; next[groupIndex] = { ...next[groupIndex], rows: next[groupIndex].rows.filter((_, i) => i !== rowIndex) }; setSizeGroups(next); }} className="px-3 py-2.5 text-foreground/40 hover:text-red-400 hover:bg-red-500/10 rounded-xl">删除</button>
                         </div>
                       ))}
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const next = [...sizeGroups];
-                        next[groupIndex] = {
-                          ...next[groupIndex],
-                          rows: [...next[groupIndex].rows, { ratio: '', resolution: '' }],
-                        };
-                        setSizeGroups(next);
-                      }}
-                      className="text-xs text-foreground/60 hover:text-foreground"
-                    >
-                      添加比例
-                    </button>
+                    <button type="button" onClick={() => { const next = [...sizeGroups]; next[groupIndex] = { ...next[groupIndex], rows: [...next[groupIndex].rows, { ratio: '', resolution: '' }] }; setSizeGroups(next); }} className="text-xs text-foreground/60 hover:text-foreground">添加比例</button>
                   </div>
                 ))}
               </div>
@@ -1503,50 +1315,21 @@ export default function ImageChannelsPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2">
               <label className="text-sm text-foreground/70">默认比例</label>
-              <select
-                value={modelForm.defaultAspectRatio}
-                onChange={(e) => setModelForm({ ...modelForm, defaultAspectRatio: e.target.value })}
-                className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border"
-              >
-                {availableRatios.length === 0 ? (
-                  <option value="" className="bg-card/95">请先添加比例</option>
-                ) : (
-                  availableRatios.map((ratio) => (
-                    <option key={ratio} value={ratio} className="bg-card/95">
-                      {ratio}
-                    </option>
-                  ))
-                )}
+              <select value={modelForm.defaultAspectRatio} onChange={(e) => setModelForm({ ...modelForm, defaultAspectRatio: e.target.value })} className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border">
+                {availableRatios.length === 0 ? (<option value="" className="bg-card/95">请先添加比例</option>) : (availableRatios.map((ratio) => (<option key={ratio} value={ratio} className="bg-card/95">{ratio}</option>)))}
               </select>
             </div>
             {modelForm.features.imageSize && (
               <div className="space-y-2">
                 <label className="text-sm text-foreground/70">默认分辨率档位</label>
-                <select
-                  value={modelForm.defaultImageSize}
-                  onChange={(e) => setModelForm({ ...modelForm, defaultImageSize: e.target.value })}
-                  className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border"
-                >
-                  {availableSizes.length === 0 ? (
-                    <option value="" className="bg-card/95">请先添加档位</option>
-                  ) : (
-                    availableSizes.map((size) => (
-                      <option key={size} value={size} className="bg-card/95">
-                        {size}
-                      </option>
-                    ))
-                  )}
+                <select value={modelForm.defaultImageSize} onChange={(e) => setModelForm({ ...modelForm, defaultImageSize: e.target.value })} className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border">
+                  {availableSizes.length === 0 ? (<option value="" className="bg-card/95">请先添加档位</option>) : (availableSizes.map((size) => (<option key={size} value={size} className="bg-card/95">{size}</option>)))}
                 </select>
               </div>
             )}
             <div className="space-y-2">
-              <label className="text-sm text-foreground/70">排序（数字越小越靠前）</label>
-              <input
-                type="number"
-                value={modelForm.sortOrder}
-                onChange={(e) => setModelForm({ ...modelForm, sortOrder: parseInt(e.target.value) || 0 })}
-                className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border"
-              />
+              <label className="text-sm text-foreground/70">排序</label>
+              <input type="number" value={modelForm.sortOrder} onChange={(e) => setModelForm({ ...modelForm, sortOrder: parseInt(e.target.value) || 0 })} className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border" />
             </div>
           </div>
 
@@ -1562,17 +1345,11 @@ export default function ImageChannelsPage() {
                 { key: 'imageSize', label: '分辨率选择' },
               ].map(f => (
                 <label key={f.key} className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={!!modelForm.features[f.key as keyof ImageModelFeatures]}
-                    onChange={(e) => handleFeatureToggle(f.key as keyof ImageModelFeatures, e.target.checked)}
-                    className="w-4 h-4 rounded border-border/70 bg-card/60 text-sky-500 focus:ring-sky-500"
-                  />
+                  <input type="checkbox" checked={!!modelForm.features[f.key as keyof ImageModelFeatures]} onChange={(e) => handleFeatureToggle(f.key as keyof ImageModelFeatures, e.target.checked)} className="w-4 h-4 rounded border-border/70 bg-card/60 text-sky-500 focus:ring-sky-500" />
                   <span className="text-sm text-foreground/70">{f.label}</span>
                 </label>
               ))}
             </div>
-
             {modelForm.apiModel.toLowerCase().includes('gpt-image-2') && (
               <div className="pt-1">
                 <label className="text-sm text-foreground/70">画质选项</label>
@@ -1582,29 +1359,8 @@ export default function ImageChannelsPage() {
                     const checked = !options || options.length === 0 || options.includes(q);
                     return (
                       <label key={q} className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(e) => {
-                            const current = modelForm.features.qualityOptions;
-                            let next: string[];
-                            if (!current || current.length === 0) {
-                              next = ['high', 'medium', 'low'].filter(v => v !== q);
-                            } else {
-                              next = e.target.checked
-                                ? [...current, q]
-                                : current.filter(v => v !== q);
-                            }
-                            setModelForm({
-                              ...modelForm,
-                              features: { ...modelForm.features, qualityOptions: next },
-                            });
-                          }}
-                          className="w-4 h-4 rounded border-border/70 bg-card/60 text-sky-500 focus:ring-sky-500"
-                        />
-                        <span className="text-sm text-foreground/70">
-                          {q === 'high' ? '高' : q === 'medium' ? '中' : '低'}
-                        </span>
+                        <input type="checkbox" checked={checked} onChange={(e) => { const current = modelForm.features.qualityOptions; let next; if (!current || current.length === 0) { next = ['high', 'medium', 'low'].filter(v => v !== q); } else { next = e.target.checked ? [...current, q] : current.filter(v => v !== q); } setModelForm({ ...modelForm, features: { ...modelForm.features, qualityOptions: next } }); }} className="w-4 h-4 rounded border-border/70 bg-card/60 text-sky-500 focus:ring-sky-500" />
+                        <span className="text-sm text-foreground/70">{q === 'high' ? '高' : q === 'medium' ? '中' : '低'}</span>
                       </label>
                     );
                   })}
@@ -1615,72 +1371,45 @@ export default function ImageChannelsPage() {
           </div>
 
           <div className="flex flex-wrap gap-4 pt-2">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={modelForm.requiresReferenceImage}
-                onChange={(e) => setModelForm({ ...modelForm, requiresReferenceImage: e.target.checked })}
-                className="w-4 h-4 rounded border-border/70 bg-card/60 text-sky-500 focus:ring-sky-500"
-              />
-              <span className="text-sm text-foreground/70">必须上传参考图</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={modelForm.allowEmptyPrompt}
-                onChange={(e) => setModelForm({ ...modelForm, allowEmptyPrompt: e.target.checked })}
-                className="w-4 h-4 rounded border-border/70 bg-card/60 text-sky-500 focus:ring-sky-500"
-              />
-              <span className="text-sm text-foreground/70">允许空提示词</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={modelForm.highlight}
-                onChange={(e) => setModelForm({ ...modelForm, highlight: e.target.checked })}
-                className="w-4 h-4 rounded border-border/70 bg-card/60 text-sky-500 focus:ring-sky-500"
-              />
-              <span className="text-sm text-foreground/70">高亮显示</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={modelForm.enabled}
-                onChange={(e) => setModelForm({ ...modelForm, enabled: e.target.checked })}
-                className="w-4 h-4 rounded border-border/70 bg-card/60 text-sky-500 focus:ring-sky-500"
-              />
-              <span className="text-sm text-foreground/70">启用</span>
-            </label>
+            <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={modelForm.requiresReferenceImage} onChange={(e) => setModelForm({ ...modelForm, requiresReferenceImage: e.target.checked })} className="w-4 h-4 rounded border-border/70 bg-card/60 text-sky-500 focus:ring-sky-500" /><span className="text-sm text-foreground/70">必须上传参考图</span></label>
+            <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={modelForm.allowEmptyPrompt} onChange={(e) => setModelForm({ ...modelForm, allowEmptyPrompt: e.target.checked })} className="w-4 h-4 rounded border-border/70 bg-card/60 text-sky-500 focus:ring-sky-500" /><span className="text-sm text-foreground/70">允许空提示词</span></label>
+            <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={modelForm.highlight} onChange={(e) => setModelForm({ ...modelForm, highlight: e.target.checked })} className="w-4 h-4 rounded border-border/70 bg-card/60 text-sky-500 focus:ring-sky-500" /><span className="text-sm text-foreground/70">高亮显示</span></label>
+            <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={modelForm.enabled} onChange={(e) => setModelForm({ ...modelForm, enabled: e.target.checked })} className="w-4 h-4 rounded border-border/70 bg-card/60 text-sky-500 focus:ring-sky-500" /><span className="text-sm text-foreground/70">启用</span></label>
           </div>
 
-          <div className="flex items-center gap-3 pt-4">
-            <button
-              onClick={saveModel}
-              disabled={saving}
-              className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-sky-500 to-emerald-500 text-foreground rounded-xl font-medium hover:opacity-90 disabled:opacity-50"
-            >
+          <div className="flex items-center gap-3 pt-2">
+            <button onClick={saveModel} disabled={saving} className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-sky-500 to-emerald-500 text-foreground rounded-xl font-medium hover:opacity-90 disabled:opacity-50">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               {editingModel ? '更新' : '添加'}
             </button>
-            <button onClick={resetModelForm} className="px-5 py-2.5 bg-card/70 text-foreground rounded-xl hover:bg-card/80">
-              取消
-            </button>
           </div>
         </div>
-      )}
+      </Modal>
 
       {/* Channels List */}
       <div className="space-y-4">
-        <h2 className="text-lg font-semibold text-foreground">渠道列表</h2>
-        
-        {channels.length === 0 ? (
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-lg font-semibold text-foreground">渠道列表</h2>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-foreground/30" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="搜索渠道名称、类型..."
+              className="w-64 pl-9 pr-4 py-2 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 text-sm focus:outline-none focus:border-border"
+            />
+          </div>
+        </div>
+
+        {filteredChannels.length === 0 ? (
           <div className="text-center py-12 text-foreground/40 bg-card/60 border border-border/70 rounded-2xl">
             <Layers className="w-12 h-12 mx-auto mb-3 opacity-20" />
-            <p>暂无渠道，请先添加</p>
+            <p>{searchQuery ? '没有匹配的渠道' : '暂无渠道，请先添加'}</p>
           </div>
         ) : (
           <div className="space-y-3">
-            {channels.map(channel => {
+            {filteredChannels.map(channel => {
               const channelModels = getChannelModels(channel.id);
               const isExpanded = expandedChannels.has(channel.id);
               const typeInfo = CHANNEL_TYPES.find(t => t.value === channel.type);

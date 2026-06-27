@@ -1,11 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import {
-  Loader2, Save, Plus, Trash2, Edit2, Eye, EyeOff,
-  Layers, ChevronDown, ChevronUp, Video, RefreshCw
-} from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { Loader2, Save, Plus, Trash2, Edit2, Eye, EyeOff,
+  Layers, ChevronDown, ChevronUp, Video, RefreshCw, Search } from 'lucide-react';
 import { toast } from '@/components/ui/toaster';
+import { Modal } from '@/components/ui/modal';
 import type {
   VideoChannel,
   VideoModel,
@@ -76,10 +75,10 @@ const GROK_TEMPLATE_ASPECT_RATIOS: AspectRatioRow[] = GROK_ASPECT_RATIO_OPTIONS.
 }));
 
 const GROK_TEMPLATE_DURATIONS: VideoDuration[] = [
-  { value: '5s', label: '5 \u79d2', cost: 100 },
-  { value: '8s', label: '8 \u79d2', cost: 100 },
-  { value: '15s', label: '15 \u79d2', cost: 150 },
-  { value: '30s', label: '30 \u79d2', cost: 200 },
+  { value: '5s', label: '5 秒', cost: 100 },
+  { value: '8s', label: '8 秒', cost: 100 },
+  { value: '15s', label: '15 秒', cost: 150 },
+  { value: '30s', label: '30 秒', cost: 200 },
 ];
 
 const GROK_TEMPLATE_VIDEO_CONFIG_OBJECT: VideoConfigObject = {
@@ -123,7 +122,7 @@ function buildGrokTemplateModelPayload(channelId: string) {
   return {
     channelId,
     name: 'Grok Imagine Video',
-    description: 'Grok \u9ed8\u8ba4\u6a21\u677f\uff0c\u5185\u7f6e 5/8/15/30 \u79d2\u548c HD \u914d\u7f6e',
+    description: 'Grok 默认模板，内置 5/8/15/30 秒和 HD 配置',
     apiModel: 'grok-imagine-1.0-video',
     features: {
       textToVideo: true,
@@ -145,8 +144,8 @@ function buildGrokTemplateModelPayload(channelId: string) {
 function buildSoraTemplateModelPayload(channelId: string) {
   return {
     channelId,
-    name: 'Sora \u9ed8\u8ba4\u6a21\u578b',
-    description: '\u6309\u5e38\u7528 Sora \u914d\u7f6e\u9884\u586b\uff0c\u521b\u5efa\u6e20\u9053\u540e\u53ef\u76f4\u63a5\u4f7f\u7528',
+    name: 'Sora 默认模型',
+    description: '按常用 Sora 配置预填，创建渠道后可直接使用',
     apiModel: 'sora-2',
     features: {
       textToVideo: true,
@@ -168,7 +167,7 @@ function buildManualTemplateModelPayload(channel: VideoChannel) {
   if (channel.type === 'grok2api') {
     return {
       name: 'Grok Imagine Video',
-      description: '\u5df2\u9884\u586b Grok \u6a21\u677f\uff0c\u652f\u6301 5/8/15/30 \u79d2',
+      description: '已预填 Grok 模板，支持 5/8/15/30 秒',
       apiModel: 'grok-imagine-1.0-video',
       baseUrl: '',
       apiKey: '',
@@ -191,8 +190,8 @@ function buildManualTemplateModelPayload(channel: VideoChannel) {
 
   if (channel.type === 'sora' || channel.type === 'apexerapi') {
     return {
-      name: `${channel.name} \u9ed8\u8ba4\u6a21\u578b`,
-      description: '\u5df2\u6309 Sora \u5e38\u7528\u6a21\u677f\u9884\u586b\uff0c\u786e\u8ba4\u540e\u53ef\u76f4\u63a5\u4fdd\u5b58',
+      name: `${channel.name} 默认模型`,
+      description: '已按 Sora 常用模板预填，确认后可直接保存',
       apiModel: 'sora-2',
       baseUrl: '',
       apiKey: '',
@@ -215,8 +214,8 @@ function buildManualTemplateModelPayload(channel: VideoChannel) {
 
   if (channel.type === 'flow2api') {
     return {
-      name: `${channel.name} \u624b\u52a8\u6a21\u578b`,
-      description: '\u9002\u5408\u5df2\u77e5 Flow2API \u6a21\u578b ID \u7684\u573a\u666f\uff0c\u4e5f\u53ef\u5148\u7528\u4e00\u952e\u5bfc\u5165',
+      name: `${channel.name} 手动模型`,
+      description: '适合已知 Flow2API 模型 ID 的场景，也可先用一键导入',
       apiModel: '',
       baseUrl: '',
       apiKey: '',
@@ -238,8 +237,8 @@ function buildManualTemplateModelPayload(channel: VideoChannel) {
   }
 
   return {
-    name: `${channel.name} \u81ea\u5b9a\u4e49\u6a21\u578b`,
-    description: '\u9002\u7528\u4e8e\u517c\u5bb9 /v1/chat/completions \u7684\u89c6\u9891\u63a5\u53e3',
+    name: `${channel.name} 自定义模型`,
+    description: '适用于兼容 /v1/chat/completions 的视频接口',
     apiModel: '',
     baseUrl: '',
     apiKey: '',
@@ -273,6 +272,9 @@ export default function VideoChannelsPage() {
   const [selectedRemoteFlowModels, setSelectedRemoteFlowModels] = useState<Set<string>>(new Set());
   const [expandedChannels, setExpandedChannels] = useState<Set<string>>(new Set());
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
+  const [showChannelModal, setShowChannelModal] = useState(false);
+  const [showModelModal, setShowModelModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Channel form
   const [editingChannel, setEditingChannel] = useState<string | null>(null);
@@ -347,9 +349,20 @@ export default function VideoChannelsPage() {
     }
   };
 
+  const filteredChannels = useMemo(() => {
+    if (!searchQuery.trim()) return channels;
+    const q = searchQuery.toLowerCase();
+    return channels.filter((ch) =>
+      ch.name.toLowerCase().includes(q) ||
+      ch.type.toLowerCase().includes(q) ||
+      ch.baseUrl.toLowerCase().includes(q)
+    );
+  }, [channels, searchQuery]);
+
   const resetChannelForm = () => {
     setChannelForm({ name: '', type: 'sora', baseUrl: '', apiKey: '', enabled: true });
     setEditingChannel(null);
+    setShowChannelModal(false);
   };
 
   const resetModelForm = () => {
@@ -366,6 +379,12 @@ export default function VideoChannelsPage() {
     setDurationRows([...DEFAULT_DURATIONS]);
     setEditingModel(null);
     setModelChannelId(null);
+    setShowModelModal(false);
+  };
+
+  const openAddChannel = () => {
+    resetChannelForm();
+    setShowChannelModal(true);
   };
 
   const startEditChannel = (channel: VideoChannel) => {
@@ -377,6 +396,7 @@ export default function VideoChannelsPage() {
       enabled: channel.enabled,
     });
     setEditingChannel(channel.id);
+    setShowChannelModal(true);
   };
 
   const startEditModel = (model: VideoModel) => {
@@ -407,6 +427,7 @@ export default function VideoChannelsPage() {
     setDurationRows(model.durations);
     setEditingModel(model.id);
     setModelChannelId(model.channelId);
+    setShowModelModal(true);
   };
 
   const startAddModel = (channelId: string) => {
@@ -426,6 +447,7 @@ export default function VideoChannelsPage() {
         : [...DEFAULT_DURATIONS]
     );
     setModelChannelId(channelId);
+    setShowModelModal(true);
   };
 
   const ensureTemplateModelForChannel = async (channel: VideoChannel) => {
@@ -459,12 +481,12 @@ export default function VideoChannelsPage() {
     });
     if (!templateRes.ok) {
       const templateData = await templateRes.json().catch(() => ({}));
-      throw new Error(templateData.error || '\u81ea\u52a8\u521b\u5efa\u6a21\u677f\u6a21\u578b\u5931\u8d25');
+      throw new Error(templateData.error || '自动创建模板模型失败');
     }
 
     toast({
-      title: channel.type === 'grok2api' ? '\u5df2\u81ea\u52a8\u6dfb\u52a0 Grok \u6a21\u677f' : '\u5df2\u81ea\u52a8\u6dfb\u52a0 Sora \u6a21\u677f',
-      description: channel.type === 'grok2api' ? '\u9ed8\u8ba4\u5e26 5/10/15/30 \u79d2\u548c HD \u914d\u7f6e' : '\u5e38\u7528\u7684 Sora \u6a21\u578b\u5df2\u81ea\u52a8\u8865\u9f50',
+      title: channel.type === 'grok2api' ? '已自动添加 Grok 模板' : '已自动添加 Sora 模板',
+      description: channel.type === 'grok2api' ? '默认带 5/10/15/30 秒和 HD 配置' : '常用的 Sora 模型已自动补齐',
     });
     return true;
   };
@@ -480,7 +502,7 @@ export default function VideoChannelsPage() {
       const listRes = await fetch(`/api/admin/video-channels/models?channelId=${channel.id}`);
       const listData = await listRes.json().catch(() => ({}));
       if (!listRes.ok) {
-        throw new Error(listData.error || '\u62c9\u53d6\u8fdc\u7aef\u6a21\u578b\u5931\u8d25');
+        throw new Error(listData.error || '拉取远端模型失败');
       }
 
       const remoteItems = (listData?.data?.models || []) as RemoteFlow2ApiModel[];
@@ -512,12 +534,12 @@ export default function VideoChannelsPage() {
       });
       const importData = await importRes.json().catch(() => ({}));
       if (!importRes.ok) {
-        throw new Error(importData.error || '\u5bfc\u5165\u6a21\u578b\u5931\u8d25');
+        throw new Error(importData.error || '导入模型失败');
       }
 
       toast({
         title: `${channelLabel} 一键导入完成`,
-        description: `\u65b0\u589e ${importData?.data?.created || 0} \u4e2a\uff0c\u8df3\u8fc7 ${importData?.data?.skipped || 0} \u4e2a`,
+        description: `新增 ${importData?.data?.created || 0} 个，跳过 ${importData?.data?.skipped || 0} 个`,
       });
 
       await loadData();
@@ -525,7 +547,7 @@ export default function VideoChannelsPage() {
     } catch (err) {
       toast({
         title: `${channelLabel} 一键导入失败`,
-        description: err instanceof Error ? err.message : '\u672a\u77e5\u9519\u8bef',
+        description: err instanceof Error ? err.message : '未知错误',
         variant: 'destructive',
       });
     } finally {
@@ -553,21 +575,21 @@ export default function VideoChannelsPage() {
 
       const channelData = await res.json();
       const createdChannel = channelData?.data as VideoChannel | undefined;
-      toast({ title: editingChannel ? '\u6e20\u9053\u5df2\u66f4\u65b0' : '\u6e20\u9053\u5df2\u521b\u5efa' });
+      toast({ title: editingChannel ? '渠道已更新' : '渠道已创建' });
 
       if (!editingChannel && createdChannel) {
         if (supportsRemoteVideoModelImport(createdChannel)) {
           const channelLabel = remoteVideoImportLabel(createdChannel);
           if (createdChannel.baseUrl) {
             toast({
-              title: '\u5f00\u59cb\u81ea\u52a8\u5bfc\u5165',
+              title: '开始自动导入',
               description: `已尝试自动拉取并导入 ${channelLabel} 视频模型`,
             });
             await quickImportFlow2ApiModels(createdChannel);
           } else {
             toast({
-              title: '\u6e20\u9053\u5df2\u521b\u5efa',
-              description: `${channelLabel} 建议先填写 Base URL，再使用“一键导入”自动拉取模型`,
+              title: '渠道已创建',
+              description: `${channelLabel} 建议先填写 Base URL，再使用"一键导入"自动拉取模型`,
             });
           }
         } else {
@@ -857,12 +879,20 @@ export default function VideoChannelsPage() {
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl font-light text-foreground">视频渠道管理</h1>
           <p className="text-foreground/50 mt-1">管理视频生成渠道和模型</p>
         </div>
-        {channels.length === 0 && (
+        <div className="flex items-center gap-3">
+          <button
+            onClick={openAddChannel}
+            className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-sky-500 to-emerald-500 text-foreground rounded-xl font-medium hover:opacity-90"
+          >
+            <Plus className="w-4 h-4" />
+            添加渠道
+          </button>
           <button
             onClick={migrateFromLegacy}
             disabled={migrating}
@@ -871,29 +901,25 @@ export default function VideoChannelsPage() {
             {migrating ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
             从旧配置迁移
           </button>
-        )}
+        </div>
       </div>
 
-      {/* Channel Form */}
-      <div className="bg-card/60 border border-border/70 rounded-2xl p-6 space-y-4">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 bg-sky-500/20 rounded-xl flex items-center justify-center">
-            <Layers className="w-5 h-5 text-sky-400" />
-          </div>
-          <h2 className="text-lg font-semibold text-foreground">
-            {editingChannel ? '编辑渠道' : '添加渠道'}
-          </h2>
-        </div>
-
+      {/* Channel Form Modal */}
+      <Modal
+        open={showChannelModal}
+        onClose={resetChannelForm}
+        title={editingChannel ? '编辑渠道' : '添加渠道'}
+        icon={<Layers className="w-5 h-5 text-sky-400" />}
+      >
         <div className="rounded-xl border border-border/70 bg-card/50 p-4 text-sm text-foreground/60">
-          {channelForm.type === 'flow2api' && '\u4fdd\u5b58\u6e20\u9053\u540e\u4f1a\u4f18\u5148\u5c1d\u8bd5\u81ea\u52a8\u62c9\u53d6\u5e76\u5bfc\u5165\u8fdc\u7aef\u6a21\u578b\uff1b\u540e\u7eed\u4e5f\u53ef\u4ee5\u5728\u6e20\u9053\u5361\u7247\u91cc\u4f7f\u7528\u201c\u4e00\u952e\u5bfc\u5165\u201d\u6216\u624b\u52a8\u52fe\u9009\u5bfc\u5165\u3002'}
-          {channelForm.type === 'grok2api' && `\u4fdd\u5b58\u6e20\u9053\u540e\u4f1a\u81ea\u52a8\u8865\u4e00\u6761 Grok \u6a21\u677f\u6a21\u578b\uff0cvideo_length \u5141\u8bb8 5-${GROK_MAX_VIDEO_LENGTH_SECONDS} \u79d2\uff0c\u5e76\u4f1a\u7ee7\u7eed\u900f\u4f20\u5230\u751f\u6210\u8bf7\u6c42\u3002`}
-          {channelForm.type === 'apexerapi' && '\u9002\u7528\u4e8e adobe2api /v1/videos\uff0c\u4fdd\u5b58\u540e\u4f1a\u81ea\u52a8\u8865\u4e00\u6761 sora-2 \u9ed8\u8ba4\u6a21\u578b\u3002'}
-          {channelForm.type === 'sora' && '\u4fdd\u5b58\u6e20\u9053\u540e\u4f1a\u81ea\u52a8\u8865\u4e00\u6761 Sora \u9ed8\u8ba4\u6a21\u578b\uff0c\u901a\u5e38\u4e0d\u9700\u8981\u624b\u5de5\u586b\u5199\u7b2c\u4e00\u6761\u6a21\u578b\u3002'}
-          {channelForm.type === 'openai-compatible' && '\u9002\u7528\u4e8e\u517c\u5bb9 /v1/chat/completions \u7684\u89c6\u9891\u63a5\u53e3\u3002\u5148\u5efa\u6e20\u9053\uff0c\u518d\u6309\u5b9e\u9645\u6a21\u578b ID \u8865\u5145\u6a21\u578b\u5373\u53ef\u3002'}
+          {channelForm.type === 'flow2api' && '保存渠道后会优先尝试自动拉取并导入远端模型；后续也可以在渠道卡片里使用“一键导入”或手动勾选导入。'}
+          {channelForm.type === 'grok2api' && `保存渠道后会自动补一条 Grok 模板模型，video_length 允许 5-${GROK_MAX_VIDEO_LENGTH_SECONDS} 秒，并会继续透传到生成请求。`}
+          {channelForm.type === 'apexerapi' && '适用于 adobe2api /v1/videos，保存后会自动补一条 sora-2 默认模型。'}
+          {channelForm.type === 'sora' && '保存渠道后会自动补一条 Sora 默认模型，通常不需要手工填写第一条模型。'}
+          {channelForm.type === 'openai-compatible' && '适用于兼容 /v1/chat/completions 的视频接口。先建渠道，再按实际模型 ID 补充模型即可。'}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
           <div className="space-y-2">
             <label className="text-sm text-foreground/70">名称 *</label>
             <input
@@ -968,422 +994,421 @@ export default function VideoChannelsPage() {
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
             {editingChannel ? '更新' : '添加'}
           </button>
-          {editingChannel && (
-            <button onClick={resetChannelForm} className="px-5 py-2.5 bg-card/70 text-foreground rounded-xl hover:bg-card/80">
-              取消
-            </button>
-          )}
         </div>
-      </div>
+      </Modal>
 
-      {/* Model Form */}
-      {modelChannelId && (
-        <div className="bg-card/60 border border-border/70 rounded-2xl p-6 space-y-4">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 bg-blue-500/20 rounded-xl flex items-center justify-center">
-              <Video className="w-5 h-5 text-blue-400" />
-            </div>
-            <h2 className="text-lg font-semibold text-foreground">
-              {editingModel ? '编辑模型' : '添加模型'}
-            </h2>
+      {/* Model Form Modal */}
+      <Modal
+        open={showModelModal}
+        onClose={resetModelForm}
+        title={editingModel ? '编辑模型' : '添加模型'}
+        icon={<Video className="w-5 h-5 text-blue-400" />}
+        size="xl"
+      >
+        {selectedChannel && (
+          <div className="rounded-xl border border-border/70 bg-card/50 p-4 text-sm text-foreground/60">
+            {selectedChannel.type === 'flow2api' && '已知模型 ID 时再手动添加；如果只是想把远端模型拉下来，优先使用渠道卡片里的“一键导入”或刷新选择导入。'}
+            {selectedChannel.type === 'grok2api' && `已按 Grok 模板预填，video_length 支持 5-${GROK_MAX_VIDEO_LENGTH_SECONDS} 秒，保存后会原样透传到生成请求。`}
+            {selectedChannel.type === 'apexerapi' && '已按 adobe2api sora-2 预填，SanHub 会把 sora-video / sora2-* 请求转成 sora-2。'}
+            {selectedChannel.type === 'sora' && '已按 Sora 常用模板预填，通常只需要确认名称、默认时长和价格即可保存。'}
+            {selectedChannel.type === 'openai-compatible' && '模型级 Base URL / API Key 可以留空，保存时会自动继承渠道上的配置。'}
           </div>
+        )}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+          <div className="space-y-2">
+            <label className="text-sm text-foreground/70">名称 *</label>
+            <input
+              type="text"
+              value={modelForm.name}
+              onChange={(e) => setModelForm({ ...modelForm, name: e.target.value })}
+              placeholder="Sora Video"
+              className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm text-foreground/70">模型 ID *</label>
+            <input
+              type="text"
+              value={modelForm.apiModel}
+              onChange={(e) => setModelForm({ ...modelForm, apiModel: e.target.value })}
+              placeholder="sora-2"
+              className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm text-foreground/70">描述</label>
+            <input
+              type="text"
+              value={modelForm.description}
+              onChange={(e) => setModelForm({ ...modelForm, description: e.target.value })}
+              placeholder="高质量视频生成"
+              className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
+            />
+          </div>
+        </div>
 
-          {selectedChannel && (
-            <div className="rounded-xl border border-border/70 bg-card/50 p-4 text-sm text-foreground/60">
-              {selectedChannel.type === 'flow2api' && '\u5df2\u77e5\u6a21\u578b ID \u65f6\u518d\u624b\u52a8\u6dfb\u52a0\uff1b\u5982\u679c\u53ea\u662f\u60f3\u628a\u8fdc\u7aef\u6a21\u578b\u62c9\u4e0b\u6765\uff0c\u4f18\u5148\u4f7f\u7528\u6e20\u9053\u5361\u7247\u91cc\u7684\u201c\u4e00\u952e\u5bfc\u5165\u201d\u6216\u5237\u65b0\u9009\u62e9\u5bfc\u5165\u3002'}
-              {selectedChannel.type === 'grok2api' && `\u5df2\u6309 Grok \u6a21\u677f\u9884\u586b\uff0cvideo_length \u652f\u6301 5-${GROK_MAX_VIDEO_LENGTH_SECONDS} \u79d2\uff0c\u4fdd\u5b58\u540e\u4f1a\u539f\u6837\u900f\u4f20\u5230\u751f\u6210\u8bf7\u6c42\u3002`}
-              {selectedChannel.type === 'apexerapi' && '\u5df2\u6309 adobe2api sora-2 \u9884\u586b\uff0cSanHub \u4f1a\u628a sora-video / sora2-* \u8bf7\u6c42\u8f6c\u6210 sora-2\u3002'}
-              {selectedChannel.type === 'sora' && '\u5df2\u6309 Sora \u5e38\u7528\u6a21\u677f\u9884\u586b\uff0c\u901a\u5e38\u53ea\u9700\u8981\u786e\u8ba4\u540d\u79f0\u3001\u9ed8\u8ba4\u65f6\u957f\u548c\u4ef7\u683c\u5373\u53ef\u4fdd\u5b58\u3002'}
-              {selectedChannel.type === 'openai-compatible' && '\u6a21\u578b\u7ea7 Base URL / API Key \u53ef\u4ee5\u7559\u7a7a\uff0c\u4fdd\u5b58\u65f6\u4f1a\u81ea\u52a8\u7ee7\u627f\u6e20\u9053\u4e0a\u7684\u914d\u7f6e\u3002'}
-            </div>
-          )}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm text-foreground/70">名称 *</label>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+          <div className="space-y-2">
+            <label className="text-sm text-foreground/70">模型 Base URL 覆盖（可选）</label>
+            <input
+              type="text"
+              value={modelForm.baseUrl}
+              onChange={(e) => setModelForm({ ...modelForm, baseUrl: e.target.value })}
+              placeholder="留空则继承渠道 Base URL"
+              className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm text-foreground/70">模型 API Key 覆盖（可选）</label>
+            <div className="relative">
               <input
-                type="text"
-                value={modelForm.name}
-                onChange={(e) => setModelForm({ ...modelForm, name: e.target.value })}
-                placeholder="Sora Video"
-                className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
+                type={showKeys['model'] ? 'text' : 'password'}
+                value={modelForm.apiKey}
+                onChange={(e) => setModelForm({ ...modelForm, apiKey: e.target.value })}
+                placeholder="留空则继承渠道 API Key（勿加 Bearer 前缀）"
+                className="w-full px-4 py-3 pr-12 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
               />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm text-foreground/70">模型 ID *</label>
-              <input
-                type="text"
-                value={modelForm.apiModel}
-                onChange={(e) => setModelForm({ ...modelForm, apiModel: e.target.value })}
-                placeholder="sora-2"
-                className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm text-foreground/70">描述</label>
-              <input
-                type="text"
-                value={modelForm.description}
-                onChange={(e) => setModelForm({ ...modelForm, description: e.target.value })}
-                placeholder="高质量视频生成"
-                className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm text-foreground/70">模型 Base URL 覆盖（可选）</label>
-              <input
-                type="text"
-                value={modelForm.baseUrl}
-                onChange={(e) => setModelForm({ ...modelForm, baseUrl: e.target.value })}
-                placeholder="留空则继承渠道 Base URL"
-                className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm text-foreground/70">模型 API Key 覆盖（可选）</label>
-              <div className="relative">
-                <input
-                  type={showKeys['model'] ? 'text' : 'password'}
-                  value={modelForm.apiKey}
-                  onChange={(e) => setModelForm({ ...modelForm, apiKey: e.target.value })}
-                  placeholder="留空则继承渠道 API Key（勿加 Bearer 前缀）"
-                  className="w-full px-4 py-3 pr-12 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowKeys({ ...showKeys, model: !showKeys['model'] })}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-foreground/40 hover:text-foreground/70"
-                >
-                  {showKeys['model'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between gap-3 text-xs text-foreground/40">
-            <span>留空后保存即可使用渠道级 Base URL / API Key。</span>
-            <button
-              type="button"
-              onClick={() => setModelForm({ ...modelForm, baseUrl: '', apiKey: '' })}
-              className="px-3 py-1.5 rounded-lg border border-border/70 bg-card/60 hover:bg-card/70 text-foreground/70"
-            >
-              清空覆盖并继承渠道
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-sm text-foreground/70">画面比例</label>
-                <button
-                  type="button"
-                  onClick={() => setAspectRatioRows((prev) => [...prev, { value: '', label: '' }])}
-                  className="text-xs text-foreground/60 hover:text-foreground"
-                >
-                  添加比例
-                </button>
-              </div>
-              <div className="space-y-2">
-                {aspectRatioRows.map((row, index) => (
-                  <div key={`${row.value}-${index}`} className="grid grid-cols-[120px_1fr_auto] gap-2">
-                    <input
-                      type="text"
-                      value={row.value}
-                      onChange={(e) => {
-                        const next = [...aspectRatioRows];
-                        next[index] = { ...next[index], value: e.target.value };
-                        setAspectRatioRows(next);
-                      }}
-                      placeholder="landscape"
-                      className="w-full px-3 py-2.5 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
-                    />
-                    <input
-                      type="text"
-                      value={row.label}
-                      onChange={(e) => {
-                        const next = [...aspectRatioRows];
-                        next[index] = { ...next[index], label: e.target.value };
-                        setAspectRatioRows(next);
-                      }}
-                      placeholder="16:9"
-                      className="w-full px-3 py-2.5 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setAspectRatioRows((prev) => prev.filter((_, i) => i !== index))}
-                      className="px-3 py-2.5 text-foreground/40 hover:text-red-400 hover:bg-red-500/10 rounded-xl"
-                    >
-                      删除
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-sm text-foreground/70">时长与价格</label>
-                <button
-                  type="button"
-                  onClick={() => setDurationRows((prev) => [...prev, { value: '', label: '', cost: 0 }])}
-                  className="text-xs text-foreground/60 hover:text-foreground"
-                >
-                  添加时长
-                </button>
-              </div>
-              <div className="space-y-2">
-                {durationRows.map((row, index) => (
-                  <div key={`${row.value}-${index}`} className="grid grid-cols-[120px_1fr_120px_auto] gap-2">
-                    <input
-                      type="text"
-                      value={row.value}
-                      onChange={(e) => {
-                        const next = [...durationRows];
-                        next[index] = { ...next[index], value: e.target.value };
-                        setDurationRows(next);
-                      }}
-                      placeholder="10s"
-                      className="w-full px-3 py-2.5 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
-                    />
-                    <input
-                      type="text"
-                      value={row.label}
-                      onChange={(e) => {
-                        const next = [...durationRows];
-                        next[index] = { ...next[index], label: e.target.value };
-                        setDurationRows(next);
-                      }}
-                      placeholder="10 秒"
-                      className="w-full px-3 py-2.5 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
-                    />
-                    <input
-                      type="number"
-                      value={row.cost}
-                      onChange={(e) => {
-                        const next = [...durationRows];
-                        next[index] = { ...next[index], cost: parseInt(e.target.value) || 0 };
-                        setDurationRows(next);
-                      }}
-                      placeholder="100"
-                      className="w-full px-3 py-2.5 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setDurationRows((prev) => prev.filter((_, i) => i !== index))}
-                      className="px-3 py-2.5 text-foreground/40 hover:text-red-400 hover:bg-red-500/10 rounded-xl"
-                    >
-                      删除
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm text-foreground/70">默认比例</label>
-              <select
-                value={modelForm.defaultAspectRatio}
-                onChange={(e) => setModelForm({ ...modelForm, defaultAspectRatio: e.target.value })}
-                className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border"
+              <button
+                type="button"
+                onClick={() => setShowKeys({ ...showKeys, model: !showKeys['model'] })}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-foreground/40 hover:text-foreground/70"
               >
-                {aspectRatioRows.filter((row) => row.value.trim()).map((row) => (
-                  <option key={row.value} value={row.value} className="bg-card/95">
-                    {row.label || row.value}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm text-foreground/70">默认时长</label>
-              <select
-                value={modelForm.defaultDuration}
-                onChange={(e) => setModelForm({ ...modelForm, defaultDuration: e.target.value })}
-                className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border"
-              >
-                {durationRows.filter((row) => row.value.trim()).map((row) => (
-                  <option key={row.value} value={row.value} className="bg-card/95">
-                    {row.label || row.value}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm text-foreground/70">排序</label>
-              <input
-                type="number"
-                value={modelForm.sortOrder}
-                onChange={(e) => setModelForm({ ...modelForm, sortOrder: parseInt(e.target.value) || 0 })}
-                className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border"
-              />
+                {showKeys['model'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
             </div>
           </div>
+        </div>
 
-          {(() => {
-            const currentChannel = channels.find((channel) => channel.id === modelChannelId);
-            if (currentChannel?.type !== 'grok2api') return null;
+        <div className="flex items-center justify-between gap-3 text-xs text-foreground/40 mt-3">
+          <span>留空后保存即可使用渠道级 Base URL / API Key。</span>
+          <button
+            type="button"
+            onClick={() => setModelForm({ ...modelForm, baseUrl: '', apiKey: '' })}
+            className="px-3 py-1.5 rounded-lg border border-border/70 bg-card/60 hover:bg-card/70 text-foreground/70"
+          >
+            清空覆盖并继承渠道
+          </button>
+        </div>
 
-            return (
-              <div className="space-y-3 pt-2">
-                <label className="text-sm text-foreground/70">Video Config Object（Grok 专用）</label>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-xs text-foreground/60">aspect_ratio</label>
-                    <select
-                      value={modelForm.videoConfigObject.aspect_ratio || '16:9'}
-                      onChange={(e) =>
-                        setModelForm({
-                          ...modelForm,
-                          videoConfigObject: {
-                            ...modelForm.videoConfigObject,
-                            aspect_ratio: e.target.value as NonNullable<VideoConfigObject['aspect_ratio']>,
-                          },
-                        })
-                      }
-                      className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border"
-                    >
-                      {GROK_ASPECT_RATIO_OPTIONS.map((item) => (
-                        <option key={item.value} value={item.value} className="bg-card/95">
-                          {item.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-xs text-foreground/60">video_length</label>
-                    <input
-                      type="number"
-                      min={5}
-                      max={GROK_MAX_VIDEO_LENGTH_SECONDS}
-                      value={modelForm.videoConfigObject.video_length || 10}
-                      onChange={(e) => {
-                        const value = Number.parseInt(e.target.value, 10);
-                        setModelForm({
-                          ...modelForm,
-                          videoConfigObject: {
-                            ...modelForm.videoConfigObject,
-                            video_length: Number.isFinite(value) ? Math.max(5, Math.min(GROK_MAX_VIDEO_LENGTH_SECONDS, value)) : 10,
-                          },
-                        });
-                      }}
-                      className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-xs text-foreground/60">resolution</label>
-                    <select
-                      value={modelForm.videoConfigObject.resolution || 'HD'}
-                      onChange={(e) =>
-                        setModelForm({
-                          ...modelForm,
-                          videoConfigObject: {
-                            ...modelForm.videoConfigObject,
-                            resolution: e.target.value as NonNullable<VideoConfigObject['resolution']>,
-                          },
-                        })
-                      }
-                      className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border"
-                    >
-                      <option value="HD" className="bg-card/95">HD</option>
-                      <option value="SD" className="bg-card/95">SD</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-xs text-foreground/60">preset</label>
-                    <select
-                      value={modelForm.videoConfigObject.preset || 'normal'}
-                      onChange={(e) =>
-                        setModelForm({
-                          ...modelForm,
-                          videoConfigObject: {
-                            ...modelForm.videoConfigObject,
-                            preset: e.target.value as NonNullable<VideoConfigObject['preset']>,
-                          },
-                        })
-                      }
-                      className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border"
-                    >
-                      <option value="normal" className="bg-card/95">normal</option>
-                      <option value="fun" className="bg-card/95">fun</option>
-                      <option value="spicy" className="bg-card/95">spicy</option>
-                    </select>
-                  </div>
-                </div>
-                <p className="text-xs text-foreground/40">新增 Grok 渠道时会自动添加模板，默认分辨率为 HD。</p>
-              </div>
-            );
-          })()}
-
-          <div className="space-y-3 pt-2">
-            <label className="text-sm text-foreground/70">功能特性</label>
-            <div className="flex flex-wrap gap-4">
-              {[
-                { key: 'textToVideo', label: '文生视频' },
-                { key: 'imageToVideo', label: '图生视频' },
-                { key: 'videoToVideo', label: '视频转视频' },
-              ].map(f => (
-                <label key={f.key} className="flex items-center gap-2 cursor-pointer">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-sm text-foreground/70">画面比例</label>
+              <button
+                type="button"
+                onClick={() => setAspectRatioRows((prev) => [...prev, { value: '', label: '' }])}
+                className="text-xs text-foreground/60 hover:text-foreground"
+              >
+                添加比例
+              </button>
+            </div>
+            <div className="space-y-2">
+              {aspectRatioRows.map((row, index) => (
+                <div key={`${row.value}-${index}`} className="grid grid-cols-[120px_1fr_auto] gap-2">
                   <input
-                    type="checkbox"
-                    checked={modelForm.features[f.key as keyof VideoModelFeatures]}
-                    onChange={(e) => setModelForm({
-                      ...modelForm,
-                      features: { ...modelForm.features, [f.key]: e.target.checked }
-                    })}
-                    className="w-4 h-4 rounded border-border/70 bg-card/60 text-blue-500 focus:ring-blue-500"
+                    type="text"
+                    value={row.value}
+                    onChange={(e) => {
+                      const next = [...aspectRatioRows];
+                      next[index] = { ...next[index], value: e.target.value };
+                      setAspectRatioRows(next);
+                    }}
+                    placeholder="landscape"
+                    className="w-full px-3 py-2.5 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
                   />
-                  <span className="text-sm text-foreground/70">{f.label}</span>
-                </label>
+                  <input
+                    type="text"
+                    value={row.label}
+                    onChange={(e) => {
+                      const next = [...aspectRatioRows];
+                      next[index] = { ...next[index], label: e.target.value };
+                      setAspectRatioRows(next);
+                    }}
+                    placeholder="16:9"
+                    className="w-full px-3 py-2.5 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setAspectRatioRows((prev) => prev.filter((_, i) => i !== index))}
+                    className="px-3 py-2.5 text-foreground/40 hover:text-red-400 hover:bg-red-500/10 rounded-xl"
+                  >
+                    删除
+                  </button>
+                </div>
               ))}
             </div>
           </div>
-
-          <div className="flex flex-wrap gap-4 pt-2">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={modelForm.highlight}
-                onChange={(e) => setModelForm({ ...modelForm, highlight: e.target.checked })}
-                className="w-4 h-4 rounded border-border/70 bg-card/60 text-blue-500 focus:ring-blue-500"
-              />
-              <span className="text-sm text-foreground/70">高亮显示</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={modelForm.enabled}
-                onChange={(e) => setModelForm({ ...modelForm, enabled: e.target.checked })}
-                className="w-4 h-4 rounded border-border/70 bg-card/60 text-blue-500 focus:ring-blue-500"
-              />
-              <span className="text-sm text-foreground/70">启用</span>
-            </label>
-          </div>
-
-          <div className="flex items-center gap-3 pt-4">
-            <button
-              onClick={saveModel}
-              disabled={saving}
-              className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-500 to-cyan-500 text-foreground rounded-xl font-medium hover:opacity-90 disabled:opacity-50"
-            >
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              {editingModel ? '更新' : '添加'}
-            </button>
-            <button onClick={resetModelForm} className="px-5 py-2.5 bg-card/70 text-foreground rounded-xl hover:bg-card/80">
-              取消
-            </button>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-sm text-foreground/70">时长与价格</label>
+              <button
+                type="button"
+                onClick={() => setDurationRows((prev) => [...prev, { value: '', label: '', cost: 0 }])}
+                className="text-xs text-foreground/60 hover:text-foreground"
+              >
+                添加时长
+              </button>
+            </div>
+            <div className="space-y-2">
+              {durationRows.map((row, index) => (
+                <div key={`${row.value}-${index}`} className="grid grid-cols-[120px_1fr_120px_auto] gap-2">
+                  <input
+                    type="text"
+                    value={row.value}
+                    onChange={(e) => {
+                      const next = [...durationRows];
+                      next[index] = { ...next[index], value: e.target.value };
+                      setDurationRows(next);
+                    }}
+                    placeholder="10s"
+                    className="w-full px-3 py-2.5 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
+                  />
+                  <input
+                    type="text"
+                    value={row.label}
+                    onChange={(e) => {
+                      const next = [...durationRows];
+                      next[index] = { ...next[index], label: e.target.value };
+                      setDurationRows(next);
+                    }}
+                    placeholder="10 秒"
+                    className="w-full px-3 py-2.5 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
+                  />
+                  <input
+                    type="number"
+                    value={row.cost}
+                    onChange={(e) => {
+                      const next = [...durationRows];
+                      next[index] = { ...next[index], cost: parseInt(e.target.value) || 0 };
+                      setDurationRows(next);
+                    }}
+                    placeholder="100"
+                    className="w-full px-3 py-2.5 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setDurationRows((prev) => prev.filter((_, i) => i !== index))}
+                    className="px-3 py-2.5 text-foreground/40 hover:text-red-400 hover:bg-red-500/10 rounded-xl"
+                  >
+                    删除
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
-      )}
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+          <div className="space-y-2">
+            <label className="text-sm text-foreground/70">默认比例</label>
+            <select
+              value={modelForm.defaultAspectRatio}
+              onChange={(e) => setModelForm({ ...modelForm, defaultAspectRatio: e.target.value })}
+              className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border"
+            >
+              {aspectRatioRows.filter((row) => row.value.trim()).map((row) => (
+                <option key={row.value} value={row.value} className="bg-card/95">
+                  {row.label || row.value}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm text-foreground/70">默认时长</label>
+            <select
+              value={modelForm.defaultDuration}
+              onChange={(e) => setModelForm({ ...modelForm, defaultDuration: e.target.value })}
+              className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border"
+            >
+              {durationRows.filter((row) => row.value.trim()).map((row) => (
+                <option key={row.value} value={row.value} className="bg-card/95">
+                  {row.label || row.value}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm text-foreground/70">排序</label>
+            <input
+              type="number"
+              value={modelForm.sortOrder}
+              onChange={(e) => setModelForm({ ...modelForm, sortOrder: parseInt(e.target.value) || 0 })}
+              className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border"
+            />
+          </div>
+        </div>
+
+        {(() => {
+          const currentChannel = channels.find((channel) => channel.id === modelChannelId);
+          if (currentChannel?.type !== 'grok2api') return null;
+
+          return (
+            <div className="space-y-3 pt-2 mt-4">
+              <label className="text-sm text-foreground/70">Video Config Object（Grok 专用）</label>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="space-y-2">
+                  <label className="text-xs text-foreground/60">aspect_ratio</label>
+                  <select
+                    value={modelForm.videoConfigObject.aspect_ratio || '16:9'}
+                    onChange={(e) =>
+                      setModelForm({
+                        ...modelForm,
+                        videoConfigObject: {
+                          ...modelForm.videoConfigObject,
+                          aspect_ratio: e.target.value as NonNullable<VideoConfigObject['aspect_ratio']>,
+                        },
+                      })
+                    }
+                    className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border"
+                  >
+                    {GROK_ASPECT_RATIO_OPTIONS.map((item) => (
+                      <option key={item.value} value={item.value} className="bg-card/95">
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs text-foreground/60">video_length</label>
+                  <input
+                    type="number"
+                    min={5}
+                    max={GROK_MAX_VIDEO_LENGTH_SECONDS}
+                    value={modelForm.videoConfigObject.video_length || 10}
+                    onChange={(e) => {
+                      const value = Number.parseInt(e.target.value, 10);
+                      setModelForm({
+                        ...modelForm,
+                        videoConfigObject: {
+                          ...modelForm.videoConfigObject,
+                          video_length: Number.isFinite(value) ? Math.max(5, Math.min(GROK_MAX_VIDEO_LENGTH_SECONDS, value)) : 10,
+                        },
+                      });
+                    }}
+                    className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs text-foreground/60">resolution</label>
+                  <select
+                    value={modelForm.videoConfigObject.resolution || 'HD'}
+                    onChange={(e) =>
+                      setModelForm({
+                        ...modelForm,
+                        videoConfigObject: {
+                          ...modelForm.videoConfigObject,
+                          resolution: e.target.value as NonNullable<VideoConfigObject['resolution']>,
+                        },
+                      })
+                    }
+                    className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border"
+                  >
+                    <option value="HD" className="bg-card/95">HD</option>
+                    <option value="SD" className="bg-card/95">SD</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs text-foreground/60">preset</label>
+                  <select
+                    value={modelForm.videoConfigObject.preset || 'normal'}
+                    onChange={(e) =>
+                      setModelForm({
+                        ...modelForm,
+                        videoConfigObject: {
+                          ...modelForm.videoConfigObject,
+                          preset: e.target.value as NonNullable<VideoConfigObject['preset']>,
+                        },
+                      })
+                    }
+                    className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border"
+                  >
+                    <option value="normal" className="bg-card/95">normal</option>
+                    <option value="fun" className="bg-card/95">fun</option>
+                    <option value="spicy" className="bg-card/95">spicy</option>
+                  </select>
+                </div>
+              </div>
+              <p className="text-xs text-foreground/40">新增 Grok 渠道时会自动添加模板，默认分辨率为 HD。</p>
+            </div>
+          );
+        })()}
+
+        <div className="space-y-3 pt-2 mt-4">
+          <label className="text-sm text-foreground/70">功能特性</label>
+          <div className="flex flex-wrap gap-4">
+            {[
+              { key: 'textToVideo', label: '文生视频' },
+              { key: 'imageToVideo', label: '图生视频' },
+              { key: 'videoToVideo', label: '视频转视频' },
+            ].map(f => (
+              <label key={f.key} className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={modelForm.features[f.key as keyof VideoModelFeatures]}
+                  onChange={(e) => setModelForm({
+                    ...modelForm,
+                    features: { ...modelForm.features, [f.key]: e.target.checked }
+                  })}
+                  className="w-4 h-4 rounded border-border/70 bg-card/60 text-blue-500 focus:ring-blue-500"
+                />
+                <span className="text-sm text-foreground/70">{f.label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-4 pt-2">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={modelForm.highlight}
+              onChange={(e) => setModelForm({ ...modelForm, highlight: e.target.checked })}
+              className="w-4 h-4 rounded border-border/70 bg-card/60 text-blue-500 focus:ring-blue-500"
+            />
+            <span className="text-sm text-foreground/70">高亮显示</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={modelForm.enabled}
+              onChange={(e) => setModelForm({ ...modelForm, enabled: e.target.checked })}
+              className="w-4 h-4 rounded border-border/70 bg-card/60 text-blue-500 focus:ring-blue-500"
+            />
+            <span className="text-sm text-foreground/70">启用</span>
+          </label>
+        </div>
+
+        <div className="flex items-center gap-3 pt-4">
+          <button
+            onClick={saveModel}
+            disabled={saving}
+            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-500 to-cyan-500 text-foreground rounded-xl font-medium hover:opacity-90 disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {editingModel ? '更新' : '添加'}
+          </button>
+        </div>
+      </Modal>
 
       {/* Channels List */}
       <div className="space-y-4">
         <h2 className="text-lg font-semibold text-foreground">渠道列表</h2>
-        
+
+        {/* Search */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-foreground/30" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="搜索渠道名称、类型或 Base URL..."
+            className="w-full pl-10 pr-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
+          />
+        </div>
+
         {channels.length === 0 ? (
           <div className="text-center py-12 text-foreground/40 bg-card/60 border border-border/70 rounded-2xl">
             <Layers className="w-12 h-12 mx-auto mb-3 opacity-20" />
@@ -1391,7 +1416,7 @@ export default function VideoChannelsPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {channels.map(channel => {
+            {filteredChannels.map(channel => {
               const channelModels = getChannelModels(channel.id);
               const isExpanded = expandedChannels.has(channel.id);
               const typeInfo = CHANNEL_TYPES.find(t => t.value === channel.type);
@@ -1434,7 +1459,7 @@ export default function VideoChannelsPage() {
                           title={`一键导入全部可识别的 ${remoteVideoImportLabel(channel)} 视频模型`}
                           className="px-3 py-1.5 text-xs rounded-full bg-cyan-500/15 text-cyan-300 hover:bg-cyan-500/25 disabled:opacity-50"
                         >
-                          {importingChannelId === channel.id ? '\u5bfc\u5165\u4e2d...' : '\u4e00\u952e\u5bfc\u5165'}
+                          {importingChannelId === channel.id ? '导入中...' : '一键导入'}
                         </button>
                       )}
                       {supportsRemoteVideoModelImport(channel) && (
@@ -1457,7 +1482,7 @@ export default function VideoChannelsPage() {
                           )}
                         </button>
                       )}
-                      <button onClick={() => startAddModel(channel.id)} title="\u624b\u52a8\u6dfb\u52a0\u6a21\u578b" className="p-2 text-foreground/40 hover:text-green-400 hover:bg-green-500/10 rounded-lg">
+                      <button onClick={() => startAddModel(channel.id)} title="手动添加模型" className="p-2 text-foreground/40 hover:text-green-400 hover:bg-green-500/10 rounded-lg">
                         <Plus className="w-4 h-4" />
                       </button>
                       <button onClick={() => startEditChannel(channel)} className="p-2 text-foreground/40 hover:text-foreground hover:bg-card/70 rounded-lg">
@@ -1497,7 +1522,7 @@ export default function VideoChannelsPage() {
                           ) : (
                             <>
                               <div className="rounded-xl border border-border/70 bg-card/50 px-3 py-2 text-xs text-foreground/50">
-                                \u5df2\u62c9\u53d6 {remoteFlowModels.length} \u4e2a\u8fdc\u7aef\u6a21\u578b\uff0c\u5176\u4e2d {flowImportableCount} \u4e2a\u5c1a\u672a\u5bfc\u5165\u3002\u53ef\u76f4\u63a5\u5168\u9009\u5bfc\u5165\uff0c\u6216\u53ea\u52fe\u9009\u9700\u8981\u7684\u6a21\u578b\u3002
+                                已拉取 {remoteFlowModels.length} 个远端模型，其中 {flowImportableCount} 个尚未导入。可直接全选导入，或只勾选需要的模型。
                               </div>
                               <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
                                 {remoteFlowModels.map((item) => {
@@ -1610,4 +1635,3 @@ export default function VideoChannelsPage() {
     </div>
   );
 }
-
