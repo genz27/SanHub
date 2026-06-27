@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { Loader2, Save, Plus, Trash2, Edit2, Eye, EyeOff,
+import { Loader2, Save, Plus, Trash2, Edit2,
   Layers, ChevronDown, ChevronUp, Video, RefreshCw, Search } from 'lucide-react';
 import { toast } from '@/components/ui/toaster';
 import { Modal } from '@/components/ui/modal';
+import { ChannelFormFields } from '@/components/admin/channel-form-fields';
+import { ModelBasicFields, FeaturesCheckboxGroup } from '@/components/admin/model-basic-fields';
 import type {
   VideoChannel,
   VideoModel,
@@ -856,6 +858,34 @@ export default function VideoChannelsPage() {
     }
   };
 
+  const reorderModel = async (model: VideoModel, direction: 'up' | 'down') => {
+    const channelModels = getChannelModels(model.channelId)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+    const idx = channelModels.findIndex((m) => m.id === model.id);
+    if (idx === -1) return;
+
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= channelModels.length) return;
+
+    const other = channelModels[targetIdx];
+
+    try {
+      await fetch('/api/admin/video-models', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: model.id, sortOrder: other.sortOrder }),
+      });
+      await fetch('/api/admin/video-models', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: other.id, sortOrder: model.sortOrder }),
+      });
+      loadData();
+    } catch {
+      toast({ title: '排序失败', variant: 'destructive' });
+    }
+  };
+
   const toggleExpand = (id: string) => {
     setExpandedChannels(prev => {
       const next = new Set(prev);
@@ -915,77 +945,29 @@ export default function VideoChannelsPage() {
         icon={<Layers className="w-5 h-5 text-sky-400" />}
       >
         <div className="rounded-xl border border-border/70 bg-card/50 p-4 text-sm text-foreground/60">
-          {channelForm.type === 'flow2api' && '保存渠道后会优先尝试自动拉取并导入远端模型；后续也可以在渠道卡片里使用“一键导入”或手动勾选导入。'}
+          {channelForm.type === 'flow2api' && '保存渠道后会优先尝试自动拉取并导入远端模型；后续也可以在渠道卡片里使用"一键导入"或手动勾选导入。'}
           {channelForm.type === 'grok2api' && `保存渠道后会自动补一条 Grok 模板模型，video_length 允许 5-${GROK_MAX_VIDEO_LENGTH_SECONDS} 秒，并会继续透传到生成请求。`}
           {channelForm.type === 'apexerapi' && '适用于 adobe2api /v1/videos，保存后会自动补一条 sora-2 默认模型。'}
           {channelForm.type === 'sora' && '保存渠道后会自动补一条 Sora 默认模型，通常不需要手工填写第一条模型。'}
           {channelForm.type === 'openai-compatible' && '适用于兼容 /v1/chat/completions 的视频接口。先建渠道，再按实际模型 ID 补充模型即可。'}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-          <div className="space-y-2">
-            <label className="text-sm text-foreground/70">名称 *</label>
-            <input
-              type="text"
-              value={channelForm.name}
-              onChange={(e) => setChannelForm({ ...channelForm, name: e.target.value })}
-              placeholder="Sora"
-              className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm text-foreground/70">类型 *</label>
-            <select
-              value={channelForm.type}
-              onChange={(e) => setChannelForm({ ...channelForm, type: e.target.value as VideoChannelType })}
-              className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border"
-            >
-              {CHANNEL_TYPES.map(t => (
-                <option key={t.value} value={t.value} className="bg-card/95">{t.label}</option>
-              ))}
-            </select>
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm text-foreground/70">Base URL</label>
-            <input
-              type="text"
-              value={channelForm.baseUrl}
-              onChange={(e) => setChannelForm({ ...channelForm, baseUrl: e.target.value })}
-              placeholder="http://localhost:8000"
-              className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm text-foreground/70">API Key</label>
-            <div className="relative">
-              <input
-                type={showKeys['channel'] ? 'text' : 'password'}
-                value={channelForm.apiKey}
-                onChange={(e) => setChannelForm({ ...channelForm, apiKey: e.target.value })}
-                placeholder="sk-..."
-                className="w-full px-4 py-3 pr-12 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
-              />
-              <button
-                type="button"
-                onClick={() => setShowKeys({ ...showKeys, channel: !showKeys['channel'] })}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-foreground/40 hover:text-foreground/70"
-              >
-                {showKeys['channel'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-6 pt-2">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={channelForm.enabled}
-              onChange={(e) => setChannelForm({ ...channelForm, enabled: e.target.checked })}
-              className="w-4 h-4 rounded border-border/70 bg-card/60 text-sky-500 focus:ring-sky-500"
-            />
-            <span className="text-sm text-foreground/70">启用</span>
-          </label>
+        <div className="mt-4">
+          <ChannelFormFields
+            name={channelForm.name}
+            onNameChange={(v) => setChannelForm({ ...channelForm, name: v })}
+            type={channelForm.type}
+            onTypeChange={(v) => setChannelForm({ ...channelForm, type: v as any })}
+            typeOptions={CHANNEL_TYPES}
+            baseUrl={channelForm.baseUrl}
+            onBaseUrlChange={(v) => setChannelForm({ ...channelForm, baseUrl: v })}
+            apiKey={channelForm.apiKey}
+            onApiKeyChange={(v) => setChannelForm({ ...channelForm, apiKey: v })}
+            enabled={channelForm.enabled}
+            onEnabledChange={(v) => setChannelForm({ ...channelForm, enabled: v })}
+            showKey={!!showKeys['channel']}
+            onToggleShowKey={() => setShowKeys({ ...showKeys, channel: !showKeys['channel'] })}
+          />
         </div>
 
         <div className="flex items-center gap-3 pt-4">
@@ -1010,76 +992,29 @@ export default function VideoChannelsPage() {
       >
         {selectedChannel && (
           <div className="rounded-xl border border-border/70 bg-card/50 p-4 text-sm text-foreground/60">
-            {selectedChannel.type === 'flow2api' && '已知模型 ID 时再手动添加；如果只是想把远端模型拉下来，优先使用渠道卡片里的“一键导入”或刷新选择导入。'}
+            {selectedChannel.type === 'flow2api' && '已知模型 ID 时再手动添加；如果只是想把远端模型拉下来，优先使用渠道卡片里的"一键导入"或刷新选择导入。'}
             {selectedChannel.type === 'grok2api' && `已按 Grok 模板预填，video_length 支持 5-${GROK_MAX_VIDEO_LENGTH_SECONDS} 秒，保存后会原样透传到生成请求。`}
             {selectedChannel.type === 'apexerapi' && '已按 adobe2api sora-2 预填，SanHub 会把 sora-video / sora2-* 请求转成 sora-2。'}
             {selectedChannel.type === 'sora' && '已按 Sora 常用模板预填，通常只需要确认名称、默认时长和价格即可保存。'}
             {selectedChannel.type === 'openai-compatible' && '模型级 Base URL / API Key 可以留空，保存时会自动继承渠道上的配置。'}
           </div>
         )}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-          <div className="space-y-2">
-            <label className="text-sm text-foreground/70">名称 *</label>
-            <input
-              type="text"
-              value={modelForm.name}
-              onChange={(e) => setModelForm({ ...modelForm, name: e.target.value })}
-              placeholder="Sora Video"
-              className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm text-foreground/70">模型 ID *</label>
-            <input
-              type="text"
-              value={modelForm.apiModel}
-              onChange={(e) => setModelForm({ ...modelForm, apiModel: e.target.value })}
-              placeholder="sora-2"
-              className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm text-foreground/70">描述</label>
-            <input
-              type="text"
-              value={modelForm.description}
-              onChange={(e) => setModelForm({ ...modelForm, description: e.target.value })}
-              placeholder="高质量视频生成"
-              className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
-            />
-          </div>
-        </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-          <div className="space-y-2">
-            <label className="text-sm text-foreground/70">模型 Base URL 覆盖（可选）</label>
-            <input
-              type="text"
-              value={modelForm.baseUrl}
-              onChange={(e) => setModelForm({ ...modelForm, baseUrl: e.target.value })}
-              placeholder="留空则继承渠道 Base URL"
-              className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm text-foreground/70">模型 API Key 覆盖（可选）</label>
-            <div className="relative">
-              <input
-                type={showKeys['model'] ? 'text' : 'password'}
-                value={modelForm.apiKey}
-                onChange={(e) => setModelForm({ ...modelForm, apiKey: e.target.value })}
-                placeholder="留空则继承渠道 API Key（勿加 Bearer 前缀）"
-                className="w-full px-4 py-3 pr-12 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
-              />
-              <button
-                type="button"
-                onClick={() => setShowKeys({ ...showKeys, model: !showKeys['model'] })}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-foreground/40 hover:text-foreground/70"
-              >
-                {showKeys['model'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-          </div>
+        <div className="mt-4">
+          <ModelBasicFields
+            name={modelForm.name}
+            onNameChange={(v) => setModelForm({ ...modelForm, name: v })}
+            apiModel={modelForm.apiModel}
+            onApiModelChange={(v) => setModelForm({ ...modelForm, apiModel: v })}
+            description={modelForm.description}
+            onDescriptionChange={(v) => setModelForm({ ...modelForm, description: v })}
+            baseUrl={modelForm.baseUrl}
+            onBaseUrlChange={(v) => setModelForm({ ...modelForm, baseUrl: v })}
+            apiKey={modelForm.apiKey}
+            onApiKeyChange={(v) => setModelForm({ ...modelForm, apiKey: v })}
+            showKey={!!showKeys['model']}
+            onToggleShowKey={() => setShowKeys({ ...showKeys, model: !showKeys['model'] })}
+          />
         </div>
 
         <div className="flex items-center justify-between gap-3 text-xs text-foreground/40 mt-3">
@@ -1341,26 +1276,15 @@ export default function VideoChannelsPage() {
 
         <div className="space-y-3 pt-2 mt-4">
           <label className="text-sm text-foreground/70">功能特性</label>
-          <div className="flex flex-wrap gap-4">
-            {[
+          <FeaturesCheckboxGroup
+            features={modelForm.features as Record<string, boolean>}
+            onToggle={(key, value) => setModelForm({ ...modelForm, features: { ...modelForm.features, [key]: value } })}
+            options={[
               { key: 'textToVideo', label: '文生视频' },
               { key: 'imageToVideo', label: '图生视频' },
               { key: 'videoToVideo', label: '视频转视频' },
-            ].map(f => (
-              <label key={f.key} className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={modelForm.features[f.key as keyof VideoModelFeatures]}
-                  onChange={(e) => setModelForm({
-                    ...modelForm,
-                    features: { ...modelForm.features, [f.key]: e.target.checked }
-                  })}
-                  className="w-4 h-4 rounded border-border/70 bg-card/60 text-blue-500 focus:ring-blue-500"
-                />
-                <span className="text-sm text-foreground/70">{f.label}</span>
-              </label>
-            ))}
-          </div>
+            ]}
+          />
         </div>
 
         <div className="flex flex-wrap gap-4 pt-2">
@@ -1423,7 +1347,8 @@ export default function VideoChannelsPage() {
               const channelModels = getChannelModels(channel.id);
               const currentModelPage = modelPage[channel.id] || 1;
               const totalModelPages = Math.max(1, Math.ceil(channelModels.length / MODEL_PAGE_SIZE));
-              const paginatedModels = channelModels.slice(
+              const sortedChannelModels = [...channelModels].sort((a, b) => a.sortOrder - b.sortOrder);
+              const paginatedModels = sortedChannelModels.slice(
                 (currentModelPage - 1) * MODEL_PAGE_SIZE,
                 currentModelPage * MODEL_PAGE_SIZE,
               );
@@ -1600,38 +1525,60 @@ export default function VideoChannelsPage() {
                       {channelModels.length === 0 ? (
                         <p className="text-center text-foreground/30 py-4">暂无模型</p>
                       ) : (
-                        paginatedModels.map(model => (
-                          <div key={model.id} className="flex items-center justify-between p-3 bg-card/60 rounded-xl hover:bg-card/70 transition-colors">
-                            <div className="flex items-center gap-3">
-                              <Video className="w-4 h-4 text-blue-400" />
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-foreground font-medium">{model.name}</span>
-                                  {model.highlight && <span className="px-1.5 py-0.5 text-xs rounded bg-yellow-500/20 text-yellow-400">推荐</span>}
+                        paginatedModels.map(model => {
+                          const modelIdx = sortedChannelModels.findIndex((m) => m.id === model.id);
+                          const isFirst = modelIdx === 0;
+                          const isLast = modelIdx === sortedChannelModels.length - 1;
+
+                          return (
+                            <div key={model.id} className="flex items-center justify-between p-3 bg-card/60 rounded-xl hover:bg-card/70 transition-colors">
+                              <div className="flex items-center gap-3">
+                                <Video className="w-4 h-4 text-blue-400" />
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-foreground font-medium">{model.name}</span>
+                                    {model.highlight && <span className="px-1.5 py-0.5 text-xs rounded bg-yellow-500/20 text-yellow-400">推荐</span>}
+                                  </div>
+                                  <p className="text-xs text-foreground/40">
+                                    {model.apiModel} · {model.durations.map(d => `${d.label}=${d.cost}积分`).join(', ')}
+                                  </p>
                                 </div>
-                                <p className="text-xs text-foreground/40">
-                                  {model.apiModel} · {model.durations.map(d => `${d.label}=${d.cost}积分`).join(', ')}
-                                </p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => reorderModel(model, 'up')}
+                                  disabled={isFirst}
+                                  title="上移"
+                                  className="p-1.5 text-foreground/40 hover:text-foreground hover:bg-card/70 rounded-lg disabled:opacity-20 disabled:cursor-not-allowed"
+                                >
+                                  <ChevronUp className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => reorderModel(model, 'down')}
+                                  disabled={isLast}
+                                  title="下移"
+                                  className="p-1.5 text-foreground/40 hover:text-foreground hover:bg-card/70 rounded-lg disabled:opacity-20 disabled:cursor-not-allowed"
+                                >
+                                  <ChevronDown className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => toggleModelEnabled(model)}
+                                  className={`px-2 py-0.5 text-xs rounded-full ${
+                                    model.enabled ? 'bg-green-500/20 text-green-400' : 'bg-card/70 text-foreground/40'
+                                  }`}
+                                >
+                                  {model.enabled ? '启用' : '禁用'}
+                                </button>
+                                <button onClick={() => startEditModel(model)} className="p-1.5 text-foreground/40 hover:text-foreground hover:bg-card/70 rounded-lg">
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                                <button onClick={() => deleteModel(model.id)} className="p-1.5 text-foreground/40 hover:text-red-400 hover:bg-red-500/10 rounded-lg">
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
                               </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => toggleModelEnabled(model)}
-                                className={`px-2 py-0.5 text-xs rounded-full ${
-                                  model.enabled ? 'bg-green-500/20 text-green-400' : 'bg-card/70 text-foreground/40'
-                                }`}
-                              >
-                                {model.enabled ? '启用' : '禁用'}
-                              </button>
-                              <button onClick={() => startEditModel(model)} className="p-1.5 text-foreground/40 hover:text-foreground hover:bg-card/70 rounded-lg">
-                                <Edit2 className="w-3.5 h-3.5" />
-                              </button>
-                              <button onClick={() => deleteModel(model.id)} className="p-1.5 text-foreground/40 hover:text-red-400 hover:bg-red-500/10 rounded-lg">
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </div>
-                        ))
+                          );
+                        })
                       )}
                       {totalModelPages > 1 && (
                         <div className="flex items-center justify-center gap-2 pt-2">

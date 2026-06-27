@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { Loader2, Save, Plus, Trash2, Edit2, Eye, EyeOff,
+import { Loader2, Save, Plus, Trash2, Edit2,
   Layers, ChevronDown, ChevronUp, Image as ImageIcon, RefreshCw, Download, Check, Search } from 'lucide-react';
 import { toast } from '@/components/ui/toaster';
 import { Modal } from '@/components/ui/modal';
+import { ChannelFormFields } from '@/components/admin/channel-form-fields';
+import { ModelBasicFields, FeaturesCheckboxGroup } from '@/components/admin/model-basic-fields';
 import type { ImageChannel, ImageModel, ImageModelFeatures } from '@/types';
 
 const CHANNEL_TYPES = [
@@ -1161,36 +1163,21 @@ export default function ImageChannelsPage() {
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm text-foreground/70">名称 *</label>
-              <input type="text" value={channelForm.name} onChange={(e) => setChannelForm({ ...channelForm, name: e.target.value })} placeholder="NEWAPI" className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm text-foreground/70">类型 *</label>
-              <select value={channelForm.type} onChange={(e) => handleChannelTypeChange(e.target.value as ImageAdminChannelType)} className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border">
-                {CHANNEL_TYPES.map(t => (<option key={t.value} value={t.value} className="bg-card/95">{t.label} - {t.description}</option>))}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm text-foreground/70">Base URL</label>
-              <input type="text" value={channelForm.baseUrl} onChange={(e) => setChannelForm({ ...channelForm, baseUrl: e.target.value })} placeholder="https://api.example.com" className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm text-foreground/70">API Key（多个用逗号分隔）</label>
-              <div className="relative">
-                <input type={showKeys['channel'] ? 'text' : 'password'} value={channelForm.apiKey} onChange={(e) => setChannelForm({ ...channelForm, apiKey: e.target.value })} placeholder="sk-..." className="w-full px-4 py-3 pr-12 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border" />
-                <button type="button" onClick={() => setShowKeys({ ...showKeys, channel: !showKeys['channel'] })} className="absolute right-3 top-1/2 -translate-y-1/2 text-foreground/40 hover:text-foreground/70">
-                  {showKeys['channel'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" checked={channelForm.enabled} onChange={(e) => setChannelForm({ ...channelForm, enabled: e.target.checked })} className="w-4 h-4 rounded border-border/70 bg-card/60 text-blue-500 focus:ring-blue-500" />
-            <span className="text-sm text-foreground/70">启用</span>
-          </label>
+          <ChannelFormFields
+            name={channelForm.name}
+            onNameChange={(v) => setChannelForm({ ...channelForm, name: v })}
+            type={channelForm.type}
+            onTypeChange={(v) => handleChannelTypeChange(v as ImageAdminChannelType)}
+            typeOptions={CHANNEL_TYPES.map(t => ({value: t.value, label: t.label, description: t.description}))}
+            baseUrl={channelForm.baseUrl}
+            onBaseUrlChange={(v) => setChannelForm({ ...channelForm, baseUrl: v })}
+            apiKey={channelForm.apiKey}
+            onApiKeyChange={(v) => setChannelForm({ ...channelForm, apiKey: v })}
+            enabled={channelForm.enabled}
+            onEnabledChange={(v) => setChannelForm({ ...channelForm, enabled: v })}
+            showKey={!!showKeys['channel']}
+            onToggleShowKey={() => setShowKeys({ ...showKeys, channel: !showKeys['channel'] })}
+          />
 
           <div className="flex items-center gap-3 pt-2">
             <button onClick={saveChannel} disabled={saving} className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-500 to-cyan-500 text-foreground rounded-xl font-medium hover:opacity-90 disabled:opacity-50">
@@ -1231,37 +1218,25 @@ export default function ImageChannelsPage() {
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm text-foreground/70">名称 *</label>
-              <input type="text" value={modelForm.name} onChange={(e) => setModelForm({ ...modelForm, name: e.target.value })} placeholder="GPT-4o Image" className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm text-foreground/70">模型 ID *</label>
-              <input type="text" value={modelForm.apiModel} onChange={(e) => setModelForm({ ...modelForm, apiModel: e.target.value })} placeholder="gpt-4o-image" className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm text-foreground/70">描述</label>
-              <input type="text" value={modelForm.description} onChange={(e) => setModelForm({ ...modelForm, description: e.target.value })} placeholder="高质量图像生成" className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm text-foreground/70">Base URL（可选，覆盖渠道）</label>
-              <input type="text" value={modelForm.baseUrl} onChange={(e) => setModelForm({ ...modelForm, baseUrl: e.target.value })} placeholder="留空使用渠道默认" className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm text-foreground/70">API Key（可选，覆盖渠道）</label>
-              <div className="relative">
-                <input type={showKeys['model'] ? 'text' : 'password'} value={modelForm.apiKey} onChange={(e) => setModelForm({ ...modelForm, apiKey: e.target.value })} placeholder="留空使用渠道默认" className="w-full px-4 py-3 pr-12 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border" />
-                <button type="button" onClick={() => setShowKeys({ ...showKeys, model: !showKeys['model'] })} className="absolute right-3 top-1/2 -translate-y-1/2 text-foreground/40 hover:text-foreground/70">
-                  {showKeys['model'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
+          <ModelBasicFields
+            name={modelForm.name}
+            onNameChange={(v) => setModelForm({ ...modelForm, name: v })}
+            apiModel={modelForm.apiModel}
+            onApiModelChange={(v) => setModelForm({ ...modelForm, apiModel: v })}
+            description={modelForm.description}
+            onDescriptionChange={(v) => setModelForm({ ...modelForm, description: v })}
+            baseUrl={modelForm.baseUrl}
+            onBaseUrlChange={(v) => setModelForm({ ...modelForm, baseUrl: v })}
+            apiKey={modelForm.apiKey}
+            onApiKeyChange={(v) => setModelForm({ ...modelForm, apiKey: v })}
+            showKey={!!showKeys['model']}
+            onToggleShowKey={() => setShowKeys({ ...showKeys, model: !showKeys['model'] })}
+          >
             <div className="space-y-2">
               <label className="text-sm text-foreground/70">每次消耗积分</label>
               <input type="number" value={modelForm.costPerGeneration} onChange={(e) => setModelForm({ ...modelForm, costPerGeneration: parseInt(e.target.value) || 10 })} className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border" />
             </div>
-          </div>
+          </ModelBasicFields>
 
           {!modelForm.features.imageSize && (
             <div className="space-y-3">
@@ -1338,21 +1313,18 @@ export default function ImageChannelsPage() {
 
           <div className="space-y-3 pt-2">
             <label className="text-sm text-foreground/70">功能特性</label>
-            <div className="flex flex-wrap gap-4">
-              {[
+            <FeaturesCheckboxGroup
+              features={modelForm.features as unknown as Record<string, boolean>}
+              onToggle={(key, value) => handleFeatureToggle(key as keyof ImageModelFeatures, value)}
+              options={[
                 { key: 'textToImage', label: '文生图' },
                 { key: 'imageToImage', label: '图生图' },
                 { key: 'upscale', label: '超分辨率' },
                 { key: 'matting', label: '抠图' },
                 { key: 'multipleImages', label: '多图输入' },
                 { key: 'imageSize', label: '分辨率选择' },
-              ].map(f => (
-                <label key={f.key} className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={!!modelForm.features[f.key as keyof ImageModelFeatures]} onChange={(e) => handleFeatureToggle(f.key as keyof ImageModelFeatures, e.target.checked)} className="w-4 h-4 rounded border-border/70 bg-card/60 text-sky-500 focus:ring-sky-500" />
-                  <span className="text-sm text-foreground/70">{f.label}</span>
-                </label>
-              ))}
-            </div>
+              ]}
+            />
             {modelForm.apiModel.toLowerCase().includes('gpt-image-2') && (
               <div className="pt-1">
                 <label className="text-sm text-foreground/70">画质选项</label>
