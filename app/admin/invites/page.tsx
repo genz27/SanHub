@@ -349,7 +349,7 @@ export default function InvitesPage() {
             </div>
           </div>
           <p className="text-xs text-foreground/40">
-            邀请码目前不落库存储"批次号"，所以"最近创建结果"是当前管理会话里的即时导出面板。
+            邀请码目前不落库存储{'“'}批次号{'”'}，所以{'“'}最近创建结果{'”'}是当前管理会话里的即时导出面板。
           </p>
         </div>
       )}
