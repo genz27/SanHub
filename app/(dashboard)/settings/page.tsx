@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useSession, signOut } from 'next-auth/react';
-import { User, Key, LogOut, Loader2, Check, Mail, Shield, Coins, Gift, UserPlus, Copy, Ticket } from 'lucide-react';
+import { Key, Mail, Shield, Coins, Gift, UserPlus, Copy, Ticket, Lock, Wallet, Send, User, LogOut, Loader2, Check } from 'lucide-react';
 import { toast } from '@/components/ui/toaster';
 import { formatBalance } from '@/lib/utils';
 import { useSiteConfig } from '@/components/providers/site-config-provider';
@@ -14,11 +14,11 @@ export default function SettingsPage() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  
+
   // Redemption code
   const [redeemCode, setRedeemCode] = useState('');
   const [redeemLoading, setRedeemLoading] = useState(false);
-  
+
   // Invite code
   const [inviteCode, setInviteCode] = useState('');
   const [inviteLoading, setInviteLoading] = useState(false);
@@ -79,10 +79,10 @@ export default function SettingsPage() {
       setNewPassword('');
       setConfirmPassword('');
     } catch (err) {
-      toast({ 
-        title: '修改失败', 
+      toast({
+        title: '修改失败',
         description: err instanceof Error ? err.message : '未知错误',
-        variant: 'destructive' 
+        variant: 'destructive'
       });
     } finally {
       setLoading(false);
@@ -110,10 +110,10 @@ export default function SettingsPage() {
       setRedeemCode('');
       updateSession();
     } catch (err) {
-      toast({ 
-        title: '兑换失败', 
+      toast({
+        title: '兑换失败',
         description: err instanceof Error ? err.message : '未知错误',
-        variant: 'destructive' 
+        variant: 'destructive'
       });
     } finally {
       setRedeemLoading(false);
@@ -148,10 +148,10 @@ export default function SettingsPage() {
       setInviteCode('');
       updateSession();
     } catch (err) {
-      toast({ 
-        title: '使用失败', 
+      toast({
+        title: '使用失败',
         description: err instanceof Error ? err.message : '未知错误',
-        variant: 'destructive' 
+        variant: 'destructive'
       });
     } finally {
       setInviteLoading(false);
@@ -177,181 +177,17 @@ export default function SettingsPage() {
         <p className="text-foreground/50 mt-1 font-light">管理您的账号信息和安全设置</p>
       </div>
 
-      {/* User Info Card */}
-      <div className="surface overflow-hidden">
-        <div className="p-6 border-b border-border/70">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-card/60 border border-border/70 rounded-xl flex items-center justify-center">
-              <User className="w-5 h-5 text-foreground" />
-            </div>
-            <div>
-              <h2 className="text-lg font-medium text-foreground">个人信息</h2>
-              <p className="text-sm text-foreground/40">您的账号基本信息</p>
-            </div>
+      {/* Section 1: 账号安全 */}
+      <div className="bg-card/60 border border-border/70 rounded-2xl p-6 space-y-4">
+        <div className="flex items-center gap-3">
+          <Shield className="w-5 h-5 text-foreground" />
+          <div>
+            <h2 className="text-lg font-medium text-foreground">账号安全</h2>
+            <p className="text-sm text-foreground/40">更新您的登录密码</p>
           </div>
         </div>
-        <div className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 text-foreground/40 text-sm">
-                <User className="w-4 h-4" />
-                <span>昵称</span>
-              </div>
-              <p className="text-foreground text-lg">{session.user.name}</p>
-            </div>
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 text-foreground/40 text-sm">
-                <Mail className="w-4 h-4" />
-                <span>邮箱</span>
-              </div>
-              <p className="text-foreground text-lg">{session.user.email}</p>
-            </div>
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 text-foreground/40 text-sm">
-                <Shield className="w-4 h-4" />
-                <span>角色</span>
-              </div>
-              <p className="text-foreground text-lg">
-                {session.user.role === 'admin' ? (
-                  <span className="inline-flex items-center gap-2">
-                    管理员
-                    <span className="px-2 py-0.5 bg-card/70 text-foreground/60 text-xs rounded border border-border/60">Admin</span>
-                  </span>
-                ) : '普通用户'}
-              </p>
-            </div>
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 text-foreground/40 text-sm">
-                <Coins className="w-4 h-4" />
-                <span>当前余额</span>
-              </div>
-              <p className="text-foreground text-2xl font-light">{formatBalance(session.user.balance)} <span className="text-sm text-foreground/40">积分</span></p>
-            </div>
-          </div>
-        </div>
-      </div>
 
-      {/* Redeem Code Card */}
-      <div className="surface overflow-hidden">
-        <div className="p-6 border-b border-border/70">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-emerald-500/15 rounded-xl flex items-center justify-center border border-emerald-500/30">
-              <Gift className="w-5 h-5 text-emerald-300" />
-            </div>
-            <div>
-              <h2 className="text-lg font-medium text-foreground">积分兑换</h2>
-              <p className="text-sm text-foreground/40">使用兑换码获取积分</p>
-            </div>
-          </div>
-        </div>
-        <div className="p-6 space-y-4">
-          <div className="flex gap-3">
-            <input
-              type="text"
-              value={redeemCode}
-              onChange={(e) => setRedeemCode(e.target.value.toUpperCase())}
-              placeholder="输入兑换码"
-              className="flex-1 px-4 py-3 bg-input/70 border border-border/70 rounded-xl text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-border focus:ring-2 focus:ring-ring/30 transition-colors uppercase tracking-wider"
-            />
-            <button
-              onClick={handleRedeemCode}
-              disabled={redeemLoading}
-              className="flex items-center gap-2 px-6 py-3 bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 rounded-xl font-medium hover:bg-emerald-500/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {redeemLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ticket className="w-4 h-4" />}
-              兑换
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Invite Code Card */}
-      {siteConfig.inviteEnabled && (
-      <div className="surface overflow-hidden">
-        <div className="p-6 border-b border-border/70">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-sky-500/15 rounded-xl flex items-center justify-center border border-sky-500/30">
-              <UserPlus className="w-5 h-5 text-sky-300" />
-            </div>
-            <div>
-              <h2 className="text-lg font-medium text-foreground">邀请码</h2>
-              <p className="text-sm text-foreground/40">
-                {siteConfig.inviteRewardEnabled
-                  ? `邀请好友可获得积分奖励，当前奖励：被邀请人 ${formatBalance(siteConfig.inviteeBonusPoints)}，邀请人 ${formatBalance(siteConfig.inviterBonusPoints)}`
-                  : '可绑定邀请关系，当前不发放积分奖励'}
-              </p>
-            </div>
-          </div>
-        </div>
-        <div className="p-6 space-y-6">
-          {/* My invite code */}
-          <div className="space-y-2">
-            <label className="text-sm text-foreground/50 uppercase tracking-wider">我的邀请码</label>
-            <div className="flex gap-3">
-              <div className="flex-1 px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground font-mono tracking-wider flex items-center">
-                {inviteCodeLoading ? (
-                  <Loader2 className="w-4 h-4 animate-spin text-foreground/40" />
-                ) : myInviteCode ? (
-                  myInviteCode
-                ) : (
-                  <span className="text-foreground/40">暂无邀请码</span>
-                )}
-              </div>
-              {myInviteCode && (
-                <button
-                  onClick={copyInviteCode}
-                  className="flex items-center gap-2 px-4 py-3 bg-card/60 border border-border/70 text-foreground/60 rounded-xl hover:bg-card/80 hover:text-foreground transition-colors"
-                >
-                  <Copy className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-            <p className="text-xs text-foreground/40">
-              {siteConfig.inviteRewardEnabled
-                ? `分享给好友后，双方将分别获得 ${formatBalance(siteConfig.inviterBonusPoints)} / ${formatBalance(siteConfig.inviteeBonusPoints)} 积分`
-                : '分享邀请码可建立邀请关系，但不会发放积分奖励'}
-            </p>
-          </div>
-          
-          {/* Use invite code */}
-          <div className="space-y-2">
-            <label className="text-sm text-foreground/50 uppercase tracking-wider">使用邀请码</label>
-            <div className="flex gap-3">
-              <input
-                type="text"
-                value={inviteCode}
-                onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
-                placeholder="输入他人的邀请码"
-                className="flex-1 px-4 py-3 bg-input/70 border border-border/70 rounded-xl text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-border focus:ring-2 focus:ring-ring/30 transition-colors uppercase tracking-wider"
-              />
-              <button
-                onClick={handleUseInviteCode}
-                disabled={inviteLoading}
-                className="flex items-center gap-2 px-6 py-3 bg-sky-500/15 border border-sky-500/30 text-sky-300 rounded-xl font-medium hover:bg-sky-500/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {inviteLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                使用
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-      )}
-
-      {/* Change Password Card */}
-      <div className="surface overflow-hidden">
-        <div className="p-6 border-b border-border/70">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-card/60 border border-border/70 rounded-xl flex items-center justify-center">
-              <Key className="w-5 h-5 text-foreground" />
-            </div>
-            <div>
-              <h2 className="text-lg font-medium text-foreground">修改密码</h2>
-              <p className="text-sm text-foreground/40">更新您的登录密码</p>
-            </div>
-          </div>
-        </div>
-        <div className="p-6 space-y-5">
+        <div className="space-y-5 pt-2">
           <div className="space-y-2">
             <label className="text-sm text-foreground/50 uppercase tracking-wider">当前密码</label>
             <input
@@ -390,34 +226,174 @@ export default function SettingsPage() {
             {loading ? (
               <><Loader2 className="w-4 h-4 animate-spin" /> 保存中...</>
             ) : (
-              <><Check className="w-4 h-4" /> 保存密码</>
+              <><Lock className="w-4 h-4" /> 保存密码</>
             )}
           </button>
         </div>
       </div>
 
-      {/* Logout Card */}
-      <div className="surface overflow-hidden">
-        <div className="p-6 border-b border-border/70">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-red-500/10 rounded-xl flex items-center justify-center border border-red-500/30">
-              <LogOut className="w-5 h-5 text-red-300" />
+      {/* Section 2: 积分与兑换 */}
+      <div className="bg-card/60 border border-border/70 rounded-2xl p-6 space-y-4">
+        <div className="flex items-center gap-3">
+          <Wallet className="w-5 h-5 text-foreground" />
+          <div>
+            <h2 className="text-lg font-medium text-foreground">积分与兑换</h2>
+            <p className="text-sm text-foreground/40">使用兑换码获取积分和管理邀请</p>
+          </div>
+        </div>
+
+        {/* Redeem Code */}
+        <div className="space-y-2 pt-2">
+          <label className="text-sm text-foreground/50 uppercase tracking-wider">兑换码</label>
+          <div className="flex gap-3">
+            <input
+              type="text"
+              value={redeemCode}
+              onChange={(e) => setRedeemCode(e.target.value.toUpperCase())}
+              placeholder="输入兑换码"
+              className="flex-1 px-4 py-3 bg-input/70 border border-border/70 rounded-xl text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-border focus:ring-2 focus:ring-ring/30 transition-colors uppercase tracking-wider"
+            />
+            <button
+              onClick={handleRedeemCode}
+              disabled={redeemLoading}
+              className="flex items-center gap-2 px-6 py-3 bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 rounded-xl font-medium hover:bg-emerald-500/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {redeemLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ticket className="w-4 h-4" />}
+              兑换
+            </button>
+          </div>
+        </div>
+
+        {/* Invite Code */}
+        {siteConfig.inviteEnabled && (
+          <div className="border-t border-border/70 pt-4 space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm text-foreground/50 uppercase tracking-wider">我的邀请码</label>
+              <div className="flex gap-3">
+                <div className="flex-1 px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground font-mono tracking-wider flex items-center">
+                  {inviteCodeLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-foreground/40" />
+                  ) : myInviteCode ? (
+                    myInviteCode
+                  ) : (
+                    <span className="text-foreground/40">暂无邀请码</span>
+                  )}
+                </div>
+                {myInviteCode && (
+                  <button
+                    onClick={copyInviteCode}
+                    className="flex items-center gap-2 px-4 py-3 bg-card/60 border border-border/70 text-foreground/60 rounded-xl hover:bg-card/80 hover:text-foreground transition-colors"
+                  >
+                    <Copy className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+              <p className="text-xs text-foreground/40">
+                {siteConfig.inviteRewardEnabled
+                  ? `分享给好友后，双方将分别获得 ${formatBalance(siteConfig.inviterBonusPoints)} / ${formatBalance(siteConfig.inviteeBonusPoints)} 积分`
+                  : '分享邀请码可建立邀请关系，但不会发放积分奖励'}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm text-foreground/50 uppercase tracking-wider">使用邀请码</label>
+              <div className="flex gap-3">
+                <input
+                  type="text"
+                  value={inviteCode}
+                  onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+                  placeholder="输入他人的邀请码"
+                  className="flex-1 px-4 py-3 bg-input/70 border border-border/70 rounded-xl text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-border focus:ring-2 focus:ring-ring/30 transition-colors uppercase tracking-wider"
+                />
+                <button
+                  onClick={handleUseInviteCode}
+                  disabled={inviteLoading}
+                  className="flex items-center gap-2 px-6 py-3 bg-sky-500/15 border border-sky-500/30 text-sky-300 rounded-xl font-medium hover:bg-sky-500/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {inviteLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+                  使用
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Section 3: 账户信息 */}
+      <div className="bg-card/60 border border-border/70 rounded-2xl p-6 space-y-4">
+        <div className="flex items-center gap-3">
+          <User className="w-5 h-5 text-foreground" />
+          <div>
+            <h2 className="text-lg font-medium text-foreground">账户信息</h2>
+            <p className="text-sm text-foreground/40">您的账号基本信息</p>
+          </div>
+        </div>
+
+        {/* User Info Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 text-foreground/40 text-sm">
+              <User className="w-4 h-4" />
+              <span>昵称</span>
+            </div>
+            <p className="text-foreground text-lg">{session.user.name}</p>
+          </div>
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 text-foreground/40 text-sm">
+              <Mail className="w-4 h-4" />
+              <span>邮箱</span>
+            </div>
+            <p className="text-foreground text-lg">{session.user.email}</p>
+          </div>
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 text-foreground/40 text-sm">
+              <Shield className="w-4 h-4" />
+              <span>角色</span>
+            </div>
+            <p className="text-foreground text-lg">
+              {session.user.role === 'admin' ? (
+                <span className="inline-flex items-center gap-2">
+                  管理员
+                  <span className="px-2 py-0.5 bg-card/70 text-foreground/60 text-xs rounded border border-border/60">Admin</span>
+                </span>
+              ) : '普通用户'}
+            </p>
+          </div>
+        </div>
+
+        {/* Balance Card — prominent */}
+        <div className="bg-gradient-to-br from-card/80 to-card/40 border border-border/60 rounded-xl p-5 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-amber-500/15 rounded-xl flex items-center justify-center border border-amber-500/30">
+              <Coins className="w-6 h-6 text-amber-300" />
             </div>
             <div>
-              <h2 className="text-lg font-medium text-foreground">退出登录</h2>
-              <p className="text-sm text-foreground/40">退出当前账号</p>
+              <p className="text-sm text-foreground/50">当前余额</p>
+              <p className="text-foreground text-2xl font-light tracking-tight">
+                {formatBalance(session.user.balance)}{' '}
+                <span className="text-sm text-foreground/40 font-normal">积分</span>
+              </p>
             </div>
           </div>
         </div>
-        <div className="p-6">
-          <button 
-            onClick={() => signOut({ callbackUrl: '/login' })}
-            className="flex items-center gap-2 px-6 py-3 bg-red-500/10 border border-red-500/30 text-red-300 rounded-xl font-medium hover:bg-red-500/20 transition-colors"
-          >
-            <LogOut className="w-4 h-4" />
-            退出登录
-          </button>
+      </div>
+
+      {/* Logout */}
+      <div className="bg-card/60 border border-border/70 rounded-2xl p-6 space-y-4">
+        <div className="flex items-center gap-3">
+          <LogOut className="w-5 h-5 text-red-300" />
+          <div>
+            <h2 className="text-lg font-medium text-foreground">退出登录</h2>
+            <p className="text-sm text-foreground/40">退出当前账号</p>
+          </div>
         </div>
+        <button
+          onClick={() => signOut({ callbackUrl: '/login' })}
+          className="flex items-center gap-2 px-6 py-3 bg-red-500/10 border border-red-500/30 text-red-300 rounded-xl font-medium hover:bg-red-500/20 transition-colors"
+        >
+          <LogOut className="w-4 h-4" />
+          退出登录
+        </button>
       </div>
     </div>
   );

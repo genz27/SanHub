@@ -37,6 +37,8 @@ import {
 import {
   getFriendlyErrorMessage,
 } from '@/lib/polling-utils';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { EmptyState } from '@/components/ui/empty-state';
 
 // 任务类型
 interface Task {
@@ -411,8 +413,7 @@ export default function HistoryPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOrder, setSortOrder] = useState<'latest' | 'oldest'>('latest');
   const [deleting, setDeleting] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState<'single' | 'batch' | 'all-media' | 'all-characters' | 'all-errors' | null>(null);
-  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<{type: 'single'|'batch'|'all', id?: string} | null>(null);
   const [unwatermarking, setUnwatermarking] = useState(false);
   const [unwatermarkUrl, setUnwatermarkUrl] = useState<string | null>(null);
   const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
@@ -915,7 +916,6 @@ export default function HistoryPage() {
     } finally {
       setDeleting(false);
       setShowDeleteConfirm(null);
-      setDeleteTargetId(null);
     }
   };
 
@@ -1175,7 +1175,7 @@ export default function HistoryPage() {
                   {selectedIds.size > 0 ? `已选 ${selectedIds.size}` : '全选'}
                 </button>
                 <button
-                  onClick={() => setShowDeleteConfirm('batch')}
+                  onClick={() => setShowDeleteConfirm({type: 'batch'})}
                   disabled={selectedIds.size === 0 || deleting}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 border border-red-500/20 text-red-400 rounded-full text-xs hover:bg-red-500/20 transition-all disabled:opacity-50 font-medium"
                 >
@@ -1200,16 +1200,16 @@ export default function HistoryPage() {
                   disabled={searchedGenerations.length === 0 && filter !== 'character'}
                   className="flex items-center gap-1.5 px-4 py-1.5 bg-card/65 text-foreground/75 border border-border/80 hover:border-border rounded-full text-xs hover:text-foreground hover:bg-card transition-all font-medium"
                 >
-                  <Edit3 className="w-3.5 h-3.5" />
-                  管理
+                  <CheckSquare className="w-3.5 h-3.5" />
+                  选择
                 </button>
                 <button
-                  onClick={() => setShowDeleteConfirm('all-media')}
+                  onClick={() => setShowDeleteConfirm({type: 'all'})}
                   disabled={completedGenerations.length === 0 || deleting}
                   className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 border border-red-500/20 text-red-400 rounded-full text-xs hover:bg-red-500/20 transition-all disabled:opacity-50 font-medium"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  清空媒体
+                  一键清理
                 </button>
               </>
             )}
@@ -1270,13 +1270,7 @@ export default function HistoryPage() {
             ) : filter === 'character' ? (
               // Character card listing row tile
               searchedCharacterCards.length === 0 && processingCharacterCards.length === 0 ? (
-                <div className="h-64 flex flex-col items-center justify-center border border-dashed border-border/60 rounded-xl select-none">
-                  <div className="w-16 h-16 bg-gradient-to-br from-emerald-500/10 to-sky-500/10 rounded-2xl flex items-center justify-center mb-4">
-                    <User className="w-8 h-8 text-emerald-300/40" />
-                  </div>
-                  <p className="text-foreground/40 text-sm">暂无角色卡</p>
-                  <p className="text-foreground/30 text-xs mt-1">去视频页面生成你的第一个角色卡</p>
-                </div>
+                <EmptyState icon={<User className="w-16 h-16" />} title="暂无角色卡" description="去视频页面生成你的第一个角色卡" />
               ) : (
                 <div className="space-y-3">
                   {/* Processing Character Card items */}
@@ -1327,13 +1321,7 @@ export default function HistoryPage() {
                 </div>
               )
             ) : searchedGenerations.length === 0 && filteredTasks.length === 0 ? (
-              <div className="h-64 flex flex-col items-center justify-center border border-dashed border-border/60 rounded-xl select-none">
-                <div className="w-16 h-16 bg-card/60 rounded-2xl flex items-center justify-center mb-4">
-                  <ImageIcon className="w-8 h-8 text-foreground/30" />
-                </div>
-                <p className="text-foreground/40 text-sm">暂无{filter === 'video' ? '视频' : filter === 'image' ? '图像' : ''}作品</p>
-                <p className="text-foreground/30 text-xs mt-1">开始创作你的第一个作品</p>
-              </div>
+              <EmptyState icon={<History className="w-16 h-16" />} title="暂无历史记录" description="创作的作品会显示在这里" />
             ) : (
               <div className="space-y-3">
                 {/* Generating tasks listing (row tile) */}
@@ -1420,8 +1408,7 @@ export default function HistoryPage() {
                     onView={setSelected}
                     onDownload={downloadFile}
                     onDelete={(id) => {
-                      setDeleteTargetId(id);
-                      setShowDeleteConfirm('single');
+                      setShowDeleteConfirm({type: 'single', id});
                     }}
                   />
                 ))}
@@ -1470,84 +1457,69 @@ export default function HistoryPage() {
       )}
 
       {/* 删除确认弹窗 */}
-      {showDeleteConfirm && (
-        <div
-          className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4"
-          onClick={() => setShowDeleteConfirm(null)}
-        >
-          <div
-            className="bg-card/95 border border-border/70 rounded-2xl p-6 max-w-md w-full"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center gap-3 mb-4">
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${showDeleteConfirm === 'all-characters' ? 'bg-emerald-500/20' : showDeleteConfirm === 'all-errors' ? 'bg-amber-500/20' : 'bg-red-500/20'}`}>
-                {showDeleteConfirm === 'all-characters' ? (
-                  <User className="w-5 h-5 text-emerald-300" />
-                ) : showDeleteConfirm === 'all-errors' ? (
-                  <X className="w-5 h-5 text-amber-300" />
-                ) : (
-                  <Trash2 className="w-5 h-5 text-red-300" />
-                )}
-              </div>
-              <div>
-                <h3 className="text-lg font-medium text-foreground">确认删除</h3>
-                <p className="text-sm text-foreground/40">此操作无法撤销</p>
-              </div>
-            </div>
+      {showDeleteConfirm && (() => {
+        const isCharacters = showDeleteConfirm.id === 'characters';
+        const isErrors = showDeleteConfirm.id === 'errors';
 
-            <p className="text-foreground/60 mb-6">
-              {showDeleteConfirm === 'all-media' && '确定要清空所有已完成的媒体作品吗？进行中的任务不会被删除。'}
-              {showDeleteConfirm === 'all-characters' && '确定要清空所有角色卡吗？'}
-              {showDeleteConfirm === 'all-errors' && `确定要清空所有 ${failedGenerations.length} 条失败记录吗？`}
-              {showDeleteConfirm === 'batch' && `确定要删除选中的 ${selectedIds.size} 个作品吗？`}
-              {showDeleteConfirm === 'single' && '确定要删除这个作品吗？'}
-            </p>
-            
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowDeleteConfirm(null)}
-                disabled={deleting}
-                className="flex-1 px-4 py-2.5 bg-card/60 text-foreground border border-border/70 rounded-xl hover:bg-card/70 transition-colors text-sm font-medium disabled:opacity-50"
-              >
-                取消
-              </button>
-              <button
-                onClick={() => {
-                  if (showDeleteConfirm === 'single' && deleteTargetId) {
-                    handleDeleteMedia('single', deleteTargetId);
-                  } else if (showDeleteConfirm === 'batch') {
-                    handleDeleteMedia('batch');
-                  } else if (showDeleteConfirm === 'all-media') {
-                    handleDeleteMedia('all');
-                  } else if (showDeleteConfirm === 'all-characters') {
-                    handleDeleteCharacters();
-                  } else if (showDeleteConfirm === 'all-errors') {
-                    handleDeleteFailed();
-                  }
-                }}
-                disabled={deleting}
-                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl transition-colors text-sm font-medium disabled:opacity-50 ${
-                  showDeleteConfirm === 'all-characters' 
-                    ? 'bg-emerald-500 text-foreground hover:bg-emerald-600' 
-                    : 'bg-red-500 text-foreground hover:bg-red-600'
-                }`}
-              >
-                {deleting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    删除中...
-                  </>
-                ) : (
-                  <>
-                    {showDeleteConfirm === 'all-characters' ? <User className="w-4 h-4" /> : <Trash2 className="w-4 h-4" />}
-                    确认删除
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+        let title: string;
+        let message: string;
+        let confirmLabel: string;
+        let variant: 'danger' | 'warning' | 'default';
+
+        if (isCharacters) {
+          title = '确认清空角色卡';
+          message = '确定要清空所有角色卡吗？';
+          confirmLabel = '确认清空';
+          variant = 'danger';
+        } else if (isErrors) {
+          title = '确认清空失败记录';
+          message = `确定要清空所有 ${failedGenerations.length} 条失败记录吗？`;
+          confirmLabel = '确认清空';
+          variant = 'warning';
+        } else if (showDeleteConfirm.type === 'single') {
+          title = '确认删除';
+          message = '确定要删除这个作品吗？此操作无法撤销。';
+          confirmLabel = '确认删除';
+          variant = 'danger';
+        } else if (showDeleteConfirm.type === 'batch') {
+          title = '确认删除';
+          message = `确定要删除选中的 ${selectedIds.size} 个作品吗？`;
+          confirmLabel = '确认删除';
+          variant = 'danger';
+        } else {
+          title = '确认清理';
+          message = '确定要一键清理所有已完成作品吗？进行中的任务不会被删除。';
+          confirmLabel = '确认清理';
+          variant = 'danger';
+        }
+
+        const handleConfirm = () => {
+          if (isCharacters) {
+            handleDeleteCharacters();
+          } else if (isErrors) {
+            handleDeleteFailed();
+          } else if (showDeleteConfirm.type === 'single' && showDeleteConfirm.id) {
+            handleDeleteMedia('single', showDeleteConfirm.id);
+          } else if (showDeleteConfirm.type === 'batch') {
+            handleDeleteMedia('batch');
+          } else {
+            handleDeleteMedia('all');
+          }
+        };
+
+        return (
+          <ConfirmDialog
+            open={true}
+            onClose={() => setShowDeleteConfirm(null)}
+            onConfirm={handleConfirm}
+            title={title}
+            message={message}
+            confirmLabel={confirmLabel}
+            variant={variant}
+            loading={deleting}
+          />
+        );
+      })()}
     </>
   );
 }

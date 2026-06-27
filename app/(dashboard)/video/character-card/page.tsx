@@ -21,8 +21,9 @@ import { toast } from '@/components/ui/toaster';
 import type { CharacterCard, DailyLimitConfig } from '@/types';
 import { formatDate } from '@/lib/utils';
 import { useSiteConfig } from '@/components/providers/site-config-provider';
+import { EmptyState } from '@/components/ui/empty-state';
 
-// 进行中的任务（存储在内存中，刷新后消失）
+// 进行中的任务（存储在 sessionStorage 中，刷新后保留）
 interface PendingTask {
   id: string;
   avatarUrl: string;
@@ -57,23 +58,23 @@ export default function CharacterCardPage() {
   const [progressMessages, setProgressMessages] = useState<string[]>([]);
   const [characterCards, setCharacterCards] = useState<CharacterCard[]>([]);
   const [loadingCards, setLoadingCards] = useState(true);
-  // 进行中的任务（在内存中，刷新后消失）
+  // 进行中的任务（存储在 sessionStorage 中，刷新后保留）
   const [pendingTasks, setPendingTasks] = useState<PendingTask[]>([]);
 
   // 每日限制
   const [dailyUsage, setDailyUsage] = useState<DailyUsage>({ imageCount: 0, videoCount: 0, characterCardCount: 0 });
   const [dailyLimits, setDailyLimits] = useState<DailyLimitConfig>({ imageLimit: 0, videoLimit: 0, characterCardLimit: 0 });
-  
+
   // 角色卡参数
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [instructionSet, setInstructionSet] = useState('');
   const [safetyInstructionSet, setSafetyInstructionSet] = useState('');
-  
+
   // 图生角色卡参数
   const [prompt, setPrompt] = useState('');
   const [styleId, setStyleId] = useState('');
-  
+
   // 时间戳滑块 (最多5秒范围)
   const [timestampStart, setTimestampStart] = useState(0);
   const [timestampEnd, setTimestampEnd] = useState(3);
@@ -102,9 +103,26 @@ export default function CharacterCardPage() {
 
   useEffect(() => {
     if (session?.user) {
+      // 从 sessionStorage 恢复进行中的任务
+      try {
+        const stored = sessionStorage.getItem('pendingCharCards');
+        if (stored) {
+          const tasks: PendingTask[] = JSON.parse(stored);
+          if (Array.isArray(tasks)) {
+            setPendingTasks(tasks);
+          }
+        }
+      } catch {
+        // 忽略 sessionStorage 读取失败
+      }
       loadCharacterCards();
     }
   }, [session?.user, loadCharacterCards]);
+
+  // 将 pendingTasks 同步到 sessionStorage
+  useEffect(() => {
+    sessionStorage.setItem('pendingCharCards', JSON.stringify(pendingTasks));
+  }, [pendingTasks]);
 
   // 加载每日使用量
   useEffect(() => {
@@ -127,13 +145,13 @@ export default function CharacterCardPage() {
   useEffect(() => {
     const hasProcessingInCards = characterCards.some(card => card.status === 'processing');
     const hasProcessingInTasks = pendingTasks.some(task => task.status === 'processing');
-    
+
     if (!hasProcessingInCards && !hasProcessingInTasks) return;
 
     const interval = setInterval(() => {
       loadCharacterCards();
       // 清理已完成或失败的 pendingTasks（已在 characterCards 中的）
-      setPendingTasks(prev => prev.filter(task => 
+      setPendingTasks(prev => prev.filter(task =>
         !characterCards.some(card => card.id === task.id)
       ));
     }, 3000);
@@ -148,11 +166,11 @@ export default function CharacterCardPage() {
       video.crossOrigin = 'anonymous';
       video.src = videoUrl;
       video.muted = true;
-      
+
       video.onloadeddata = () => {
         video.currentTime = 0;
       };
-      
+
       video.onseeked = () => {
         try {
           const canvas = document.createElement('canvas');
@@ -170,11 +188,11 @@ export default function CharacterCardPage() {
           reject(err);
         }
       };
-      
+
       video.onerror = () => {
         reject(new Error('视频加载失败'));
       };
-      
+
       video.load();
     });
   };
@@ -200,7 +218,7 @@ export default function CharacterCardPage() {
       // 移除 data:video/mp4;base64, 前缀
       const base64Data = data.split(',')[1] || data;
       const previewUrl = URL.createObjectURL(file);
-      
+
       // 获取视频时长
       const duration = await new Promise<number>((resolve, reject) => {
         const video = document.createElement('video');
@@ -217,10 +235,10 @@ export default function CharacterCardPage() {
         setError('视频时长不能超过 16 秒');
         return;
       }
-      
+
       // 提取第一帧
       const firstFrame = await extractFirstFrame(previewUrl);
-      
+
       // 设置视频时长和重置滑块
       const actualDuration = Math.min(duration, 16);
       setVideoDuration(actualDuration);
@@ -228,7 +246,7 @@ export default function CharacterCardPage() {
       // 根据视频时长智能设置结束时间（推荐3秒范围）
       const defaultEnd = Math.min(3, actualDuration);
       setTimestampEnd(defaultEnd);
-      
+
       setVideoFile({
         data: base64Data,
         preview: previewUrl,
@@ -270,7 +288,7 @@ export default function CharacterCardPage() {
       // 移除 data:image/xxx;base64, 前缀
       const base64Data = data.split(',')[1] || data;
       const previewUrl = URL.createObjectURL(file);
-      
+
       setImageFile({
         data: base64Data,
         preview: previewUrl,
@@ -315,7 +333,7 @@ export default function CharacterCardPage() {
 
     try {
       // 构建请求体
-      const requestBody = createMode === 'video' 
+      const requestBody = createMode === 'video'
         ? {
             // 视频模式
             videoBase64: videoFile!.data,
@@ -354,8 +372,8 @@ export default function CharacterCardPage() {
 
       // 添加到进行中任务列表
       // 视频模式使用 firstFrame (data URL)，图片模式使用 base64 data URL
-      const avatarPreview = createMode === 'video' 
-        ? videoFile?.firstFrame 
+      const avatarPreview = createMode === 'video'
+        ? videoFile?.firstFrame
         : (imageFile?.data ? `data:image/jpeg;base64,${imageFile.data}` : '');
       const newTask: PendingTask = {
         id: data.data.id,
@@ -367,8 +385,8 @@ export default function CharacterCardPage() {
 
       toast({
         title: '任务已提交',
-        description: createMode === 'image' 
-          ? '图生角色卡正在后台生成，请稍候刷新页面查看结果' 
+        description: createMode === 'image'
+          ? '图生角色卡正在后台生成，请稍候刷新页面查看结果'
           : '角色卡正在后台生成，请稍候刷新页面查看结果',
       });
 
@@ -482,13 +500,12 @@ export default function CharacterCardPage() {
                 <Loader2 className="w-6 h-6 animate-spin text-foreground/30" />
               </div>
             ) : characterCards.length === 0 && pendingTasks.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-48 border border-dashed border-border/70 rounded-xl bg-gradient-to-br from-emerald-500/5 to-sky-500/5">
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500/10 to-sky-500/10 flex items-center justify-center mb-3">
-                  <User className="w-7 h-7 text-emerald-400/40" />
-                </div>
-                <p className="text-foreground/50 text-sm">暂无角色卡</p>
-                <p className="text-foreground/30 text-xs mt-1">上传视频或图片开始创建你的第一个角色卡</p>
-              </div>
+              <EmptyState
+                icon={<User className="w-8 h-8" />}
+                title="暂无角色卡"
+                description="上传视频或图片开始创建你的第一个角色卡"
+                className="border border-dashed border-border/70 rounded-xl bg-gradient-to-br from-emerald-500/5 to-sky-500/5"
+              />
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
                 {pendingTasks.map((task) => {
@@ -602,7 +619,7 @@ export default function CharacterCardPage() {
                       onClick={(e) => { e.stopPropagation(); clearImage(); }}
                       className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center hover:bg-red-600"
                     >
-                      <X className="w-3 h-3 text-white" />
+                      <X className="w-3 w-3 text-white" />
                     </button>
                   </div>
                 ) : (
@@ -842,7 +859,7 @@ function CharacterCardItem({ card, onDelete }: { card: CharacterCard; onDelete?:
         ) : (
           <User className="w-12 h-12 text-foreground/30" />
         )}
-        
+
         {/* 状态遮罩 */}
         {(isProcessing || card.status === 'failed') && (
           <div className="absolute inset-0 bg-background/70 flex flex-col items-center justify-center gap-2">
@@ -850,7 +867,7 @@ function CharacterCardItem({ card, onDelete }: { card: CharacterCard; onDelete?:
             {card.status === 'failed' && <X className="w-8 h-8 text-red-400" />}
           </div>
         )}
-        
+
         {/* 删除按钮 */}
         {onDelete && (
           <button
@@ -861,7 +878,7 @@ function CharacterCardItem({ card, onDelete }: { card: CharacterCard; onDelete?:
             <Trash2 className="w-3.5 h-3.5 text-foreground" />
           </button>
         )}
-        
+
         {/* 状态标签 */}
         <div className="absolute bottom-2 left-2">
           <span className={cn('px-2 py-0.5 text-[10px] rounded-full font-medium backdrop-blur-sm', status.bg, status.text)}>

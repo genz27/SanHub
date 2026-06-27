@@ -105,6 +105,7 @@ export function ImageGenerationPage({
   const imagesRef = useRef<Array<{ file: File; preview: string }>>([]);
   const isActiveRef = useRef(isActive);
   const submissionLockRef = useRef(false);
+  const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const [availableModels, setAvailableModels] = useState<SafeImageModel[]>([]);
   const [modelsLoaded, setModelsLoaded] = useState(false);
@@ -162,6 +163,14 @@ export function ImageGenerationPage({
       imagesRef.current = [];
     };
   }, []);
+
+  // Auto-height textarea: grow as content grows
+  useEffect(() => {
+    const textarea = promptTextareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = '0px';
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  }, [prompt]);
 
   const modelsCacheRef = useRef<SafeImageModel[] | null>(null);
 
@@ -879,11 +888,15 @@ export function ImageGenerationPage({
 
             <div className="flex-1 relative">
               <textarea
+                ref={promptTextareaRef}
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 placeholder="描述你想要生成的图像..."
-                className="w-full h-20 px-3 py-2 bg-input/70 border border-border/70 text-foreground rounded-lg resize-none text-sm focus:outline-none focus:border-border focus:ring-2 focus:ring-ring/30"
+                className="w-full min-h-[80px] px-3 py-2 bg-input/70 border border-border/70 text-foreground rounded-lg resize-none text-sm focus:outline-none focus:border-border focus:ring-2 focus:ring-ring/30 overflow-hidden"
               />
+              <div className="absolute bottom-1.5 right-2 text-xs text-foreground/40 pointer-events-none select-none">
+                {prompt.length}
+              </div>
             </div>
           </div>
 

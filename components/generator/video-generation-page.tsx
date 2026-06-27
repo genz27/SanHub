@@ -590,6 +590,14 @@ export function VideoGenerationView({
     };
   }, []);
 
+  // Auto-resize textarea height when prompt changes
+  useEffect(() => {
+    if (promptTextareaRef.current) {
+      promptTextareaRef.current.style.height = 'auto';
+      promptTextareaRef.current.style.height = promptTextareaRef.current.scrollHeight + 'px';
+    }
+  }, [prompt]);
+
   const handleRemoveTask = useCallback(async (taskId: string) => {
     const controller = abortControllersRef.current.get(taskId);
     if (controller) {
@@ -982,8 +990,13 @@ export function VideoGenerationView({
                 onChange={(e) => handlePromptChange(e, setPrompt)}
                 onKeyUp={canMentionCharacterCards ? handlePromptKeyUp : undefined}
                 placeholder={isSoraChannel ? '描述视频动态，或拖入图片生成图生视频... 输入 @ 引用角色卡' : '描述视频动态，或拖入图片生成图生视频...'}
-                className="w-full h-20 px-3 py-2 bg-input/70 border border-border/70 text-foreground rounded-lg resize-none text-sm focus:outline-none focus:border-border focus:ring-2 focus:ring-ring/30"
+                className="w-full px-3 py-2 bg-input/70 border border-border/70 text-foreground rounded-lg resize-none text-sm min-h-[80px] focus:outline-none focus:border-border focus:ring-2 focus:ring-ring/30"
               />
+
+              {/* Character count */}
+              <div className="flex justify-end mt-1">
+                <span className="text-xs text-foreground/50">{prompt.length} / 20000</span>
+              </div>
 
               {/* @ 触发的角色卡弹出菜单，仅 sora 渠道显示 */}
               {isSoraChannel && showCharacterMenu && characterCards.length > 0 && (
