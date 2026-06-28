@@ -79,28 +79,52 @@ const TOOL_DEFINITIONS: Record<string, any> = {
 // Tool Executors
 // ========================================
 
-async function execImageGeneration(args: any, reqImages: string[]): Promise<any> {
+async function execImageGeneration(args: any, reqImages: string[], chatModelApiUrl: string, chatModelApiKey: string): Promise<any> {
   const models = await getImageModels(true);
   if (models.length === 0) throw new Error('没有可用的图片生成模型');
   const targetModel = models[0];
 
-  // Collect reference images by index if specified
-  let images: Array<{ mimeType: string; data: string }> | undefined;
+  // Collect reference images by index
+  const refs: string[] = [];
   if (Array.isArray(args.referenceImageIndexes)) {
-    const refs: string[] = [];
     for (const idx of args.referenceImageIndexes) {
       if (reqImages[idx]) refs.push(reqImages[idx]);
     }
-    if (refs.length > 0) {
-      images = refs.map((dataUrl: string) => {
-        const match = dataUrl.match(/^data:(image\/\w+);base64,/);
-        return { mimeType: match ? match[1] : 'image/png', data: dataUrl.replace(/^data:image\/\w+;base64,/, '') };
-      });
-    }
   }
 
+  let finalPrompt = args.prompt;
+
+  // Step 1: If reference images exist, use chat model to analyze and generate detailed prompt
+  if (refs.length > 0 && chatModelApiUrl) {
+    try {
+      const chatEndpoint = chatModelApiUrl.replace(/\/chat\/completions\/?$/i, '').replace(/\/$/, '') + '/chat/completions';
+      const content: any[] = [{ type: 'text', text: `Analyze this image and generate a detailed English text prompt for an AI image generator to create the following: "${args.prompt}". Describe the image content, style, colors, composition in detail. Output ONLY the prompt text.` }];
+      for (const ref of refs) {
+        content.push({ type: 'image_url', image_url: { url: ref.startsWith('data:') ? ref : `data:image/png;base64,${ref}` } });
+      }
+
+      const analysisRes = await fetch(chatEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${chatModelApiKey}` },
+        body: JSON.stringify({ model: '', messages: [{ role: 'user', content }], max_tokens: 500 }),
+      });
+
+      if (analysisRes.ok) {
+        const analysisData = await analysisRes.json();
+        const generatedPrompt = analysisData.choices?.[0]?.message?.content || '';
+        if (generatedPrompt) finalPrompt = generatedPrompt;
+      }
+    } catch {}
+  }
+
+  // Step 2: Standard image generation with the enhanced prompt
+  const images = refs.length > 0 ? refs.map((dataUrl: string) => {
+    const match = dataUrl.match(/^data:(image\/\w+);base64,/);
+    return { mimeType: match ? match[1] : 'image/png', data: dataUrl.replace(/^data:image\/\w+;base64,/, '') };
+  }) : undefined;
+
   const result = await generateImageFromLib({
-    modelId: targetModel.id, prompt: args.prompt,
+    modelId: targetModel.id, prompt: finalPrompt,
     aspectRatio: args.aspectRatio || targetModel.defaultAspectRatio,
     imageSize: args.imageSize,
     images,
@@ -108,7 +132,7 @@ async function execImageGeneration(args: any, reqImages: string[]): Promise<any>
   });
   let savedUrl = '';
   try { savedUrl = await saveMediaAsync(`agent-img-${generateId()}`, result.url); } catch {}
-  return { url: savedUrl || result.url, revised_prompt: result.revised_prompt };
+  return { url: savedUrl || result.url, revised_prompt: result.revised_prompt || finalPrompt };
 }
 
 async function execVideoGeneration(args: any): Promise<any> {
@@ -307,7 +331,7 @@ export async function POST(request: NextRequest) {
             let isError = false;
             try {
               switch (toolName) {
-                case 'image-generation': result = await execImageGeneration(args, images); break;
+                case 'image-generation': result = await execImageGeneration(args, images, apiUrl, apiKey); break;
                 case 'video-generation': result = await execVideoGeneration(args); break;
                 case 'text-transform': result = execTextTransform(args); break;
                 default: throw new Error(`未知工具: ${toolName}`);
