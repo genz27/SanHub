@@ -10,4 +10,3 @@ export * from './workspaces';
 export * from './image-channels';
 export * from './video-channels';
 export * from './codes';
-export * from './agents';

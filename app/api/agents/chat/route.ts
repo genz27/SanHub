@@ -20,6 +20,7 @@ import { generateImage as generateImageFromLib } from '@/lib/image-generator';
 import { generateVideo } from '@/lib/sora-api';
 import { processVideoPrompt } from '@/lib/prompt-processor';
 import { assertPromptsAllowed, isPromptBlockedError } from '@/lib/prompt-blocklist';
+import { getAgentPreset } from '@/agent/presets';
 import { generateId } from '@/lib/utils';
 import { saveMediaAsync } from '@/lib/media-storage';
 import type { ChatMessage, ChatSession, ChatModel, User } from '@/types';
@@ -56,48 +57,10 @@ async function resolveAgentConfig(agentId: string): Promise<{
   agent: AgentConfig;
   chatModel: ChatModel;
 }> {
-  const systemPrompts: Record<string, string> = {
-    'creative-assistant': `你是一个名为 "SanHub Creative Assistant" 的智能助手。
-
-你可以使用以下工具：
-1. **image-generation** — 根据文字描述生成图片。支持宽高比和分辨率参数。
-2. **video-generation** — 根据文字描述生成视频。支持宽高比和时长参数。
-3. **text-transform** — 对文字进行内置操作（裁剪、截断、替换、转大小写、首字母大写）。
-
-工作原则：
-- 调用工具前先向用户说明计划。
-- 根据用户意图选择合适的工具。
-- 工具执行后向用户展示结果。
-- 用中文与用户交流。
-- 保持创意、友好和高效。`,
-
-    'image-specialist': `你是一个专注于图片生成的 AI 助手。
-
-你可以使用以下工具：
-1. **image-generation** — 根据文字描述生成图片。
-
-工作原则：
-- 生成前先与用户确认画面内容和风格方向。
-- 用中文与用户交流。`,
-
-    'video-specialist': `你是一个专注于视频生成的 AI 助手。
-
-你可以使用以下工具：
-1. **video-generation** — 根据文字描述生成视频。
-
-工作原则：
-- 生成前先与用户确认视频内容和风格方向。
-- 用中文与用户交流。`,
-  };
-
-  const toolSets: Record<string, string[]> = {
-    'creative-assistant': ['image-generation', 'video-generation', 'text-transform'],
-    'image-specialist': ['image-generation'],
-    'video-specialist': ['video-generation'],
-  };
-
-  const systemPrompt = systemPrompts[agentId] || systemPrompts['creative-assistant'];
-  const enabledTools = toolSets[agentId] || toolSets['creative-assistant'];
+  const preset = getAgentPreset(agentId);
+  if (!preset) {
+    throw new Error(`未知的 Agent: ${agentId}`);
+  }
 
   // Find an enabled chat model to power this agent
   const models = await getChatModels(true);
@@ -105,20 +68,17 @@ async function resolveAgentConfig(agentId: string): Promise<{
     throw new Error('没有可用的聊天模型，请先在管理后台配置');
   }
 
-  // Try to pick the first model; prefer gpt-4o or equivalent
   const chatModel =
     models.find((m) => m.modelId.toLowerCase().includes('gpt-4o')) ||
     models.find((m) => m.supportsVision) ||
     models[0];
 
   const agent: AgentConfig = {
-    id: agentId,
-    name: agentId
-      .replace(/-/g, ' ')
-      .replace(/\b\w/g, (c) => c.toUpperCase()),
+    id: preset.id,
+    name: preset.name,
     modelId: chatModel.id,
-    systemPrompt,
-    tools: enabledTools,
+    systemPrompt: preset.systemPrompt,
+    tools: preset.tools,
     maxSteps: 10,
     temperature: 0.7,
     costPerMessage: chatModel.costPerMessage,
