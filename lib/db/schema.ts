@@ -704,6 +704,13 @@ export async function initializeDatabase(): Promise<void> {
     }
   }
 
+  // 为 chat_sessions 表添加 agent_context 列（Agent 上下文持久化）
+  try {
+    await db.execute('ALTER TABLE chat_sessions ADD COLUMN agent_context LONGTEXT');
+  } catch {
+    // 列已存在，忽略错误
+  }
+
   initialized = true;
   console.log('Database initialized successfully');
 }

@@ -15,6 +15,7 @@ import {
   getUserById,
   updateUserBalance,
   getImageModels,
+  getAdapter,
 } from '@/lib/db';
 import { generateImage as generateImageFromLib } from '@/lib/image-generator';
 import { generateVideo } from '@/lib/sora-api';
@@ -68,15 +69,13 @@ async function resolveAgentConfig(agentId: string): Promise<{
     throw new Error('没有可用的聊天模型，请先在管理后台配置');
   }
 
-  const chatModel =
-    models.find((m) => m.modelId.toLowerCase().includes('gpt-4o')) ||
-    models.find((m) => m.supportsVision) ||
-    models[0];
+  // Pick the first enabled model
+  const chatModel = models[0];
 
   const agent: AgentConfig = {
     id: preset.id,
     name: preset.name,
-    modelId: chatModel.id,
+    modelId: chatModel.modelId,
     systemPrompt: preset.systemPrompt,
     tools: preset.tools,
     maxSteps: 10,
@@ -431,6 +430,20 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Load agent_context for context persistence (tool calls/results saved across turns)
+    let savedContext: string | undefined;
+    if (chatSession) {
+      try {
+        const [ctxRows] = await getAdapter().execute(
+          'SELECT agent_context FROM chat_sessions WHERE id = ?',
+          [chatSession.id],
+        );
+        savedContext = (ctxRows as any[])[0]?.agent_context;
+      } catch {
+        // agent_context column might not exist yet, that's ok
+      }
+    }
+
     if (!chatSession) {
       chatSession = await createChatSession(
         session.user.id,
@@ -459,7 +472,11 @@ export async function POST(request: NextRequest) {
       content: agentConfig.systemPrompt,
     };
 
-    const historyModelMessages = dbMessages.map(toModelMessage);
+    // Build history: use saved agent_context (AI SDK format) if available,
+    // otherwise convert DB messages.
+    const historyModelMessages = savedContext
+      ? (JSON.parse(savedContext) as Record<string, unknown>[])
+      : dbMessages.map(toModelMessage);
 
     // Construct the user message (may include images for vision models)
     let userContent:
@@ -636,7 +653,10 @@ async function runAgentLoop(ctx: {
       // ---- Check for tool calls ----
       const toolCalls = result.toolCalls;
       if (!toolCalls || toolCalls.length === 0) {
-        // Generation complete — no more tools to call
+        // Generation complete — push final assistant response for context persistence
+        if (stepText) {
+          allMessages.push({ role: 'assistant' as const, content: stepText });
+        }
         break;
       }
 
@@ -763,6 +783,16 @@ async function runAgentLoop(ctx: {
       sessionId,
       content: finalText,
     });
+
+    // ---- Save agent context for next turn ----
+    try {
+      await getAdapter().execute(
+        'UPDATE chat_sessions SET agent_context = ? WHERE id = ?',
+        [JSON.stringify(allMessages), sessionId],
+      );
+    } catch (ctxErr) {
+      console.error('[Agent] Failed to save agent context:', ctxErr);
+    }
   } catch (error) {
     console.error('[Agent Loop] Error:', error);
     const errMsg =
@@ -782,6 +812,16 @@ async function runAgentLoop(ctx: {
     }
 
     send('error', { type: 'error', error: errMsg });
+
+    // Save agent context even on error (preserve partial conversation state)
+    try {
+      await getAdapter().execute(
+        'UPDATE chat_sessions SET agent_context = ? WHERE id = ?',
+        [JSON.stringify(allMessages), sessionId],
+      );
+    } catch {
+      /* ignore */
+    }
   } finally {
     close();
   }

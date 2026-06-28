@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { Bot, Send, Loader2, User, Image as ImageIcon, Video } from 'lucide-react';
+import { Bot, Send, Loader2, User, Image as ImageIcon, Video, X } from 'lucide-react';
 import { Markdown } from '@/components/ui/markdown';
 import { toast } from '@/components/ui/toaster';
 import { cn, formatDate } from '@/lib/utils';
@@ -29,8 +29,10 @@ export default function AgentChatPage() {
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState('');
+  const [pendingImage, setPendingImage] = useState<string | null>(null);
   const streamRef = useRef<AbortController | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -39,18 +41,35 @@ export default function AgentChatPage() {
     }
   }, [messages]);
 
+  const handleImageSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setPendingImage(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+    // Reset so the same file can be picked again
+    e.target.value = '';
+  }, []);
+
+  const removePendingImage = useCallback(() => {
+    setPendingImage(null);
+  }, []);
+
   const sendMessage = useCallback(async () => {
     const text = input.trim();
-    if (!text || streaming) return;
+    if ((!text && !pendingImage) || streaming) return;
     setInput('');
 
     const userMsg: ChatMessage = {
       id: crypto.randomUUID(),
       role: 'user',
-      content: text,
+      content: text || '[图片]',
       createdAt: Date.now(),
     };
     setMessages((prev) => [...prev, userMsg]);
+    setPendingImage(null);
     setStreaming(true);
     setError('');
 
@@ -62,10 +81,15 @@ export default function AgentChatPage() {
     setMessages((prev) => [...prev, { id: assistantId, role: 'assistant', content: '', createdAt: Date.now() }]);
 
     try {
+      const body: Record<string, unknown> = { sessionId, agentId, message: text };
+      if (pendingImage) {
+        body.images = [pendingImage];
+      }
+
       const res = await fetch('/api/agents/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId, agentId, message: text }),
+        body: JSON.stringify(body),
         signal: controller.signal,
       });
 
@@ -160,7 +184,7 @@ export default function AgentChatPage() {
       setStreaming(false);
       streamRef.current = null;
     }
-  }, [input, streaming, sessionId, agentId]);
+  }, [input, pendingImage, streaming, sessionId, agentId]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -189,7 +213,7 @@ export default function AgentChatPage() {
           <p className="text-xs text-foreground/50">{preset.description}</p>
         </div>
         <button
-          onClick={() => { setMessages([]); setSessionId(null); setError(''); }}
+          onClick={() => { setMessages([]); setSessionId(null); setError(''); setPendingImage(null); }}
           className="ml-auto px-3 py-1.5 text-xs text-foreground/50 hover:text-foreground bg-card/70 rounded-lg hover:bg-card"
         >
           新对话
@@ -248,7 +272,22 @@ export default function AgentChatPage() {
                   {(msg.toolResultUrl.endsWith('.mp4') || msg.toolName === 'video-generation') ? (
                     <video src={msg.toolResultUrl} controls className="w-full rounded-lg" />
                   ) : (
-                    <img src={msg.toolResultUrl} alt="生成结果" className="w-full rounded-lg" />
+                    <div className="relative group">
+                      <img src={msg.toolResultUrl} alt="生成结果" className="w-full rounded-lg" />
+                      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-3 pt-6 rounded-b-lg opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-between">
+                        <span className="text-white text-xs">{msg.toolName === 'image-generation' ? '生成的图片' : '工具结果'}</span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigator.clipboard.writeText(msg.toolResultUrl!);
+                            toast({ title: '已复制图片 URL', description: '图片地址已复制到剪贴板' });
+                          }}
+                          className="px-2.5 py-1 text-xs bg-white/20 hover:bg-white/30 text-white rounded-md transition-colors"
+                        >
+                          使用此图片
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>
@@ -265,6 +304,21 @@ export default function AgentChatPage() {
 
       {/* Input */}
       <div className="shrink-0 border-t border-border/70 px-4 py-4">
+        {/* Pending image thumbnail */}
+        {pendingImage && (
+          <div className="mb-3 flex items-center gap-2">
+            <div className="relative w-16 h-16 rounded-lg overflow-hidden border border-border/70 bg-card/60">
+              <img src={pendingImage} alt="待发送图片" className="w-full h-full object-cover" />
+            </div>
+            <span className="text-xs text-foreground/50">图片已选择</span>
+            <button
+              onClick={removePendingImage}
+              className="ml-auto p-1 text-foreground/40 hover:text-foreground hover:bg-card/70 rounded-lg transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
         <div className="flex items-end gap-3 bg-card/60 border border-border/70 rounded-2xl px-4 py-3">
           <textarea
             value={input}
@@ -280,9 +334,25 @@ export default function AgentChatPage() {
               target.style.height = `${Math.min(target.scrollHeight, 128)}px`;
             }}
           />
+          {/* Hidden file input for image selection */}
+          <input
+            type="file"
+            accept="image/*"
+            hidden
+            ref={fileInputRef}
+            onChange={handleImageSelect}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={streaming}
+            className="p-2 text-foreground/40 hover:text-foreground disabled:opacity-30 rounded-xl hover:bg-card/70 transition-colors"
+            title="上传图片"
+          >
+            <ImageIcon className="w-5 h-5" />
+          </button>
           <button
             onClick={sendMessage}
-            disabled={!input.trim() || streaming}
+            disabled={(!input.trim() && !pendingImage) || streaming}
             className="p-2 text-foreground/40 hover:text-foreground disabled:opacity-30 rounded-xl hover:bg-card/70 transition-colors"
           >
             {streaming ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
