@@ -11,7 +11,6 @@
     "lint:fix": "next lint --fix"
   },
   "dependencies": {
-    "@ai-sdk/openai": "^4.0.2",
     "@aws-sdk/client-s3": "^3.879.0",
     "@radix-ui/react-avatar": "^1.1.1",
     "@radix-ui/react-dialog": "^1.1.2",
@@ -21,7 +20,6 @@
     "@radix-ui/react-slot": "^1.1.0",
     "@radix-ui/react-tabs": "^1.1.1",
     "@radix-ui/react-toast": "^1.2.2",
-    "ai": "^7.0.4",
     "bcryptjs": "^2.4.3",
     "better-sqlite3": "^12.5.0",
     "browser-image-compression": "^2.0.2",
