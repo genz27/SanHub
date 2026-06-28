@@ -155,8 +155,8 @@ function toModelMessage(msg: ChatMessage): Record<string, unknown> {
       content: [
         { type: 'text' as const, text: msg.content },
         ...images.map((img: string) => ({
-          type: 'image' as const,
-          image: img.startsWith('data:') ? img : `data:image/png;base64,${img}`,
+          type: 'image_url' as const,
+          image_url: { url: img.startsWith('data:') ? img : `data:image/png;base64,${img}` },
         })),
       ],
     };
@@ -481,17 +481,16 @@ export async function POST(request: NextRequest) {
     // Construct the user message (may include images for vision models)
     let userContent:
       | string
-      | Array<{ type: 'text'; text: string } | { type: 'image'; image: string }>;
+      | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>;
     if (images.length > 0) {
       userContent = [
         { type: 'text' as const, text: userMessage },
         ...images.map((img) => {
           const raw = String(img);
           return {
-            type: 'image' as const,
-            image: raw.startsWith('data:') ? raw : `data:image/png;base64,${raw}`,
-          };
-        }),
+            type: 'image_url' as const,
+            image_url: { url: raw.startsWith('data:') ? raw : `data:image/png;base64,${raw}` },
+          }}),
       ];
     } else {
       userContent = userMessage;
