@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Bot, Send, Loader2, Image as ImageIcon, X, Plus, MessageSquare, Trash2 } from 'lucide-react';
+import { Bot, Send, Loader2, Image as ImageIcon, X, MessageSquare, ChevronDown, Trash2, PanelLeftClose, PanelLeft } from 'lucide-react';
 import { Markdown } from '@/components/ui/markdown';
 import { toast } from '@/components/ui/toaster';
 import { AGENT_PRESETS } from '@/agent/presets';
@@ -39,21 +39,19 @@ export default function AgentChatPage() {
   const [error, setError] = useState('');
   const [pendingImages, setPendingImages] = useState<string[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
-  const [showSessions, setShowSessions] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [agentMenuOpen, setAgentMenuOpen] = useState(false);
   const streamRef = useRef<AbortController | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastSentRef = useRef<{ text: string; images: string[] } | null>(null);
 
-  // Auto-scroll on new messages
+  useEffect(() => { loadSessions(); }, [agentId]); // eslint-disable-line
+
   useEffect(() => {
-    if (listRef.current) {
-      listRef.current.scrollTop = listRef.current.scrollHeight;
-    }
+    if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
   }, [messages]);
 
-
-  // Load session messages when switching session
   const loadSessionMessages = useCallback(async (sid: string) => {
     try {
       const res = await fetch(`/api/chat/sessions/${sid}/messages`);
@@ -61,75 +59,45 @@ export default function AgentChatPage() {
       const data = await res.json();
       const dbMessages = data.data || [];
       const converted: ChatMessage[] = dbMessages.map((m: any) => ({
-        id: m.id,
-        role: m.role,
-        content: m.content || '',
+        id: m.id, role: m.role, content: m.content || '',
         sentImages: m.images ? (typeof m.images === 'string' ? JSON.parse(m.images) : m.images) : undefined,
         createdAt: m.createdAt,
       }));
       setMessages(converted);
       setSessionId(sid);
       setError('');
-    } catch {
-      // ignore
-    }
+    } catch {}
   }, []);
 
   const loadSessions = useCallback(async () => {
     setLoadingSessions(true);
     try {
       const res = await fetch(`/api/agents/sessions?agentId=${agentId}`);
-      if (res.ok) {
-        const data = await res.json();
-        setSessions(data.data || []);
-      }
-    } catch {
-      // ignore
-    } finally {
-      setLoadingSessions(false);
-    }
+      if (res.ok) { const data = await res.json(); setSessions(data.data || []); }
+    } catch {} finally { setLoadingSessions(false); }
   }, [agentId]);
-
-  // Load sessions on mount
-  useEffect(() => { loadSessions(); }, [loadSessions]);
 
   const deleteSession = useCallback(async (sid: string) => {
     try {
       const res = await fetch(`/api/chat/sessions/${sid}`, { method: 'DELETE' });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || '删除失败');
-      }
+      if (!res.ok) { const data = await res.json().catch(() => ({})); throw new Error(data.error || '删除失败'); }
       setSessions((prev) => prev.filter((s) => s.id !== sid));
-      if (sessionId === sid) {
-        setSessionId(null);
-        setMessages([]);
-      }
-    } catch (err: any) {
-      toast({ title: '删除失败', description: err.message, variant: 'destructive' });
-    }
+      if (sessionId === sid) { setSessionId(null); setMessages([]); }
+    } catch (err: any) { toast({ title: '删除失败', description: err.message, variant: 'destructive' }); }
   }, [sessionId]);
 
   const newSession = useCallback(() => {
-    setSessionId(null);
-    setMessages([]);
-    setError('');
-    setPendingImages([]);
+    setSessionId(null); setMessages([]); setError(''); setPendingImages([]);
   }, []);
 
   const handleImageSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
     const total = pendingImages.length + files.length;
-    if (total > 5) {
-      toast({ title: '最多上传 5 张图片', variant: 'destructive' });
-      return;
-    }
+    if (total > 5) { toast({ title: '最多上传 5 张图片', variant: 'destructive' }); return; }
     Array.from(files).forEach((file) => {
       const reader = new FileReader();
-      reader.onload = () => {
-        setPendingImages((prev) => [...prev, reader.result as string]);
-      };
+      reader.onload = () => setPendingImages((prev) => [...prev, reader.result as string]);
       reader.readAsDataURL(file);
     });
     e.target.value = '';
@@ -142,16 +110,12 @@ export default function AgentChatPage() {
   const sendMessage = useCallback(async () => {
     const text = input.trim();
     if ((!text && pendingImages.length === 0) || streaming) return;
-    // Preserve for retry
     lastSentRef.current = { text, images: [...pendingImages] };
     setInput('');
 
     const userMsg: ChatMessage = {
-      id: crypto.randomUUID(),
-      role: 'user',
-      content: text || '[图片]',
-      sentImages: pendingImages.length > 0 ? [...pendingImages] : undefined,
-      createdAt: Date.now(),
+      id: crypto.randomUUID(), role: 'user', content: text || '[图片]',
+      sentImages: pendingImages.length > 0 ? [...pendingImages] : undefined, createdAt: Date.now(),
     };
     setMessages((prev) => [...prev, userMsg]);
     const imagesToSend = [...pendingImages];
@@ -173,24 +137,17 @@ export default function AgentChatPage() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body), signal: controller.signal,
       });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `请求失败 (${res.status})`);
-      }
+      if (!res.ok) { const data = await res.json().catch(() => ({})); throw new Error(data.error || `请求失败 (${res.status})`); }
 
       const reader = res.body?.getReader();
       if (!reader) throw new Error('无法读取响应流');
-
       const decoder = new TextDecoder();
-      let buffer = '';
-      let fullContent = '';
+      let buffer = '', fullContent = '';
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
-
         const blocks = buffer.split('\n\n');
         buffer = blocks.pop() || '';
 
@@ -199,38 +156,25 @@ export default function AgentChatPage() {
           if (!dataMatch) continue;
           let event: any;
           try { event = JSON.parse(dataMatch[1]); } catch { continue; }
-
           if (event.type === 'error') throw new Error(event.error || 'Agent 返回错误');
 
           if (event.type === 'text') {
             fullContent += event.content || '';
-            setMessages((prev) =>
-              prev.map((m) => (m.id === assistantId ? { ...m, content: fullContent } : m))
-            );
+            setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, content: fullContent } : m)));
           } else if (event.type === 'tool_call') {
-            setMessages((prev) => [...prev, {
-              id: crypto.randomUUID(), role: 'tool_call', content: '',
-              toolName: event.toolCall?.function?.name,
-              toolArgs: event.toolCall?.function?.arguments, createdAt: Date.now(),
-            }]);
+            setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'tool_call', content: '', toolName: event.toolCall?.function?.name, toolArgs: event.toolCall?.function?.arguments, createdAt: Date.now() }]);
           } else if (event.type === 'tool_result') {
             setMessages((prev) => {
               const result = event.toolResult;
-              let url = '';
-              let displayContent = '';
+              let url = '', displayContent = '';
               if (result?.content) {
                 const raw = result.content;
                 if (typeof raw === 'string') { displayContent = raw; try { const parsed = JSON.parse(raw); url = parsed.url || ''; } catch {} }
                 else if (typeof raw === 'object') { displayContent = JSON.stringify(raw); url = raw.url || ''; }
               }
-              return [...prev, {
-                id: crypto.randomUUID(), role: 'tool_result', content: displayContent,
-                toolName: result?.name, toolResultUrl: url, createdAt: Date.now(),
-              }];
+              return [...prev, { id: crypto.randomUUID(), role: 'tool_result', content: displayContent, toolName: result?.name, toolResultUrl: url, createdAt: Date.now() }];
             });
-          } else if (event.type === 'done') {
-            if (event.sessionId) { setSessionId(event.sessionId); loadSessions(); }
-          }
+          } else if (event.type === 'done') { if (event.sessionId) { setSessionId(event.sessionId); loadSessions(); } }
         }
       }
     } catch (err: any) {
@@ -238,10 +182,7 @@ export default function AgentChatPage() {
       const msg = err instanceof Error ? err.message : '请求失败';
       setError(msg);
       toast({ title: 'Agent 响应错误', description: msg, variant: 'destructive' });
-    } finally {
-      setStreaming(false);
-      streamRef.current = null;
-    }
+    } finally { setStreaming(false); streamRef.current = null; }
   }, [input, pendingImages, streaming, sessionId, agentId, loadSessions]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -249,106 +190,98 @@ export default function AgentChatPage() {
   };
 
   if (!preset) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-foreground/50">未知的 Agent</p>
-      </div>
-    );
+    return <div className="flex items-center justify-center h-64"><p className="text-foreground/50">未知的 Agent</p></div>;
   }
 
-  const PRESET_NAMES: Record<string, string> = {
-    'creative-assistant': '全能创作',
-    'image-specialist': '图像专家',
-    'video-specialist': '视频专家',
-  };
-
   return (
-    <div className="flex h-[calc(100vh-4rem)]">
-      {/* Session list panel */}
-      <div className={`${showSessions ? 'block' : 'hidden'} lg:block w-64 bg-card/60 border-r border-border/70 flex flex-col shrink-0`}>
+    <div className="flex h-[calc(100vh-4rem)] relative">
+      {/* Session sidebar overlay */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-30 bg-background/60 backdrop-blur-sm lg:hidden" onClick={() => setSidebarOpen(false)} />
+      )}
+      <div className={`fixed lg:relative z-40 lg:z-auto inset-y-0 left-0 w-72 bg-card/95 lg:bg-card/60 backdrop-blur-xl lg:backdrop-blur-none border-r border-border/70 flex flex-col transform transition-transform duration-200 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        {/* New chat button */}
         <div className="p-3 border-b border-border/70">
-          <select
-            value={agentId}
-            onChange={(e) => router.push(`/agents/${e.target.value}`)}
-            className="w-full text-sm bg-card/60 border border-border/70 rounded-lg px-3 py-2 text-foreground focus:outline-none"
-          >
-            {AGENT_PRESETS.map((a) => (
-              <option key={a.id} value={a.id}>{a.name}</option>
-            ))}
-          </select>
+          <button onClick={() => { newSession(); setSidebarOpen(false); }} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-foreground text-background rounded-xl font-medium hover:opacity-90 transition text-sm">
+            <MessageSquare className="w-4 h-4" /> 新对话
+          </button>
         </div>
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+        {/* Session list */}
+        <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
           {sessions.map((s) => (
-            <div
-              key={s.id}
-              onClick={() => loadSessionMessages(s.id)}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-sm group ${
-                sessionId === s.id ? 'bg-accent/80 text-foreground' : 'text-foreground/60 hover:bg-card/70 hover:text-foreground'
-              }`}
-            >
+            <div key={s.id} onClick={() => { loadSessionMessages(s.id); setSidebarOpen(false); }}
+              className={`flex items-center gap-2 px-3 py-2.5 rounded-lg cursor-pointer text-sm group transition-colors ${sessionId === s.id ? 'bg-accent/80 text-foreground' : 'text-foreground/60 hover:bg-card/70 hover:text-foreground'}`}>
               <MessageSquare className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate flex-1">{s.title.replace(/^Agent:/, '').slice(0, 20)}</span>
-              <button
-                onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }}
-                className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-400"
-              >
+              <span className="truncate flex-1">{s.title.replace(/^Agent:[^:]*:\s*/, '').slice(0, 24)}</span>
+              <button onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }} className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-400 transition-opacity">
                 <Trash2 className="w-3 h-3" />
               </button>
             </div>
           ))}
           {!loadingSessions && sessions.length === 0 && (
-            <p className="text-xs text-foreground/30 text-center py-4">暂无历史会话</p>
+            <p className="text-xs text-foreground/30 text-center py-6">暂无历史会话</p>
           )}
-        </div>
-        <div className="p-2 border-t border-border/70">
-          <button onClick={newSession} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground/60 hover:text-foreground hover:bg-card/70 rounded-lg transition-colors">
-            <Plus className="w-4 h-4" /> 新对话
-          </button>
         </div>
       </div>
 
-      {/* Mobile toggle */}
-      <button
-        onClick={() => setShowSessions(!showSessions)}
-        className="lg:hidden fixed bottom-20 right-4 z-50 p-3 bg-card/90 backdrop-blur-sm rounded-full border border-border/70 shadow-lg"
-      >
-        <MessageSquare className="w-5 h-5 text-foreground/70" />
-      </button>
-
       {/* Main chat area */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Header */}
-        <div className="flex items-center gap-3 px-4 py-4 border-b border-border/70 shrink-0">
-          <button onClick={() => setShowSessions(!showSessions)} className="lg:hidden p-1 text-foreground/50 hover:text-foreground">
-            <MessageSquare className="w-5 h-5" />
+        {/* Top bar: Agent selector + session toggle */}
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-border/70 bg-card/30 shrink-0">
+          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-1.5 text-foreground/40 hover:text-foreground rounded-lg hover:bg-card/70 transition-colors">
+            {sidebarOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeft className="w-4 h-4" />}
           </button>
-          <div className="w-10 h-10 rounded-xl bg-sky-500/20 flex items-center justify-center">
-            <Bot className="w-5 h-5 text-sky-400" />
+          <div className="relative">
+            <button onClick={() => setAgentMenuOpen(!agentMenuOpen)} className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-card/70 transition-colors">
+              <div className="w-7 h-7 rounded-lg bg-sky-500/20 flex items-center justify-center">
+                <Bot className="w-4 h-4 text-sky-400" />
+              </div>
+              <span className="text-sm font-medium text-foreground">{preset.name}</span>
+              <ChevronDown className="w-3.5 h-3.5 text-foreground/40" />
+            </button>
+            {agentMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setAgentMenuOpen(false)} />
+                <div className="absolute top-full left-0 mt-1 w-56 bg-card/95 backdrop-blur-xl border border-border/70 rounded-xl shadow-xl z-20 py-1 overflow-hidden">
+                  {AGENT_PRESETS.map((a) => (
+                    <button key={a.id} onClick={() => { router.push(`/agents/${a.id}`); setAgentMenuOpen(false); }}
+                      className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm text-left transition-colors ${a.id === agentId ? 'bg-accent/80 text-foreground' : 'text-foreground/60 hover:bg-card/70 hover:text-foreground'}`}>
+                      <div className="w-7 h-7 rounded-lg bg-sky-500/20 flex items-center justify-center shrink-0">
+                        <Bot className="w-4 h-4 text-sky-400" />
+                      </div>
+                      <div>
+                        <div className="font-medium">{a.name}</div>
+                        <div className="text-xs text-foreground/40">{a.description}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
-          <div>
-            <h1 className="text-lg font-semibold text-foreground">{preset.name}</h1>
-            <p className="text-xs text-foreground/50">{preset.description}</p>
-          </div>
-          <div className="ml-auto hidden sm:flex items-center gap-2">
-            {AGENT_PRESETS.filter(a => a.id !== agentId).map(a => (
-              <button
-                key={a.id}
-                onClick={() => router.push(`/agents/${a.id}`)}
-                className="px-3 py-1.5 text-xs text-foreground/50 hover:text-foreground bg-card/70 rounded-lg hover:bg-card"
-              >
-                {a.name}
-              </button>
-            ))}
-          </div>
+          {sessionId && (
+            <button onClick={newSession} className="ml-auto px-3 py-1.5 text-xs text-foreground/50 hover:text-foreground bg-card/70 rounded-lg hover:bg-card transition-colors">
+              新对话
+            </button>
+          )}
         </div>
 
         {/* Messages */}
-        <div ref={listRef} className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
-          {messages.length === 0 && (
-            <div className="flex flex-col items-center justify-center h-full text-center text-foreground/40">
-              <Bot className="w-16 h-16 mb-4 opacity-30" />
-              <p className="text-lg">开始对话</p>
-              <p className="text-sm mt-1">向 {preset.name} 描述你想要创作的内容</p>
+        <div ref={listRef} className="flex-1 overflow-y-auto px-4 py-6 space-y-4 max-w-3xl mx-auto w-full">
+          {messages.length === 0 && !error && (
+            <div className="flex flex-col items-center justify-center h-full text-center text-foreground/40 px-4">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-sky-500/25 to-emerald-500/25 border border-border/70 flex items-center justify-center mb-5">
+                <Bot className="w-8 h-8 text-foreground/80" />
+              </div>
+              <p className="text-xl font-light text-foreground/60 mb-1">{preset.name}</p>
+              <p className="text-sm text-foreground/40 mb-6">{preset.description}</p>
+              <div className="flex flex-wrap gap-2 justify-center">
+                {preset.tools.map((t) => (
+                  <span key={t} className="px-3 py-1 text-xs rounded-full bg-card/70 text-foreground/50 border border-border/70">
+                    {t === 'image-generation' ? '🎨 图像生成' : t === 'video-generation' ? '🎬 视频生成' : '📝 文本处理'}
+                  </span>
+                ))}
+              </div>
             </div>
           )}
 
@@ -356,30 +289,25 @@ export default function AgentChatPage() {
             <div key={msg.id}>
               {msg.role === 'user' && (
                 <div className="flex justify-end">
-                  <div className="max-w-[80%] bg-foreground/10 rounded-2xl rounded-br-md px-4 py-3 space-y-2">
+                  <div className="max-w-[75%] bg-foreground/10 rounded-2xl rounded-br-md px-4 py-3 space-y-2">
                     {msg.sentImages && msg.sentImages.length > 0 && (
                       <div className="flex flex-wrap gap-1">
                         {msg.sentImages.map((img, i) => (
-                          <img key={i} src={img} alt={`图片 ${i + 1}`} className="w-20 h-20 object-cover rounded-lg border border-border/50" />
+                          <img key={i} src={img} alt={`图片 ${i + 1}`} className="w-16 h-16 object-cover rounded-lg border border-border/50" />
                         ))}
                       </div>
                     )}
-                    {msg.content && msg.content !== '[图片]' && (
-                      <p className="text-foreground whitespace-pre-wrap text-sm">{msg.content}</p>
-                    )}
+                    {msg.content && msg.content !== '[图片]' && <p className="text-foreground whitespace-pre-wrap text-sm">{msg.content}</p>}
                   </div>
                 </div>
               )}
-
               {msg.role === 'assistant' && (
                 <div className="flex gap-3">
                   <div className="w-8 h-8 rounded-lg bg-sky-500/20 flex items-center justify-center shrink-0 mt-1">
                     <Bot className="w-4 h-4 text-sky-400" />
                   </div>
                   <div className="max-w-[80%] bg-card/60 border border-border/70 rounded-2xl rounded-bl-md px-4 py-3">
-                    {msg.content ? (
-                      <Markdown content={msg.content} />
-                    ) : streaming ? (
+                    {msg.content ? <Markdown content={msg.content} /> : streaming ? (
                       <span className="inline-flex gap-1 py-2">
                         <span className="w-2 h-2 rounded-full bg-foreground/40 animate-bounce" style={{ animationDelay: '0ms' }} />
                         <span className="w-2 h-2 rounded-full bg-foreground/40 animate-bounce" style={{ animationDelay: '150ms' }} />
@@ -389,18 +317,14 @@ export default function AgentChatPage() {
                   </div>
                 </div>
               )}
-
               {msg.role === 'tool_call' && (
                 <div className="flex justify-center">
                   <div className="bg-card/60 border border-border/70 rounded-xl px-4 py-2 flex items-center gap-2 text-sm">
                     <Loader2 className="w-4 h-4 animate-spin text-sky-400" />
-                    <span className="text-foreground/60">
-                      {msg.toolName === 'image-generation' ? '🎨 生成图片...' : msg.toolName === 'video-generation' ? '🎬 生成视频...' : `🔧 ${msg.toolName}`}
-                    </span>
+                    <span className="text-foreground/60">{msg.toolName === 'image-generation' ? '🎨 生成图片...' : msg.toolName === 'video-generation' ? '🎬 生成视频...' : `🔧 ${msg.toolName}`}</span>
                   </div>
                 </div>
               )}
-
               {msg.role === 'tool_result' && (
                 <div className="flex justify-center">
                   {msg.toolResultUrl ? (
@@ -418,21 +342,12 @@ export default function AgentChatPage() {
           ))}
 
           {error && (
-            <div className="text-center space-y-2">
-              <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 inline-block">
+            <div className="text-center space-y-3 py-4">
+              <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/30 rounded-xl px-5 py-3 inline-block max-w-lg">
                 {error}
               </div>
               <div>
-                <button
-                  onClick={() => {
-                    if (lastSentRef.current) {
-                      setInput(lastSentRef.current.text);
-                      setPendingImages(lastSentRef.current.images);
-                      setError('');
-                    }
-                  }}
-                  className="text-xs text-foreground/50 hover:text-foreground underline"
-                >
+                <button onClick={() => { if (lastSentRef.current) { setInput(lastSentRef.current.text); setPendingImages(lastSentRef.current.images); setError(''); } }} className="text-xs text-foreground/50 hover:text-foreground underline">
                   重试
                 </button>
               </div>
@@ -441,56 +356,34 @@ export default function AgentChatPage() {
         </div>
 
         {/* Input */}
-        <div className="shrink-0 border-t border-border/70 px-4 py-4">
-          {/* Pending images */}
-          {pendingImages.length > 0 && (
-            <div className="mb-3 flex flex-wrap gap-2">
-              {pendingImages.map((img, i) => (
-                <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden border border-border/70 bg-card/60 group">
-                  <img src={img} alt={`待发送 ${i + 1}`} className="w-full h-full object-cover" />
-                  <button
-                    onClick={() => removePendingImage(i)}
-                    className="absolute top-0.5 right-0.5 p-0.5 bg-background/80 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
-              ))}
+        <div className="shrink-0 border-t border-border/70 bg-card/30">
+          <div className="max-w-3xl mx-auto w-full px-4 py-4">
+            {pendingImages.length > 0 && (
+              <div className="mb-3 flex flex-wrap gap-2">
+                {pendingImages.map((img, i) => (
+                  <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden border border-border/70 bg-card/60 group">
+                    <img src={img} alt={`待发送 ${i + 1}`} className="w-full h-full object-cover" />
+                    <button onClick={() => removePendingImage(i)} className="absolute top-0.5 right-0.5 p-0.5 bg-background/80 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"><X className="w-3 h-3" /></button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex items-end gap-3 bg-card/60 border border-border/70 rounded-2xl px-4 py-3">
+              <textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
+                placeholder="描述你想要创作的内容..." rows={1}
+                className="flex-1 bg-transparent text-foreground placeholder:text-foreground/30 resize-none focus:outline-none text-sm py-1 max-h-32"
+                style={{ height: 'auto', minHeight: '24px' }}
+                onInput={(e) => { const t = e.target as HTMLTextAreaElement; t.style.height = 'auto'; t.style.height = `${Math.min(t.scrollHeight, 128)}px`; }} />
+              <input type="file" accept="image/*" multiple hidden ref={fileInputRef} onChange={handleImageSelect} />
+              <button onClick={() => fileInputRef.current?.click()} disabled={streaming}
+                className="p-2 text-foreground/40 hover:text-foreground disabled:opacity-30 rounded-xl hover:bg-card/70 transition-colors" title="上传图片（最多5张）"><ImageIcon className="w-5 h-5" /></button>
+              <button onClick={sendMessage} disabled={(!input.trim() && pendingImages.length === 0) || streaming}
+                className="p-2 text-foreground/40 hover:text-foreground disabled:opacity-30 rounded-xl hover:bg-card/70 transition-colors">
+                {streaming ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+              </button>
             </div>
-          )}
-          <div className="flex items-end gap-3 bg-card/60 border border-border/70 rounded-2xl px-4 py-3">
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="描述你想要创作的内容..."
-              rows={1}
-              className="flex-1 bg-transparent text-foreground placeholder:text-foreground/30 resize-none focus:outline-none text-sm py-1 max-h-32"
-              style={{ height: 'auto', minHeight: '24px' }}
-              onInput={(e) => {
-                const target = e.target as HTMLTextAreaElement;
-                target.style.height = 'auto';
-                target.style.height = `${Math.min(target.scrollHeight, 128)}px`;
-              }}
-            />
-            <input type="file" accept="image/*" multiple hidden ref={fileInputRef} onChange={handleImageSelect} />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={streaming}
-              className="p-2 text-foreground/40 hover:text-foreground disabled:opacity-30 rounded-xl hover:bg-card/70 transition-colors"
-              title="上传图片（最多5张）"
-            >
-              <ImageIcon className="w-5 h-5" />
-            </button>
-            <button
-              onClick={sendMessage}
-              disabled={(!input.trim() && pendingImages.length === 0) || streaming}
-              className="p-2 text-foreground/40 hover:text-foreground disabled:opacity-30 rounded-xl hover:bg-card/70 transition-colors"
-            >
-              {streaming ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-            </button>
+            <p className="text-xs text-foreground/30 mt-2 text-center">Enter 发送 · Shift+Enter 换行</p>
           </div>
-          <p className="text-xs text-foreground/30 mt-2 text-center">Enter 发送 · Shift+Enter 换行</p>
         </div>
       </div>
     </div>
