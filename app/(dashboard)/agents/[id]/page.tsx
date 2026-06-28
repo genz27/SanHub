@@ -118,63 +118,60 @@ export default function AgentChatPage() {
         for (const block of blocks) {
           const dataMatch = block.match(/data: (.+)/);
           if (!dataMatch) continue;
-          try {
-            const event = JSON.parse(dataMatch[1]);
-            switch (event.type) {
-              case 'text':
-                fullContent += event.content || '';
-                setMessages((prev) =>
-                  prev.map((m) => (m.id === assistantId ? { ...m, content: fullContent } : m))
-                );
-                break;
-              case 'tool_call':
-                setMessages((prev) => [
-                  ...prev,
-                  {
-                    id: crypto.randomUUID(),
-                    role: 'tool_call',
-                    content: '',
-                    toolName: event.toolCall?.function?.name,
-                    toolArgs: event.toolCall?.function?.arguments,
-                    createdAt: Date.now(),
-                  },
-                ]);
-                break;
-              case 'tool_result':
-                setMessages((prev) => {
-                  const result = event.toolResult;
-                  let url = '';
-                  let displayContent = '';
-                  if (result?.content) {
-                    const raw = result.content;
-                    if (typeof raw === 'string') {
-                      displayContent = raw;
-                      try { const parsed = JSON.parse(raw); url = parsed.url || ''; } catch {}
-                    } else if (typeof raw === 'object') {
-                      displayContent = JSON.stringify(raw);
-                      url = raw.url || '';
-                    }
-                  }
-                  return [
-                    ...prev,
-                    {
-                      id: crypto.randomUUID(),
-                      role: 'tool_result',
-                      content: displayContent,
-                      toolName: result?.name,
-                      toolResultUrl: url,
-                      createdAt: Date.now(),
-                    },
-                  ];
-                });
-                break;
-              case 'done':
-                if (event.sessionId) setSessionId(event.sessionId);
-                break;
-              case 'error':
-                throw new Error(event.error || 'Agent 返回错误');
-            }
-          } catch {}
+          let event: any;
+          try { event = JSON.parse(dataMatch[1]); } catch { continue; }
+
+          if (event.type === 'error') {
+            throw new Error(event.error || 'Agent 返回错误');
+          }
+
+          if (event.type === 'text') {
+            fullContent += event.content || '';
+            setMessages((prev) =>
+              prev.map((m) => (m.id === assistantId ? { ...m, content: fullContent } : m))
+            );
+          } else if (event.type === 'tool_call') {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: crypto.randomUUID(),
+                role: 'tool_call',
+                content: '',
+                toolName: event.toolCall?.function?.name,
+                toolArgs: event.toolCall?.function?.arguments,
+                createdAt: Date.now(),
+              },
+            ]);
+          } else if (event.type === 'tool_result') {
+            setMessages((prev) => {
+              const result = event.toolResult;
+              let url = '';
+              let displayContent = '';
+              if (result?.content) {
+                const raw = result.content;
+                if (typeof raw === 'string') {
+                  displayContent = raw;
+                  try { const parsed = JSON.parse(raw); url = parsed.url || ''; } catch {}
+                } else if (typeof raw === 'object') {
+                  displayContent = JSON.stringify(raw);
+                  url = raw.url || '';
+                }
+              }
+              return [
+                ...prev,
+                {
+                  id: crypto.randomUUID(),
+                  role: 'tool_result',
+                  content: displayContent,
+                  toolName: result?.name,
+                  toolResultUrl: url,
+                  createdAt: Date.now(),
+                },
+              ];
+            });
+          } else if (event.type === 'done') {
+            if (event.sessionId) setSessionId(event.sessionId);
+          }
         }
       }
     } catch (err: any) {
