@@ -118,18 +118,23 @@ export default function AgentChatPage() {
                 setMessages((prev) => {
                   const result = event.toolResult;
                   let url = '';
+                  let displayContent = '';
                   if (result?.content) {
-                    try {
-                      const parsed = JSON.parse(result.content);
-                      url = parsed.url || parsed.data?.url || '';
-                    } catch {}
+                    const raw = result.content;
+                    if (typeof raw === 'string') {
+                      displayContent = raw;
+                      try { const parsed = JSON.parse(raw); url = parsed.url || ''; } catch {}
+                    } else if (typeof raw === 'object') {
+                      displayContent = JSON.stringify(raw);
+                      url = raw.url || '';
+                    }
                   }
                   return [
                     ...prev,
                     {
                       id: crypto.randomUUID(),
                       role: 'tool_result',
-                      content: result?.content || '',
+                      content: displayContent,
                       toolName: result?.name,
                       toolResultUrl: url,
                       createdAt: Date.now(),

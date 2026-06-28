@@ -686,7 +686,7 @@ async function runAgentLoop(ctx: {
                 type: 'tool-result' as const,
                 toolCallId: tc.toolCallId,
                 toolName,
-                output: { error: errMsg },
+                result: { error: errMsg },
               },
             ],
           });
@@ -707,7 +707,7 @@ async function runAgentLoop(ctx: {
               type: 'tool-result' as const,
               toolCallId: tc.toolCallId,
               toolName,
-              output: toolOutput,
+              result: toolOutput,
             },
           ],
         });
