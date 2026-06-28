@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getSystemConfig, updateSystemConfig } from '@/lib/db';
-import { syncUnusedInviteCodeBonuses } from '@/lib/db-codes';
+import { getSystemConfig, updateSystemConfig, syncUnusedInviteCodeBonuses } from '@/lib/db';
 import type { ImageBucketConfig, ImageStorageConfig } from '@/types';
 
 function normalizePositiveInt(value: unknown, fallback: number): number {

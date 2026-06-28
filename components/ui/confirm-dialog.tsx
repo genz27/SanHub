@@ -23,16 +23,27 @@ export function ConfirmDialog({
     default: 'from-blue-500 to-cyan-500',
   };
 
+  const handleConfirmWrapper = async () => {
+    if (loading) return;
+    await onConfirm();
+    onClose();
+  };
+
+  const handleClose = () => {
+    if (loading) return;
+    onClose();
+  };
+
   return (
-    <Modal open={open} onClose={onClose} title={title} icon={<AlertTriangle className="w-5 h-5 text-red-400" />} size="md">
+    <Modal open={open} onClose={handleClose} title={title} icon={<AlertTriangle className="w-5 h-5 text-red-400" />} size="md">
       <div className="space-y-6">
         <p className="text-foreground/70">{message}</p>
         <div className="flex items-center gap-3 justify-end">
-          <button onClick={onClose} className="px-5 py-2.5 bg-card/70 text-foreground rounded-xl hover:bg-card/80">
+          <button onClick={handleClose} className="px-5 py-2.5 bg-card/70 text-foreground rounded-xl hover:bg-card/80">
             取消
           </button>
           <button
-            onClick={() => { onConfirm(); onClose(); }}
+            onClick={handleConfirmWrapper}
             disabled={loading}
             className={'flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r text-foreground rounded-xl font-medium hover:opacity-90 disabled:opacity-50 ' + variantColors[variant]}
           >

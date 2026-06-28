@@ -30,7 +30,7 @@ export function ChannelFormFields({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
           <label className="text-sm text-foreground/70">名称 *</label>
-          <input type="text" value={name} onChange={(e) => onNameChange(e.target.value)} placeholder="渠道名称" className={`w-full px-4 py-3 bg-card/60 border rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none transition-colors ${nameError ? 'border-red-500 focus:border-red-500' : 'border-border/70 focus:border-border'}`} />
+          <input type="text" value={name} onChange={(e) => onNameChange(e.target.value)} placeholder="渠道名称" className={`w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none transition-colors ${nameError ? 'border-red-500 focus:border-red-500' : 'border-border/70 focus:border-border'}`} />
         </div>
         <div className="space-y-2">
           <label className="text-sm text-foreground/70">类型 *</label>

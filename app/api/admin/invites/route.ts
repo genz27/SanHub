@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { createInviteBatch, getInviteCodes, getInviteCodesCount, deleteInviteCode } from '@/lib/db-codes';
-import { getSystemConfig } from '@/lib/db';
+import { createInviteBatch, getInviteCodes, getInviteCodesCount, deleteInviteCode, getSystemConfig } from '@/lib/db';
 
 export async function GET(request: Request) {
   try {
