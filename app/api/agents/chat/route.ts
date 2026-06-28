@@ -184,6 +184,12 @@ export async function POST(request: NextRequest) {
       chatSessionId = chatSession.id;
     }
 
+    // When images are present, skip loading history — DB stores images in a
+    // separate column, so history text would lack the visual context the LLM needs.
+    if (images.length > 0) {
+      existingMessages = [];
+    }
+
     // Save user message
     await saveChatMessage({ sessionId: chatSessionId, role: 'user', content: userMessage, images: images.length > 0 ? images : undefined, tokenCount: Math.ceil(userMessage.length / 2) }).catch(() => {});
 
@@ -223,7 +229,7 @@ export async function POST(request: NextRequest) {
     (async () => {
       try {
         let finalText = '';
-        let currentMessages = [...allMessages];
+        const currentMessages = [...allMessages];
 
         for (let step = 0; step < 8; step++) {
           if (request.signal.aborted) { send('error', { type: 'error', error: '请求已取消' }); close(); return; }
@@ -247,11 +253,10 @@ export async function POST(request: NextRequest) {
           const content = choice.content || '';
           const toolCalls = choice.tool_calls;
 
-          // Stream text
-          if (content) {
-            finalText += content;
-            send('text', { type: 'text', content: finalText });
-          }
+          // Stream text — send on every step (even if empty) so the UI
+          // can track progress and know when a turn has completed.
+          finalText += content;
+          send('text', { type: 'text', content: finalText });
 
           // Add assistant response to messages
           const assistantMsg: any = { role: 'assistant', content };
@@ -264,6 +269,7 @@ export async function POST(request: NextRequest) {
           if (!toolCalls || toolCalls.length === 0) break;
 
           // Execute tool calls
+          send('processing', { type: 'processing', status: 'executing_tools' });
           for (const tc of toolCalls) {
             const toolName = tc.function.name;
             let args: any = {};

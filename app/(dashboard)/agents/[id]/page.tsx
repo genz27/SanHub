@@ -3,16 +3,17 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { Bot, Send, Loader2, User, Image as ImageIcon, Video, X } from 'lucide-react';
+import { Bot, Send, Loader2, Image as ImageIcon, X } from 'lucide-react';
 import { Markdown } from '@/components/ui/markdown';
 import { toast } from '@/components/ui/toaster';
-import { cn, formatDate } from '@/lib/utils';
-import { AGENT_PRESETS, type AgentPreset } from '@/agent/presets';
+import { cn } from '@/lib/utils';
+import { AGENT_PRESETS } from '@/agent/presets';
 
 interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'tool_call' | 'tool_result';
   content: string;
+  imageUrl?: string;
   toolName?: string;
   toolArgs?: string;
   toolResultUrl?: string;
@@ -66,6 +67,7 @@ export default function AgentChatPage() {
       id: crypto.randomUUID(),
       role: 'user',
       content: text || '[图片]',
+      imageUrl: pendingImage ?? undefined,
       createdAt: Date.now(),
     };
     setMessages((prev) => [...prev, userMsg]);
@@ -234,8 +236,11 @@ export default function AgentChatPage() {
           <div key={msg.id}>
             {msg.role === 'user' && (
               <div className="flex justify-end">
-                <div className="max-w-[80%] bg-foreground/10 rounded-2xl rounded-br-md px-4 py-3">
-                  <p className="text-foreground whitespace-pre-wrap">{msg.content}</p>
+                <div className="max-w-[80%] bg-foreground/10 rounded-2xl rounded-br-md px-4 py-3 space-y-2">
+                  {msg.content && <p className="text-foreground whitespace-pre-wrap">{msg.content}</p>}
+                  {msg.imageUrl && (
+                    <img src={msg.imageUrl} alt="用户图片" className="max-w-full max-h-48 rounded-lg object-cover" />
+                  )}
                 </div>
               </div>
             )}
@@ -249,7 +254,11 @@ export default function AgentChatPage() {
                   {msg.content ? (
                     <Markdown content={msg.content} />
                   ) : streaming ? (
-                    <span className="text-foreground/40 animate-pulse">思考中...</span>
+                    <span className="inline-flex gap-1.5 items-center h-6">
+                      <span className="w-2 h-2 rounded-full bg-foreground/40 animate-bounce" style={{animationDelay:'0ms'}} />
+                      <span className="w-2 h-2 rounded-full bg-foreground/40 animate-bounce" style={{animationDelay:'150ms'}} />
+                      <span className="w-2 h-2 rounded-full bg-foreground/40 animate-bounce" style={{animationDelay:'300ms'}} />
+                    </span>
                   ) : null}
                 </div>
               </div>
@@ -296,8 +305,15 @@ export default function AgentChatPage() {
         ))}
 
         {error && (
-          <div className="text-center text-sm text-red-400 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3">
-            {error}
+          <div className="flex items-center justify-center gap-3 text-sm text-red-400 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3">
+            <span>{error}</span>
+            <button
+              onClick={sendMessage}
+              disabled={streaming}
+              className="px-3 py-1 text-xs bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg transition-colors disabled:opacity-50"
+            >
+              重试
+            </button>
           </div>
         )}
       </div>
