@@ -523,8 +523,13 @@ export async function POST(request: NextRequest) {
     }
 
     // ---- 8. Build LLM ----
+    // Strip /chat/completions from the stored API URL if present
+    // createOpenAI appends /chat/completions automatically
+    const baseUrl = chatModel.apiUrl
+      .replace(/\/chat\/completions\/?$/i, '')
+      .replace(/\/$/, '');
     const customProvider = createOpenAI({
-      baseURL: chatModel.apiUrl.replace(/\/$/, '') + '/',
+      baseURL: baseUrl,
       apiKey: chatModel.apiKey,
     });
     const llm = customProvider.chat(chatModel.modelId);
