@@ -162,6 +162,54 @@ CREATE TABLE IF NOT EXISTS workspaces (
   INDEX idx_updated_at (updated_at),
   INDEX idx_name (name)
 );
+
+-- Agent 定义表
+CREATE TABLE IF NOT EXISTS agents (
+  id VARCHAR(36) PRIMARY KEY,
+  user_id VARCHAR(36) NOT NULL,
+  name VARCHAR(200) NOT NULL,
+  description TEXT DEFAULT '',
+  system_prompt LONGTEXT NOT NULL,
+  model_id VARCHAR(36) NOT NULL,
+  tools TEXT NOT NULL,
+  temperature REAL DEFAULT 0.7,
+  max_tokens INT DEFAULT 4096,
+  max_tool_roundtrips INT DEFAULT 10,
+  enabled TINYINT(1) DEFAULT 1,
+  created_at BIGINT NOT NULL,
+  updated_at BIGINT NOT NULL,
+  INDEX idx_user_id (user_id),
+  INDEX idx_enabled (enabled)
+);
+
+-- Agent 会话表
+CREATE TABLE IF NOT EXISTS agent_sessions (
+  id VARCHAR(36) PRIMARY KEY,
+  user_id VARCHAR(36) NOT NULL,
+  agent_id VARCHAR(36) NOT NULL,
+  title VARCHAR(200) DEFAULT '新对话',
+  created_at BIGINT NOT NULL,
+  updated_at BIGINT NOT NULL,
+  INDEX idx_user_id (user_id),
+  INDEX idx_agent_id (agent_id),
+  INDEX idx_updated_at (updated_at)
+);
+
+-- Agent 消息表
+CREATE TABLE IF NOT EXISTS agent_messages (
+  id VARCHAR(36) PRIMARY KEY,
+  session_id VARCHAR(36) NOT NULL,
+  role VARCHAR(20) NOT NULL,
+  content LONGTEXT,
+  tool_calls TEXT,
+  tool_call_id VARCHAR(100),
+  tool_name VARCHAR(100),
+  is_error TINYINT(1) DEFAULT 0,
+  token_count INT DEFAULT 0,
+  created_at BIGINT NOT NULL,
+  INDEX idx_session_id (session_id),
+  INDEX idx_created_at (created_at)
+);
 `;
 
 // 创建图像渠道表（在 initializeDatabase 中调用）

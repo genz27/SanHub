@@ -20,7 +20,8 @@ import {
   Ticket,
   UserPlus,
   Coins,
-  Key
+  Key,
+  Bot
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -41,6 +42,7 @@ const navItems: NavItem[] = [
   { href: '/admin/users', label: '用户管理', icon: Users, roles: ['admin', 'moderator'] },
   { href: '/admin/generations', label: '生成记录', icon: History, roles: ['admin'] },
   { href: '/admin/models', label: '聊天模型', icon: MessageSquare, roles: ['admin'] },
+  { href: '/admin/agents', label: 'AI Agent', icon: Bot, roles: ['admin'] },
   { href: '/admin/image-channels', label: '图像渠道', icon: Image, roles: ['admin'] },
   { href: '/admin/video-channels', label: '视频渠道', icon: Video, roles: ['admin'] },
   { href: '/admin/redemption', label: '卡密管理', icon: Ticket, roles: ['admin', 'moderator'] },
