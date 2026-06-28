@@ -217,9 +217,9 @@ export default function AgentListPage() {
       {/* ---- header ---- */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-extralight text-foreground">AI 助手</h1>
+          <h1 className="text-3xl font-extralight text-foreground">Agent</h1>
           <p className="text-foreground/50 mt-1 font-light">
-            管理和配置您的 AI 助手，自定义行为和能力
+            管理和配置您的 AI Agent，自定义行为和能力
           </p>
         </div>
         <button
@@ -242,7 +242,7 @@ export default function AgentListPage() {
         <div className="text-center py-16 bg-card/60 border border-border/70 rounded-2xl">
           <Bot className="w-12 h-12 mx-auto text-foreground/20 mb-3" />
           <p className="text-foreground/70">暂无可用的 Agent</p>
-          <p className="text-foreground/30 text-sm mt-1">点击“新建 Agent”创建您的第一个 AI 助手</p>
+          <p className="text-foreground/30 text-sm mt-1">点击“新建 Agent”创建您的第一个 AI Agent</p>
         </div>
       ) : (
         /* ---- grid ---- */

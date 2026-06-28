@@ -34,7 +34,7 @@ function formatRelativeTime(timestamp: number | null): string {
 const navItems = [
   { href: '/create', icon: Sparkles, label: '创作', description: '图片 / 视频统一入口', badge: 'AI', isAI: true },
   { href: '/video/character-card', icon: User, label: '角色卡生成', description: '从视频提取角色', badge: 'NEW', isAI: true },
-  { href: '/agents', icon: Bot, label: 'AI 助手', description: '智能 AI Agent 对话', badge: 'NEW', isAI: true },
+  { href: '/agents', icon: Bot, label: 'Agent', description: '智能 AI 代理', badge: 'NEW', isAI: true },
   { href: '/square', icon: LayoutGrid, label: '广场', description: '探索社区创作', badge: 'HOT', isAI: false },
   { href: '/history', icon: History, label: '历史', description: '作品记录', badge: null, isAI: false },
   { href: '/settings', icon: Settings, label: '设置', description: '账号管理', badge: null, isAI: false },
