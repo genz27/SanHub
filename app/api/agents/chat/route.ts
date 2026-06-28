@@ -131,6 +131,7 @@ export async function POST(request: NextRequest) {
     const agentId = String(body.agentId || 'creative-assistant').trim();
     const userMessage = String(body.message || '').trim();
     const images: string[] = Array.isArray(body.images) ? body.images : [];
+    const incomingSessionId = String(body.sessionId || '').trim();
     if (!userMessage && images.length === 0) return new Response(JSON.stringify({ error: '请输入消息' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
 
     await assertPromptsAllowed([userMessage]);
@@ -148,18 +149,45 @@ export async function POST(request: NextRequest) {
     if (user.disabled) return new Response(JSON.stringify({ error: '账号已被禁用' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
     if (user.balance < chatModel.costPerMessage) return new Response(JSON.stringify({ error: `余额不足，需要 ${chatModel.costPerMessage} 积分` }), { status: 402, headers: { 'Content-Type': 'application/json' } });
 
-    // Session
-    const titlePrefix = userMessage.slice(0, 50).replace(/\n/g, ' ');
-    const chatSession = await createChatSession(session.user.id, chatModel.modelId, `Agent: ${titlePrefix}`);
-    const sessionId = chatSession.id;
-    await saveChatMessage({ sessionId, role: 'user', content: userMessage, images: images.length > 0 ? images : undefined, tokenCount: Math.ceil(userMessage.length / 2) }).catch(() => {});
-
     // API config
     const apiUrl = chatModel.apiUrl.replace(/\/chat\/completions\/?$/i, '').replace(/\/$/, '') + '/chat/completions';
     const apiKey = chatModel.apiKey;
     const modelId = chatModel.modelId;
 
-    // Build system + user messages
+    // Session handling — reuse if sessionId provided, otherwise create new
+    const titlePrefix = userMessage.slice(0, 50).replace(/\n/g, ' ');
+    let chatSessionId: string;
+    let existingMessages: any[] = [];
+
+    if (incomingSessionId) {
+      // Load existing session messages via DB
+      try {
+        const { getSessionMessages } = await import('@/lib/db');
+        const msgs = await getSessionMessages(incomingSessionId);
+        if (msgs.length > 0) {
+          chatSessionId = incomingSessionId;
+          existingMessages = msgs.map((m: any) => ({
+            role: m.role,
+            content: m.content,
+          }));
+        } else {
+          // Session exists but no messages, create new one
+          const chatSession = await createChatSession(session.user.id, chatModel.modelId, `Agent: ${titlePrefix || preset.name}`);
+          chatSessionId = chatSession.id;
+        }
+      } catch {
+        const chatSession = await createChatSession(session.user.id, chatModel.modelId, `Agent: ${titlePrefix || preset.name}`);
+        chatSessionId = chatSession.id;
+      }
+    } else {
+      const chatSession = await createChatSession(session.user.id, chatModel.modelId, `Agent: ${titlePrefix || preset.name}`);
+      chatSessionId = chatSession.id;
+    }
+
+    // Save user message
+    await saveChatMessage({ sessionId: chatSessionId, role: 'user', content: userMessage, images: images.length > 0 ? images : undefined, tokenCount: Math.ceil(userMessage.length / 2) }).catch(() => {});
+
+    // Build messages: system + existing history + new user message with image
     let userContent: any = userMessage;
     if (images.length > 0) {
       userContent = [{ type: 'text', text: userMessage }];
@@ -171,6 +199,7 @@ export async function POST(request: NextRequest) {
 
     const allMessages: any[] = [
       { role: 'system', content: preset.systemPrompt },
+      ...existingMessages,
       { role: 'user', content: userContent },
     ];
 
@@ -265,11 +294,11 @@ export async function POST(request: NextRequest) {
 
         // Save + deduct balance
         if (finalText) {
-          await saveChatMessage({ sessionId, role: 'assistant', content: finalText, tokenCount: Math.ceil(finalText.length / 2) }).catch(() => {});
+          await saveChatMessage({ sessionId: chatSessionId, role: 'assistant', content: finalText, tokenCount: Math.ceil(finalText.length / 2) }).catch(() => {});
           await updateUserBalance(session.user.id, -chatModel.costPerMessage, 'strict').catch(() => {});
         }
 
-        send('done', { type: 'done', sessionId, content: finalText });
+        send('done', { type: 'done', sessionId: chatSessionId, content: finalText });
       } catch (err: any) {
         console.error('[Agent] Error:', err);
         send('error', { type: 'error', error: err.message || '执行失败' });
