@@ -11,6 +11,7 @@
     "lint:fix": "next lint --fix"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^4.0.2",
     "@aws-sdk/client-s3": "^3.879.0",
     "@radix-ui/react-avatar": "^1.1.1",
     "@radix-ui/react-dialog": "^1.1.2",
@@ -20,11 +21,13 @@
     "@radix-ui/react-slot": "^1.1.0",
     "@radix-ui/react-tabs": "^1.1.1",
     "@radix-ui/react-toast": "^1.2.2",
+    "ai": "^7.0.4",
     "bcryptjs": "^2.4.3",
     "better-sqlite3": "^12.5.0",
     "browser-image-compression": "^2.0.2",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
+    "eve": "^0.16.2",
     "lucide-react": "^0.460.0",
     "mysql2": "^3.20.0",
     "next": "^14.2.33",
@@ -35,7 +38,8 @@
     "rehype-highlight": "^7.0.2",
     "remark-gfm": "^4.0.1",
     "tailwind-merge": "^2.5.4",
-    "undici": "^6.22.0"
+    "undici": "^6.22.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
