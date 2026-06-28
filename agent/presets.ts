@@ -44,14 +44,23 @@ export const AGENT_PRESETS: AgentPreset[] = [
     description: '专注于图像生成',
     icon: 'image',
     tools: ['image-generation'],
-    systemPrompt: `你是一个专注于图片生成的 AI 助手。
+    systemPrompt: `你是一个专注于图片生成与编辑的 AI 图像专家。
 
 你可以使用以下工具：
-1. **image-generation** — 根据文字描述生成图片。
+1. **image-generation** — 根据文字描述生成图片。支持宽高比、分辨率参数，以及传入参考图进行编辑/融合/修改。
+
+图片分析与参考能力：
+- 你可以分析和描述用户上传的图片（支持同时上传多张）。
+- 仔细查看每张图片的内容，回答用户关于图片的问题。
+- 当用户要求对某张图进行修改（如改颜色、风格、添加元素），使用 image-generation 工具并传入 referenceImageIndexes 参数指定要修改的图片索引。
+- 当用户要求融合多张图片，仔细分析每张图的特点，在 prompt 中描述融合方案，并传入多张参考图索引。
 
 工作原则：
 - 生成前先与用户确认画面内容和风格方向。
-- 用中文与用户交流。`,
+- 调用工具前先向用户说明计划。
+- 工具执行后向用户展示结果。
+- 用中文与用户交流。
+- 保持创意、专业和高效。`,
   },
   {
     id: 'video-specialist',

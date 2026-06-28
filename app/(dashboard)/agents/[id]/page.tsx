@@ -43,11 +43,7 @@ export default function AgentChatPage() {
   const streamRef = useRef<AbortController | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Load sessions on mount
-  useEffect(() => {
-    loadSessions();
-  }, [agentId]);
+  const lastSentRef = useRef<{ text: string; images: string[] } | null>(null);
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -55,6 +51,7 @@ export default function AgentChatPage() {
       listRef.current.scrollTop = listRef.current.scrollHeight;
     }
   }, [messages]);
+
 
   // Load session messages when switching session
   const loadSessionMessages = useCallback(async (sid: string) => {
@@ -93,15 +90,24 @@ export default function AgentChatPage() {
     }
   }, [agentId]);
 
+  // Load sessions on mount
+  useEffect(() => { loadSessions(); }, [loadSessions]);
+
   const deleteSession = useCallback(async (sid: string) => {
     try {
-      await fetch(`/api/chat/sessions/${sid}`, { method: 'DELETE' });
+      const res = await fetch(`/api/chat/sessions/${sid}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || '删除失败');
+      }
       setSessions((prev) => prev.filter((s) => s.id !== sid));
       if (sessionId === sid) {
         setSessionId(null);
         setMessages([]);
       }
-    } catch {}
+    } catch (err: any) {
+      toast({ title: '删除失败', description: err.message, variant: 'destructive' });
+    }
   }, [sessionId]);
 
   const newSession = useCallback(() => {
@@ -136,6 +142,8 @@ export default function AgentChatPage() {
   const sendMessage = useCallback(async () => {
     const text = input.trim();
     if ((!text && pendingImages.length === 0) || streaming) return;
+    // Preserve for retry
+    lastSentRef.current = { text, images: [...pendingImages] };
     setInput('');
 
     const userMsg: ChatMessage = {
@@ -416,7 +424,13 @@ export default function AgentChatPage() {
               </div>
               <div>
                 <button
-                  onClick={sendMessage}
+                  onClick={() => {
+                    if (lastSentRef.current) {
+                      setInput(lastSentRef.current.text);
+                      setPendingImages(lastSentRef.current.images);
+                      setError('');
+                    }
+                  }}
                   className="text-xs text-foreground/50 hover:text-foreground underline"
                 >
                   重试

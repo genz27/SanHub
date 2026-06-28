@@ -20,8 +20,7 @@ export async function GET(request: Request) {
     const allSessions = await getUserChatSessions(session.user.id);
 
     const agentSessions = allSessions.filter(s =>
-      s.title.startsWith(`Agent:${agentId}:`) ||
-      s.title.startsWith(`Agent:`)
+      s.title.startsWith(`Agent:${agentId}:`)
     );
 
     return NextResponse.json({ success: true, data: agentSessions });

@@ -15,8 +15,7 @@ import type { ChatModel } from '@/types';
 export const maxDuration = 600;
 export const dynamic = 'force-dynamic';
 
-// Module-level store for uploaded images (per-request, accessed by tool executors)
-let requestImages: string[] = [];
+// (requestImages race condition removed — images now passed as parameter)
 
 // ========================================
 // Tool Definitions (OpenAI-format JSON Schema)
@@ -80,7 +79,7 @@ const TOOL_DEFINITIONS: Record<string, any> = {
 // Tool Executors
 // ========================================
 
-async function execImageGeneration(args: any): Promise<any> {
+async function execImageGeneration(args: any, reqImages: string[]): Promise<any> {
   const models = await getImageModels(true);
   if (models.length === 0) throw new Error('没有可用的图片生成模型');
   const targetModel = models[0];
@@ -90,7 +89,7 @@ async function execImageGeneration(args: any): Promise<any> {
   if (Array.isArray(args.referenceImageIndexes)) {
     const refs: string[] = [];
     for (const idx of args.referenceImageIndexes) {
-      if (requestImages[idx]) refs.push(requestImages[idx]);
+      if (reqImages[idx]) refs.push(reqImages[idx]);
     }
     if (refs.length > 0) {
       images = refs.map((dataUrl: string) => {
@@ -153,7 +152,6 @@ export async function POST(request: NextRequest) {
     const agentId = String(body.agentId || 'creative-assistant').trim();
     const userMessage = String(body.message || '').trim();
     const images: string[] = Array.isArray(body.images) ? body.images : [];
-    requestImages = images; // Store for tool executors
     const incomingSessionId = String(body.sessionId || '').trim();
     if (!userMessage && images.length === 0) return new Response(JSON.stringify({ error: '请输入消息' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
 
@@ -195,15 +193,15 @@ export async function POST(request: NextRequest) {
           }));
         } else {
           // Session exists but no messages, create new one
-          const chatSession = await createChatSession(session.user.id, chatModel.modelId, `Agent: ${titlePrefix || preset.name}`);
+          const chatSession = await createChatSession(session.user.id, chatModel.modelId, `Agent:${agentId}: ${titlePrefix || preset.name}`);
           chatSessionId = chatSession.id;
         }
       } catch {
-        const chatSession = await createChatSession(session.user.id, chatModel.modelId, `Agent: ${titlePrefix || preset.name}`);
+        const chatSession = await createChatSession(session.user.id, chatModel.modelId, `Agent:${agentId}: ${titlePrefix || preset.name}`);
         chatSessionId = chatSession.id;
       }
     } else {
-      const chatSession = await createChatSession(session.user.id, chatModel.modelId, `Agent: ${titlePrefix || preset.name}`);
+      const chatSession = await createChatSession(session.user.id, chatModel.modelId, `Agent:${agentId}: ${titlePrefix || preset.name}`);
       chatSessionId = chatSession.id;
     }
 
@@ -232,7 +230,11 @@ export async function POST(request: NextRequest) {
       { role: 'user', content: userContent },
     ];
 
-    const enabledTools = preset.tools.map((t) => TOOL_DEFINITIONS[t]).filter(Boolean);
+    const enabledTools = preset.tools.map((t) => {
+      const def = TOOL_DEFINITIONS[t];
+      if (!def) console.warn(`[Agent] 工具 "${t}" 未找到定义`);
+      return def;
+    }).filter(Boolean);
 
     // SSE setup
     const encoder = new TextEncoder();
@@ -281,8 +283,8 @@ export async function POST(request: NextRequest) {
           finalText += content;
           send('text', { type: 'text', content: finalText });
 
-          // Add assistant response to messages
-          const assistantMsg: any = { role: 'assistant', content };
+          // Add assistant response to messages (preserve null content for tool-only messages)
+          const assistantMsg: any = { role: 'assistant', content: choice.content };
           if (toolCalls && toolCalls.length > 0) {
             assistantMsg.tool_calls = toolCalls;
           }
@@ -304,7 +306,7 @@ export async function POST(request: NextRequest) {
             let isError = false;
             try {
               switch (toolName) {
-                case 'image-generation': result = await execImageGeneration(args); break;
+                case 'image-generation': result = await execImageGeneration(args, images); break;
                 case 'video-generation': result = await execVideoGeneration(args); break;
                 case 'text-transform': result = execTextTransform(args); break;
                 default: throw new Error(`未知工具: ${toolName}`);
