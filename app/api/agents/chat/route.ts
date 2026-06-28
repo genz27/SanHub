@@ -15,6 +15,9 @@ import type { ChatModel } from '@/types';
 export const maxDuration = 600;
 export const dynamic = 'force-dynamic';
 
+// Module-level store for uploaded images (per-request, accessed by tool executors)
+let requestImages: string[] = [];
+
 // ========================================
 // Tool Definitions (OpenAI-format JSON Schema)
 // ========================================
@@ -24,13 +27,14 @@ const TOOL_DEFINITIONS: Record<string, any> = {
     type: 'function',
     function: {
       name: 'image-generation',
-      description: '根据文字描述生成图片。支持指定宽高比和分辨率档位。',
+      description: '根据文字描述生成图片。支持指定宽高比和分辨率档位，可选传入参考图进行编辑/融合/修改。',
       parameters: {
         type: 'object',
         properties: {
-          prompt: { type: 'string', description: '图片内容描述，应详细描述画面内容、风格、色调等' },
+          prompt: { type: 'string', description: '图片内容描述，应详细描述画面内容、风格、色调等。如果要基于参考图修改，请描述修改方式' },
           aspectRatio: { type: 'string', enum: ['1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3'], description: '画面宽高比' },
           imageSize: { type: 'string', description: '图片分辨率档位，如 1K、2K、4K' },
+          referenceImageIndexes: { type: 'array', items: { type: 'integer' }, description: '要作为参考图的用户上传图片索引（从0开始）。需要编辑/修改某张图时传入对应索引' },
         },
         required: ['prompt'],
       },
@@ -80,14 +84,32 @@ async function execImageGeneration(args: any): Promise<any> {
   const models = await getImageModels(true);
   if (models.length === 0) throw new Error('没有可用的图片生成模型');
   const targetModel = models[0];
+
+  // Collect reference images by index if specified
+  let images: Array<{ mimeType: string; data: string }> | undefined;
+  if (Array.isArray(args.referenceImageIndexes)) {
+    const refs: string[] = [];
+    for (const idx of args.referenceImageIndexes) {
+      if (requestImages[idx]) refs.push(requestImages[idx]);
+    }
+    if (refs.length > 0) {
+      images = refs.map((dataUrl: string) => {
+        const match = dataUrl.match(/^data:(image\/\w+);base64,/);
+        return { mimeType: match ? match[1] : 'image/png', data: dataUrl.replace(/^data:image\/\w+;base64,/, '') };
+      });
+    }
+  }
+
   const result = await generateImageFromLib({
     modelId: targetModel.id, prompt: args.prompt,
     aspectRatio: args.aspectRatio || targetModel.defaultAspectRatio,
     imageSize: args.imageSize,
+    images,
     idempotencyKey: `agent-img-${generateId()}`,
   });
-  const savedUrl = await saveMediaAsync(`agent-img-${generateId()}`, result.url);
-  return { url: savedUrl, revised_prompt: result.revised_prompt };
+  let savedUrl = '';
+  try { savedUrl = await saveMediaAsync(`agent-img-${generateId()}`, result.url); } catch {}
+  return { url: savedUrl || result.url, revised_prompt: result.revised_prompt };
 }
 
 async function execVideoGeneration(args: any): Promise<any> {
@@ -99,8 +121,8 @@ async function execVideoGeneration(args: any): Promise<any> {
   );
   const videoUrl = result.data?.[0]?.url;
   let savedUrl = '';
-  if (videoUrl) savedUrl = await saveMediaAsync(`agent-vid-${generateId()}`, videoUrl);
-  return { taskId: result.id, url: savedUrl, message: savedUrl ? `视频已生成: ${savedUrl}` : '视频正在后台处理中' };
+  if (videoUrl) { try { savedUrl = await saveMediaAsync(`agent-vid-${generateId()}`, videoUrl); } catch {} }
+  return { taskId: result.id, url: savedUrl || videoUrl, message: (savedUrl || videoUrl) ? `视频已生成` : '视频正在后台处理中' };
 }
 
 function execTextTransform(args: any): any {
@@ -131,6 +153,7 @@ export async function POST(request: NextRequest) {
     const agentId = String(body.agentId || 'creative-assistant').trim();
     const userMessage = String(body.message || '').trim();
     const images: string[] = Array.isArray(body.images) ? body.images : [];
+    requestImages = images; // Store for tool executors
     const incomingSessionId = String(body.sessionId || '').trim();
     if (!userMessage && images.length === 0) return new Response(JSON.stringify({ error: '请输入消息' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
 
