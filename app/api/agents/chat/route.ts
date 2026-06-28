@@ -295,6 +295,7 @@ export async function POST(request: NextRequest) {
 
           // Execute tool calls
           send('processing', { type: 'processing', status: 'executing_tools' });
+          let toolGotResult = false;
           for (const tc of toolCalls) {
             const toolName = tc.function.name;
             let args: any = {};
@@ -320,14 +321,27 @@ export async function POST(request: NextRequest) {
 
             // Push tool result for next LLM turn
             currentMessages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(result) });
+
+            if (result?.url) {
+              toolGotResult = true;
+              const resultText = result.revised_prompt
+                ? `![生成结果](${result.url})\n\n${result.revised_prompt}`
+                : `![生成结果](${result.url})`;
+              finalText += resultText;
+              send('text', { type: 'text', content: finalText });
+            }
           }
+
+          // If tools returned results, we're done — skip the second LLM call
+          // to avoid getting stuck when model doesn't support tool-result chaining
+          if (toolGotResult) break;
         }
 
-        // Save + deduct balance
+        // Save + deduct balance (always save+deduct if we generated something or ran tools)
         if (finalText) {
           await saveChatMessage({ sessionId: chatSessionId, role: 'assistant', content: finalText, tokenCount: Math.ceil(finalText.length / 2) }).catch(() => {});
-          await updateUserBalance(session.user.id, -chatModel.costPerMessage, 'strict').catch(() => {});
         }
+        await updateUserBalance(session.user.id, -chatModel.costPerMessage, 'strict').catch(() => {});
 
         send('done', { type: 'done', sessionId: chatSessionId, content: finalText });
       } catch (err: any) {
