@@ -590,11 +590,12 @@ export function VideoGenerationView({
     };
   }, []);
 
-  // Auto-resize textarea height when prompt changes
+  // Auto-resize textarea height when prompt changes, capped at 200px
   useEffect(() => {
     if (promptTextareaRef.current) {
+      const maxH = 200;
       promptTextareaRef.current.style.height = 'auto';
-      promptTextareaRef.current.style.height = promptTextareaRef.current.scrollHeight + 'px';
+      promptTextareaRef.current.style.height = Math.min(promptTextareaRef.current.scrollHeight, maxH) + 'px';
     }
   }, [prompt]);
 
@@ -990,7 +991,7 @@ export function VideoGenerationView({
                 onChange={(e) => handlePromptChange(e, setPrompt)}
                 onKeyUp={canMentionCharacterCards ? handlePromptKeyUp : undefined}
                 placeholder={isSoraChannel ? '描述视频动态，或拖入图片生成图生视频... 输入 @ 引用角色卡' : '描述视频动态，或拖入图片生成图生视频...'}
-                className="w-full px-3 py-2 bg-input/70 border border-border/70 text-foreground rounded-lg resize-none text-sm min-h-[80px] focus:outline-none focus:border-border focus:ring-2 focus:ring-ring/30"
+                className="w-full px-3 py-2 bg-input/70 border border-border/70 text-foreground rounded-lg resize-none text-sm min-h-[80px] max-h-[200px] focus:outline-none focus:border-border focus:ring-2 focus:ring-ring/30 overflow-y-auto"
               />
 
               {/* Character count */}

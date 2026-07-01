@@ -164,12 +164,13 @@ export function ImageGenerationPage({
     };
   }, []);
 
-  // Auto-height textarea: grow as content grows
+  // Auto-height textarea: grow as content grows, capped at 200px
   useEffect(() => {
     const textarea = promptTextareaRef.current;
     if (!textarea) return;
+    const maxH = 200;
     textarea.style.height = '0px';
-    textarea.style.height = `${textarea.scrollHeight}px`;
+    textarea.style.height = `${Math.min(textarea.scrollHeight, maxH)}px`;
   }, [prompt]);
 
   const modelsCacheRef = useRef<SafeImageModel[] | null>(null);
@@ -892,7 +893,7 @@ export function ImageGenerationPage({
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 placeholder="描述你想要生成的图像..."
-                className="w-full min-h-[80px] px-3 py-2 bg-input/70 border border-border/70 text-foreground rounded-lg resize-none text-sm focus:outline-none focus:border-border focus:ring-2 focus:ring-ring/30 overflow-hidden"
+                className="w-full min-h-[80px] max-h-[200px] px-3 py-2 bg-input/70 border border-border/70 text-foreground rounded-lg resize-none text-sm focus:outline-none focus:border-border focus:ring-2 focus:ring-ring/30 overflow-y-auto"
               />
               <div className="absolute bottom-1.5 right-2 text-xs text-foreground/40 pointer-events-none select-none">
                 {prompt.length}
