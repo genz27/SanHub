@@ -73,7 +73,7 @@ function CreateModeSwitcher({
   onChange: (mode: CreateMode) => void;
 }) {
   return (
-    <div className="relative inline-flex w-full flex-wrap items-center gap-1 rounded-md border border-border bg-secondary p-1 sm:w-auto sm:flex-nowrap">
+    <div className="relative inline-flex w-full items-center rounded-lg border border-white/10 bg-white/[0.03] p-1 sm:w-auto">
       {CREATE_TABS.map((tab) => {
         const isActive = mode === tab.id;
 
@@ -85,8 +85,8 @@ function CreateModeSwitcher({
             className={cn(
               'relative flex h-8 min-w-0 flex-1 items-center justify-center gap-2 rounded-md px-3 text-xs font-medium sm:min-w-[120px]',
               isActive
-                ? 'bg-foreground text-background'
-                : 'text-muted-foreground hover:text-foreground'
+                ? 'bg-foreground text-background shadow-sm'
+                : 'text-muted-foreground hover:bg-white/[0.04] hover:text-foreground'
             )}
           >
             <tab.icon className="h-3.5 w-3.5 shrink-0" />

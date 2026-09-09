@@ -7,8 +7,8 @@ import {
   ExternalLink,
   Image as ImageIcon,
   Loader2,
-  Play,
   Trash2,
+  Video,
   X,
 } from 'lucide-react';
 import type { Generation } from '@/types';
@@ -125,46 +125,63 @@ export function ResultGalleryLightbox({
 
             <aside className="flex w-full shrink-0 flex-col border-t border-border/70 md:max-w-[380px] md:border-l md:border-t-0">
               <div className="flex-1 min-h-0 space-y-4 overflow-y-auto p-4 md:p-5">
-                <div className="flex flex-wrap gap-2">
+                <div className="space-y-3">
                   {canReuse && onReuseGeneration && (
-                    <>
-                      <button
-                        onClick={() => onReuseGeneration(selected, 'image')}
-                        className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-border/70 bg-card/60 px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-card/80"
-                      >
-                        <ImageIcon className="w-4 h-4" />
-                        图片创作
-                      </button>
-                      <button
-                        onClick={() => onReuseGeneration(selected, 'video')}
-                        className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-border/70 bg-card/60 px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-card/80"
-                      >
-                        <Play className="w-4 h-4" />
-                        视频创作
-                      </button>
-                    </>
+                    <div className="space-y-2">
+                      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/35">
+                        以此继续
+                      </p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => onReuseGeneration(selected, 'image')}
+                          className="group flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 text-left transition-colors hover:border-white/20 hover:bg-white/[0.06]"
+                        >
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-foreground/8 text-foreground/70 group-hover:text-foreground">
+                            <ImageIcon className="h-4 w-4" />
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block text-sm font-medium text-foreground">图片创作</span>
+                            <span className="block text-[11px] text-muted-foreground">用此图继续出图</span>
+                          </span>
+                        </button>
+                        <button
+                          onClick={() => onReuseGeneration(selected, 'video')}
+                          className="group flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 text-left transition-colors hover:border-white/20 hover:bg-white/[0.06]"
+                        >
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-foreground/8 text-foreground/70 group-hover:text-foreground">
+                            <Video className="h-4 w-4" />
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block text-sm font-medium text-foreground">视频创作</span>
+                            <span className="block text-[11px] text-muted-foreground">用此图生成视频</span>
+                          </span>
+                        </button>
+                      </div>
+                    </div>
                   )}
-                  <button
-                    onClick={() => openAssetInNewTab(selected.resultUrl)}
-                    className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-foreground px-4 py-2.5 text-sm font-medium text-background transition-colors hover:opacity-90"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                    打开
-                  </button>
-                  {onRemoveGeneration && (
+                  <div className="flex gap-2">
                     <button
-                      onClick={() => onRemoveGeneration(selected)}
-                      disabled={busyGenerationId === selected.id}
-                      className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm font-medium text-red-300 transition-colors hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-70"
+                      onClick={() => openAssetInNewTab(selected.resultUrl)}
+                      className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-foreground text-sm font-medium text-background transition-opacity hover:opacity-90"
                     >
-                      {busyGenerationId === selected.id ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="w-4 h-4" />
-                      )}
-                      删除
+                      <ExternalLink className="h-4 w-4" />
+                      打开
                     </button>
-                  )}
+                    {onRemoveGeneration && (
+                      <button
+                        onClick={() => onRemoveGeneration(selected)}
+                        disabled={busyGenerationId === selected.id}
+                        className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3.5 text-sm font-medium text-red-300 transition-colors hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-70"
+                      >
+                        {busyGenerationId === selected.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                        删除
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="space-y-1">

@@ -22,6 +22,8 @@
     --input: 0 0% 8%;
     --ring: 0 0% 100%;
     --radius: 0.5rem;
+    --glow-a: 222 47% 56%;
+    --glow-b: 188 62% 46%;
     --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     --font-mono: var(--font-geist-mono), "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
   }
@@ -181,5 +183,99 @@
   }
   .btn-premium-glow {
     @apply transition-opacity hover:opacity-90;
+  }
+}
+
+@keyframes atmosphere-drift {
+  from {
+    transform: translate3d(-1.5%, -1%, 0) scale(1);
+  }
+  to {
+    transform: translate3d(1.8%, 1.6%, 0) scale(1.06);
+  }
+}
+
+.atmosphere-stage {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 28%, hsl(228 32% 7%), transparent 70%),
+    hsl(var(--background));
+}
+
+.atmosphere-aurora {
+  position: absolute;
+  inset: -22%;
+  background:
+    radial-gradient(ellipse 58% 46% at 50% 12%, hsl(0 0% 100% / 0.18), transparent 55%),
+    radial-gradient(ellipse 46% 40% at 12% 28%, hsl(var(--glow-a) / 0.46), transparent 60%),
+    radial-gradient(ellipse 44% 38% at 88% 36%, hsl(var(--glow-b) / 0.32), transparent 62%),
+    radial-gradient(ellipse 32% 26% at 50% 72%, hsl(var(--glow-a) / 0.16), transparent 70%);
+  filter: blur(8px);
+  animation: atmosphere-drift 32s ease-in-out infinite alternate;
+}
+
+.atmosphere-auth .atmosphere-aurora {
+  opacity: 0.58;
+}
+
+.atmosphere-beam {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: min(80rem, 140vw);
+  height: 34rem;
+  transform: translateX(-50%);
+  background: radial-gradient(ellipse at 50% 8%, hsl(0 0% 100% / 0.3), transparent 70%);
+}
+
+.atmosphere-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, hsl(0 0% 100% / 0.075) 1px, transparent 1px),
+    linear-gradient(to bottom, hsl(0 0% 100% / 0.075) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(ellipse 72% 58% at 50% 32%, black 12%, transparent 74%);
+}
+
+.atmosphere-floor {
+  position: absolute;
+  left: -10%;
+  right: -10%;
+  bottom: -14%;
+  height: 58%;
+  background-image:
+    linear-gradient(to right, hsl(0 0% 100% / 0.12) 1px, transparent 1px),
+    linear-gradient(to bottom, hsl(0 0% 100% / 0.12) 1px, transparent 1px);
+  background-size: 80px 80px;
+  transform: perspective(720px) rotateX(58deg);
+  transform-origin: center top;
+  mask-image: linear-gradient(to bottom, hsl(0 0% 0% / 0.62), transparent 78%);
+}
+
+.atmosphere-auth .atmosphere-floor {
+  opacity: 0.4;
+}
+
+.atmosphere-noise {
+  position: absolute;
+  inset: 0;
+  opacity: 0.2;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.atmosphere-vignette {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at center, transparent 42%, hsl(0 0% 0% / 0.48) 100%),
+    linear-gradient(to bottom, hsl(0 0% 0% / 0.12), transparent 20%, transparent 68%, hsl(0 0% 0% / 0.62));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .atmosphere-aurora {
+    animation: none;
   }
 }
