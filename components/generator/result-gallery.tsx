@@ -46,6 +46,7 @@ interface ResultGalleryProps {
   onRemoveGeneration?: (generation: Generation) => void;
   onReuseGeneration?: (generation: Generation, target: 'image' | 'video') => void;
   onEditGeneration?: (generation: Generation) => void;
+  hasRegionDraft?: (generationId: string) => boolean;
   busyGenerationId?: string | null;
   clearingFailedTasks?: boolean;
 }
@@ -90,6 +91,7 @@ interface GenerationResultCardProps {
   onSelect: (generation: Generation) => void;
   onRemoveGeneration?: (generation: Generation) => void;
   onEditGeneration?: (generation: Generation) => void;
+  hasRegionDraft?: boolean;
 }
 
 const GenerationResultCard = memo(function GenerationResultCard({
@@ -100,6 +102,7 @@ const GenerationResultCard = memo(function GenerationResultCard({
   onSelect,
   onRemoveGeneration,
   onEditGeneration,
+  hasRegionDraft,
 }: GenerationResultCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -236,8 +239,8 @@ const GenerationResultCard = memo(function GenerationResultCard({
                 onEditGeneration(generation);
               }}
               className="w-8 h-8 bg-card/85 border border-border/80 rounded-lg flex items-center justify-center text-foreground/80 hover:text-sky-400 hover:bg-sky-500/10 hover:border-sky-500/30 backdrop-blur-sm transition-all duration-200 shadow-md"
-              title="区域编辑"
-              aria-label="区域编辑"
+              title={hasRegionDraft ? '继续编辑' : '区域编辑'}
+              aria-label={hasRegionDraft ? '继续编辑' : '区域编辑'}
             >
               <Pencil className="w-3.5 h-3.5" />
             </button>
@@ -277,6 +280,7 @@ export function ResultGallery({
   onRemoveGeneration,
   onReuseGeneration,
   onEditGeneration,
+  hasRegionDraft,
   busyGenerationId = null,
   clearingFailedTasks = false,
 }: ResultGalleryProps) {
@@ -497,6 +501,7 @@ export function ResultGallery({
                   onSelect={handleSelectGeneration}
                   onRemoveGeneration={onRemoveGeneration ? handleRemoveGeneration : undefined}
                   onEditGeneration={onEditGeneration ? handleEditGeneration : undefined}
+                  hasRegionDraft={hasRegionDraft?.(gen.id)}
                 />
               ))}
             </div>
@@ -514,6 +519,7 @@ export function ResultGallery({
           onCloseFailed={() => setSelectedFailedTask(null)}
           onReuseGeneration={onReuseGeneration ? handleReuseGeneration : undefined}
           onEditGeneration={onEditGeneration ? handleEditGeneration : undefined}
+          hasRegionDraft={Boolean(selected && hasRegionDraft?.(selected.id))}
           onRemoveGeneration={onRemoveGeneration ? handleRemoveGeneration : undefined}
         />
       )}

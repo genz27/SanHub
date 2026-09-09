@@ -56,6 +56,7 @@ export function ResultGalleryLightbox({
   onCloseFailed,
   onReuseGeneration,
   onEditGeneration,
+  hasRegionDraft = false,
   onRemoveGeneration,
 }: {
   selected: Generation | null;
@@ -66,6 +67,7 @@ export function ResultGalleryLightbox({
   onCloseFailed: () => void;
   onReuseGeneration?: (generation: Generation, target: 'image' | 'video') => void;
   onEditGeneration?: (generation: Generation) => void;
+  hasRegionDraft?: boolean;
   onRemoveGeneration?: (generation: Generation) => void;
 }) {
   if (!selected && !selectedFailedTask) return null;
@@ -139,9 +141,13 @@ export function ResultGalleryLightbox({
                         <Pencil className="h-4 w-4" />
                       </span>
                       <span className="min-w-0">
-                        <span className="block text-sm font-medium text-foreground">区域编辑</span>
+                        <span className="block text-sm font-medium text-foreground">
+                          {hasRegionDraft ? '继续编辑' : '区域编辑'}
+                        </span>
                         <span className="block text-[11px] text-muted-foreground">
-                          框选、画圈或选中后局部修改
+                          {hasRegionDraft
+                            ? '带回上次的框和说明'
+                            : '框选、画圈或选中后局部修改'}
                         </span>
                       </span>
                     </button>

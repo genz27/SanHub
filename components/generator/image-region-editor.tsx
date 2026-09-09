@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Check,
   Circle,
+  Eye,
   Loader2,
   MousePointer2,
   Square,
@@ -15,60 +16,38 @@ import type { Generation } from '@/types';
 import { toast } from '@/components/ui/toaster';
 import { toProxiedMediaUrl } from '@/lib/client-media-url';
 import {
-  canvasToFile,
   clampNormalizedRect,
   clientPointToNormalized,
-  fetchImageAsFile,
   fitContainSize,
   hitTestEllipse,
   hitTestRect,
-  loadImage,
   normalizeRect,
   type CanvasPoint,
   type NormalizedRect,
 } from '@/lib/image-canvas';
+import {
+  buildRegionPrompt,
+  createRegionId,
+  exportRegionEditImages,
+  paintRegionAnnotation,
+  regionColor,
+  type EditRegion,
+  type RegionEditDraft,
+} from '@/lib/region-edit-document';
 import { cn } from '@/lib/utils';
 
 export type RegionEditResult = {
   files: File[];
   prompt: string;
   aspectRatio?: string;
+  draft: RegionEditDraft;
 };
 
 type EditorTool = 'box' | 'circle' | 'select';
 type HandleId = 'nw' | 'ne' | 'sw' | 'se';
 
-type EditRegion = NormalizedRect & {
-  id: string;
-  shape: 'rect' | 'ellipse';
-  note: string;
-};
-
 const MIN_SIZE = 0.03;
 const HANDLE_SIZE = 10;
-const REGION_COLORS = ['#38bdf8', '#f59e0b', '#c084fc', '#4ade80', '#fb7185'];
-
-function regionColor(index: number): string {
-  return REGION_COLORS[index % REGION_COLORS.length];
-}
-
-function regionInstruction(region: EditRegion, globalNote: string): string {
-  return region.note.trim() || globalNote.trim() || '按整体说明修改此处';
-}
-
-function regionTarget(region: EditRegion, globalNote: string): string {
-  return regionInstruction(region, globalNote).replace(/^(改成|换成|改为)\s*/, '');
-}
-
-function describeRegionPlace(region: EditRegion): string {
-  const vertical = region.y < 0.34 ? '上部' : region.y + region.h > 0.66 ? '下部' : '中部';
-  const horizontal = region.x < 0.34 ? '左侧' : region.x + region.w > 0.66 ? '右侧' : '中间';
-  return `${vertical}${horizontal}`;
-}
-
-function createId(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
 
 function regionContains(region: EditRegion, point: CanvasPoint): boolean {
   return region.shape === 'ellipse' ? hitTestEllipse(point, region) : hitTestRect(point, region);
@@ -103,195 +82,36 @@ function resizeRegion(region: EditRegion, handle: HandleId, point: CanvasPoint):
   return { ...next, id: region.id, shape: region.shape, note: region.note };
 }
 
-function buildRegionPrompt(regions: EditRegion[], globalNote: string): string {
-  const count = regions.length;
-  const items = regions.map(
-    (region, index) =>
-      `${index + 1}. 把${describeRegionPlace(region)}第 ${index + 1} 处改成「${regionTarget(region, globalNote)}」`
-  );
-  const overall = globalNote.trim();
-
-  return [
-    '局部改字，不要重画整张图。',
-    '第一张是改字稿，框内已经是目标新字；第二张是原图，用来对齐构图和书法。',
-    ...items,
-    count > 1 ? `以上 ${count} 处都要改掉，不能只改一处，也不能留旧字。` : '框内必须是新字，不能留旧字。',
-    overall ? `补充：${overall}` : '',
-    '未框选的部分与原图一致。新字用原图手写风格。不要留下框、编号、白底或清单。',
-  ]
-    .filter(Boolean)
-    .join('\n');
-}
-
-function drawAnnotationLegend(
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-  regions: EditRegion[],
-  globalNote: string
-) {
-  const pad = Math.max(16, Math.round(width * 0.018));
-  const lineH = Math.max(22, Math.round(width * 0.022));
-  const lines = [
-    `必须全部改完：共 ${regions.length} 处`,
-    ...regions.map((region, index) => `${index + 1}. ${regionTarget(region, globalNote)}`),
-  ];
-
-  ctx.save();
-  ctx.font = `700 ${Math.round(lineH * 0.72)}px ui-sans-serif, system-ui, sans-serif`;
-  const textWidth = Math.max(...lines.map((line) => ctx.measureText(line).width));
-  const boxW = Math.min(width - pad * 2, textWidth + pad * 1.6);
-  const boxH = pad * 0.8 + lines.length * lineH;
-  const regionsAreHigh = regions.every((region) => region.y < 0.55);
-  const boxY = regionsAreHigh ? height - boxH - pad : pad;
-
-  ctx.fillStyle = 'rgba(15, 23, 42, 0.78)';
-  ctx.fillRect(pad, boxY, boxW, boxH);
-  ctx.textBaseline = 'top';
-  ctx.textAlign = 'left';
-  lines.forEach((line, index) => {
-    ctx.fillStyle = index === 0 ? '#f8fafc' : regionColor(index - 1);
-    ctx.fillText(line, pad * 1.35, boxY + pad * 0.45 + index * lineH, boxW - pad);
-  });
-  ctx.restore();
-}
-
-function fitLabelSize(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  maxWidth: number,
-  maxHeight: number
-): number {
-  let size = Math.min(maxHeight * 0.62, maxWidth * 0.48, 96);
-  while (size > 14) {
-    ctx.font = `700 ${Math.round(size)}px "KaiTi", "STKaiti", "Songti SC", serif`;
-    if (ctx.measureText(text).width <= maxWidth * 0.88) return size;
-    size -= 2;
-  }
-  return 14;
-}
-
-function drawReplacementInRegion(
-  ctx: CanvasRenderingContext2D,
-  region: EditRegion,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  text: string
-) {
-  ctx.save();
-  ctx.beginPath();
-  if (region.shape === 'ellipse') {
-    ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
-  } else {
-    ctx.rect(x, y, w, h);
-  }
-  ctx.fillStyle = 'rgba(250, 248, 242, 0.94)';
-  ctx.fill();
-
-  const label = text.slice(0, 24);
-  const fontSize = fitLabelSize(ctx, label, w, h);
-  ctx.fillStyle = '#1c1917';
-  ctx.font = `700 ${Math.round(fontSize)}px "KaiTi", "STKaiti", "Songti SC", serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(label, x + w / 2, y + h / 2, w * 0.9);
-  ctx.restore();
-}
-
-async function exportAnnotatedImage(
-  sourceUrl: string,
-  regions: EditRegion[],
-  globalNote: string
-): Promise<{ original: File; annotated: File }> {
-  const original = await fetchImageAsFile(sourceUrl, `original-${Date.now()}.png`);
-  const objectUrl = URL.createObjectURL(original);
-  let image: HTMLImageElement;
-  try {
-    image = await loadImage(objectUrl);
-  } finally {
-    URL.revokeObjectURL(objectUrl);
-  }
-  const canvas = document.createElement('canvas');
-  canvas.width = image.naturalWidth || image.width;
-  canvas.height = image.naturalHeight || image.height;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) {
-    throw new Error('Failed to create annotation canvas');
-  }
-
-  ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-  const stroke = Math.max(4, Math.round(canvas.width * 0.0045));
-  const badgeSize = Math.max(28, Math.round(canvas.width * 0.028));
-
-  drawAnnotationLegend(ctx, canvas.width, canvas.height, regions, globalNote);
-
-  regions.forEach((region, index) => {
-    const x = region.x * canvas.width;
-    const y = region.y * canvas.height;
-    const w = region.w * canvas.width;
-    const h = region.h * canvas.height;
-    const color = regionColor(index);
-
-    drawReplacementInRegion(ctx, region, x, y, w, h, regionInstruction(region, globalNote));
-
-    ctx.save();
-    ctx.strokeStyle = color;
-    ctx.lineWidth = stroke;
-    ctx.setLineDash([stroke * 2.2, stroke * 1.4]);
-    if (region.shape === 'ellipse') {
-      ctx.beginPath();
-      ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
-      ctx.stroke();
-    } else {
-      ctx.strokeRect(x, y, w, h);
-    }
-
-    ctx.setLineDash([]);
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.arc(x + 8 + badgeSize / 2, y + 8 + badgeSize / 2, badgeSize / 2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#ffffff';
-    ctx.font = `700 ${Math.round(badgeSize * 0.55)}px ui-sans-serif, system-ui, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(String(index + 1), x + 8 + badgeSize / 2, y + 8 + badgeSize / 2);
-    ctx.restore();
-  });
-
-  const annotated = await canvasToFile(
-    canvas,
-    `region-edit-${Date.now()}.jpg`,
-    'image/jpeg',
-    0.92
-  );
-  return { original, annotated };
-}
-
 export function ImageRegionEditor({
   generation,
+  draft = null,
   submitting = false,
   onClose,
+  onDraftChange,
   onApply,
   onApplyAndGenerate,
 }: {
   generation: Generation;
+  draft?: RegionEditDraft | null;
   submitting?: boolean;
   onClose: () => void;
+  onDraftChange?: (draft: RegionEditDraft) => void;
   onApply: (result: RegionEditResult) => void;
   onApplyAndGenerate: (result: RegionEditResult) => void | Promise<void>;
 }) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
+  const previewCanvasRef = useRef<HTMLCanvasElement>(null);
   const [tool, setTool] = useState<EditorTool>('box');
-  const [regions, setRegions] = useState<EditRegion[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [globalNote, setGlobalNote] = useState('');
+  const [regions, setRegions] = useState<EditRegion[]>(draft?.regions ?? []);
+  const [selectedId, setSelectedId] = useState<string | null>(draft?.regions[0]?.id ?? null);
+  const [globalNote, setGlobalNote] = useState(draft?.globalNote ?? '');
   const [fitted, setFitted] = useState({ width: 0, height: 0 });
   const [busy, setBusy] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [imageReady, setImageReady] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const dragRef = useRef<{
     mode: 'create' | 'move' | 'resize';
     id?: string;
@@ -302,6 +122,41 @@ export function ImageRegionEditor({
 
   const selected = regions.find((region) => region.id === selectedId) || null;
   const sourceUrl = toProxiedMediaUrl(`/api/media/${generation.id}`);
+
+  const onDraftChangeRef = useRef(onDraftChange);
+  const draftRef = useRef<RegionEditDraft>({ regions, globalNote });
+  onDraftChangeRef.current = onDraftChange;
+  draftRef.current = { regions, globalNote };
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      onDraftChangeRef.current?.(draftRef.current);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [globalNote, regions]);
+
+  useEffect(() => {
+    return () => {
+      onDraftChangeRef.current?.(draftRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    const image = imageRef.current;
+    const canvas = previewCanvasRef.current;
+    if (!imageReady || !image?.naturalWidth || !canvas) return;
+    const timer = window.setTimeout(() => {
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      const width = image.naturalWidth || image.width;
+      const height = image.naturalHeight || image.height;
+      canvas.width = width;
+      canvas.height = height;
+      paintRegionAnnotation(ctx, image, width, height, regions, globalNote);
+      setPreviewUrl(canvas.toDataURL('image/jpeg', 0.86));
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [globalNote, imageReady, regions]);
 
   const updateFitted = useCallback(() => {
     const viewport = viewportRef.current;
@@ -334,6 +189,10 @@ export function ImageRegionEditor({
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        if (previewOpen) {
+          setPreviewOpen(false);
+          return;
+        }
         onClose();
         return;
       }
@@ -346,7 +205,7 @@ export function ImageRegionEditor({
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [onClose, selectedId]);
+  }, [onClose, previewOpen, selectedId]);
 
   const toNormalized = useCallback(
     (event: React.PointerEvent<HTMLElement>, clampToImage = false): CanvasPoint | null => {
@@ -391,7 +250,7 @@ export function ImageRegionEditor({
       return;
     }
 
-    const id = createId();
+    const id = createRegionId();
     const shape = tool === 'circle' ? 'ellipse' : 'rect';
     const next: EditRegion = { id, shape, note: '', x: point.x, y: point.y, w: 0.01, h: 0.01 };
     dragRef.current = { mode: 'create', id, start: point, origin: next };
@@ -456,7 +315,7 @@ export function ImageRegionEditor({
 
     setBusy(true);
     try {
-      const { original, annotated } = await exportAnnotatedImage(sourceUrl, regions, globalNote);
+      const { original, annotated } = await exportRegionEditImages(sourceUrl, regions, globalNote);
       const aspectRatio =
         typeof generation.params?.aspectRatio === 'string'
           ? generation.params.aspectRatio
@@ -465,6 +324,7 @@ export function ImageRegionEditor({
         files: [annotated, original],
         prompt: buildRegionPrompt(regions, globalNote),
         aspectRatio,
+        draft: { regions, globalNote },
       };
     } catch (error) {
       toast({
@@ -490,12 +350,13 @@ export function ImageRegionEditor({
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-background/94 p-3 backdrop-blur-xl">
+      <canvas ref={previewCanvasRef} className="hidden" />
       <div className="flex h-full max-h-[56rem] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-border/70 bg-card/95 shadow-2xl">
         <div className="flex items-center justify-between gap-3 border-b border-border/70 px-4 py-3">
           <div>
             <p className="text-sm font-medium text-foreground">区域编辑</p>
             <p className="text-xs text-foreground/45">
-              框选并写好每处说明后，直接提交生成。不必先填到输入栏
+              选区会记住。提交前可预览标注稿，再改时会带回上次的框
             </p>
           </div>
           <button
@@ -551,7 +412,10 @@ export function ImageRegionEditor({
                 alt={generation.prompt || 'Region editor source'}
                 className="block h-full w-full"
                 draggable={false}
-                onLoad={updateFitted}
+                onLoad={() => {
+                  setImageReady(true);
+                  updateFitted();
+                }}
               />
               {regions.map((region, index) => {
                 const isSelected = region.id === selectedId;
@@ -600,9 +464,22 @@ export function ImageRegionEditor({
         <div className="space-y-3 border-t border-border/70 p-4">
           {regions.length > 0 && (
             <div className="space-y-2">
-              <p className="text-[11px] text-foreground/45">
-                将修改 {regions.length} 处，每处都要单独写清楚，生成时会全部提交
-              </p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] text-foreground/45">
+                  将修改 {regions.length} 处，关闭后再打开会带回这些框
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRegions([]);
+                    setSelectedId(null);
+                    setGlobalNote('');
+                  }}
+                  className="text-[11px] text-foreground/45 underline-offset-2 hover:text-foreground hover:underline"
+                >
+                  清空选区
+                </button>
+              </div>
               {regions.map((region, index) => (
                 <div key={region.id} className="flex items-center gap-2">
                   <span
@@ -648,6 +525,21 @@ export function ImageRegionEditor({
           />
 
           <div className="flex flex-wrap items-center justify-end gap-2">
+            {regions.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setPreviewOpen(true)}
+                className="mr-auto inline-flex h-10 items-center gap-2 rounded-lg border border-border/70 px-3 text-sm text-foreground/80 hover:bg-card"
+              >
+                <span className="relative h-8 w-8 overflow-hidden rounded-md border border-border/60 bg-background">
+                  {previewUrl ? (
+                    <img src={previewUrl} alt="" className="h-full w-full object-cover" />
+                  ) : null}
+                </span>
+                <Eye className="h-4 w-4" />
+                预览标注稿
+              </button>
+            )}
             <button
               type="button"
               disabled={busy || submitting}
@@ -674,6 +566,33 @@ export function ImageRegionEditor({
           </div>
         </div>
       </div>
+      {previewOpen && previewUrl && (
+        <div
+          className="absolute inset-0 z-20 flex items-center justify-center bg-background/80 p-4"
+          onClick={() => setPreviewOpen(false)}
+        >
+          <div
+            className="flex max-h-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-border/70 bg-card p-3 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <p className="text-sm text-foreground">模型将看到的标注稿</p>
+              <button
+                type="button"
+                onClick={() => setPreviewOpen(false)}
+                className="rounded-lg border border-border/70 p-1.5 text-foreground/70 hover:bg-background"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <img
+              src={previewUrl}
+              alt="Annotated region preview"
+              className="max-h-[70vh] w-auto rounded-xl object-contain"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
