@@ -19,7 +19,10 @@ import type { Task } from '@/components/generator/result-gallery';
 import { GenerationAdvancedPanel } from '@/components/generator/generation-advanced-panel';
 import { InlineToggle } from '@/components/generator/inline-toggle';
 import { OptionChipGroup } from '@/components/generator/option-chip-group';
-import { ReferenceImageInput } from '@/components/generator/reference-image-input';
+import {
+  ReferenceImageInput,
+  type ReferenceImageItem,
+} from '@/components/generator/reference-image-input';
 import { useSiteConfig } from '@/components/providers/site-config-provider';
 import { CustomSelect } from '@/components/ui/select-custom';
 import type { ReusableImageReference } from '@/lib/generation-reference';
@@ -136,7 +139,7 @@ export function ImageGenerationPage({
   const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
   const refreshGenerationFeedRef = useRef<(includeUsage?: boolean) => Promise<void>>(async () => {});
   const lastFeedResyncAtRef = useRef(0);
-  const imagesRef = useRef<Array<{ file: File; preview: string }>>([]);
+  const imagesRef = useRef<ReferenceImageItem[]>([]);
   const isActiveRef = useRef(isActive);
   const submissionLockRef = useRef(false);
   const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -158,7 +161,7 @@ export function ImageGenerationPage({
   const [imageSize, setImageSize] = useState<string>('1K');
   const [quality, setQuality] = useState<string>('medium');
   const [prompt, setPrompt] = useState('');
-  const [images, setImages] = useState<Array<{ file: File; preview: string }>>([]);
+  const [images, setImages] = useState<ReferenceImageItem[]>([]);
   const [generations, setGenerations] = useState<Generation[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const {
@@ -290,10 +293,18 @@ export function ImageGenerationPage({
     }
   }, [availableModels, clearImages, onClearExternalReference, selectedModelId]);
 
+  const externalReferenceId = externalReference?.generationId ?? null;
+
   useEffect(() => {
-    if (!externalReference || images.length === 0) return;
-    clearImages();
-  }, [clearImages, externalReference, images.length]);
+    if (!externalReferenceId) return;
+    setImages((prev) => {
+      if (prev.length === 0) return prev;
+      prev.forEach((img) => URL.revokeObjectURL(img.preview));
+      return [];
+    });
+    setCompressedCache(new Map());
+    setSketchPreview(null);
+  }, [externalReferenceId]);
 
   const handleAddReferenceFiles = useCallback(
     (selectedFiles: File[]) => {
@@ -368,7 +379,18 @@ export function ImageGenerationPage({
         return false;
       }
 
-      handleAddReferenceFiles(result.files);
+      onClearExternalReference?.();
+      setError('');
+      setCompressedCache(new Map());
+      setSketchPreview(null);
+      setImages((prev) => {
+        prev.forEach((img) => URL.revokeObjectURL(img.preview));
+        return result.files.map((file, index) => ({
+          file,
+          preview: URL.createObjectURL(file),
+          label: index === 0 ? '原图' : index === 1 ? '选区标注' : undefined,
+        }));
+      });
       setPrompt(result.prompt);
       if (result.aspectRatio) {
         setAspectRatio(result.aspectRatio);
@@ -376,7 +398,7 @@ export function ImageGenerationPage({
       setEditingGeneration(null);
       return true;
     },
-    [currentModel, handleAddReferenceFiles]
+    [currentModel, onClearExternalReference]
   );
 
   const handleRemoveReferenceImage = useCallback((index: number) => {
@@ -853,7 +875,7 @@ export function ImageGenerationPage({
       if (!applyRegionEditToComposer(result)) return;
       toast({
         title: '已应用到输入',
-        description: '选区和修改说明已填入，确认后可立即生成',
+        description: '原图和框选图已一起作为参考图，确认后可立即生成',
       });
     },
     [applyRegionEditToComposer]
@@ -885,7 +907,7 @@ export function ImageGenerationPage({
         });
         toast({
           title: '区域编辑已提交',
-          description: '已按标注范围提交局部修改任务',
+          description: '已用原图和框选图一起作为参考图提交',
         });
         setDailyUsage((prev) => ({ ...prev, imageCount: prev.imageCount + 1 }));
         if (!keepPrompt) {
@@ -1227,7 +1249,6 @@ export function ImageGenerationPage({
       {editingGeneration && (
         <ImageRegionEditor
           generation={editingGeneration}
-          allowMultipleReferences={currentModel?.features.multipleImages !== false}
           onClose={() => setEditingGeneration(null)}
           onApply={handleApplyRegionEdit}
           onApplyAndGenerate={(result) => {
