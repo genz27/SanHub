@@ -21,7 +21,7 @@ import {
   getContainedRect,
   hitTestEllipse,
   hitTestRect,
-  loadImageFromUrl,
+  loadImage,
   normalizeRect,
   pointerToNormalized,
   type CanvasPoint,
@@ -115,7 +115,13 @@ async function exportAnnotatedImage(
   regions: EditRegion[]
 ): Promise<{ original: File; annotated: File }> {
   const original = await fetchImageAsFile(sourceUrl, `original-${Date.now()}.png`);
-  const image = await loadImageFromUrl(sourceUrl);
+  const objectUrl = URL.createObjectURL(original);
+  let image: HTMLImageElement;
+  try {
+    image = await loadImage(objectUrl);
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
   const canvas = document.createElement('canvas');
   canvas.width = image.naturalWidth || image.width;
   canvas.height = image.naturalHeight || image.height;

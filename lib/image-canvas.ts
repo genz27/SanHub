@@ -1,3 +1,5 @@
+import { toProxiedMediaUrl } from './client-media-url';
+
 export type CanvasPoint = {
   x: number;
   y: number;
@@ -129,7 +131,10 @@ export function canvasToFile(
 }
 
 export async function fetchImageAsFile(url: string, filename: string): Promise<File> {
-  const response = await fetch(url, { cache: 'no-store' });
+  const response = await fetch(toProxiedMediaUrl(url), {
+    cache: 'no-store',
+    credentials: 'same-origin',
+  });
   if (!response.ok) {
     throw new Error('Failed to read image');
   }
@@ -149,15 +154,11 @@ export function loadImage(src: string): Promise<HTMLImageElement> {
 }
 
 export async function loadImageFromUrl(url: string): Promise<HTMLImageElement> {
+  const file = await fetchImageAsFile(url, 'source.png');
+  const objectUrl = URL.createObjectURL(file);
   try {
-    const file = await fetchImageAsFile(url, 'source.png');
-    const objectUrl = URL.createObjectURL(file);
-    try {
-      return await loadImage(objectUrl);
-    } finally {
-      URL.revokeObjectURL(objectUrl);
-    }
-  } catch {
-    return loadImage(url);
+    return await loadImage(objectUrl);
+  } finally {
+    URL.revokeObjectURL(objectUrl);
   }
 }
