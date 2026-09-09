@@ -46,6 +46,21 @@ type EditRegion = NormalizedRect & {
 
 const MIN_SIZE = 0.03;
 const HANDLE_SIZE = 10;
+const REGION_COLORS = ['#38bdf8', '#f59e0b', '#c084fc', '#4ade80', '#fb7185'];
+
+function regionColor(index: number): string {
+  return REGION_COLORS[index % REGION_COLORS.length];
+}
+
+function regionInstruction(region: EditRegion, globalNote: string): string {
+  return region.note.trim() || globalNote.trim() || '按整体说明修改此处';
+}
+
+function describeRegionPlace(region: EditRegion): string {
+  const vertical = region.y < 0.34 ? '上部' : region.y + region.h > 0.66 ? '下部' : '中部';
+  const horizontal = region.x < 0.34 ? '左侧' : region.x + region.w > 0.66 ? '右侧' : '中间';
+  return `${vertical}${horizontal}`;
+}
 
 function createId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -85,27 +100,68 @@ function resizeRegion(region: EditRegion, handle: HandleId, point: CanvasPoint):
 }
 
 function buildRegionPrompt(regions: EditRegion[], globalNote: string): string {
-  const labeled = regions.map((region, index) => {
-    const shapeLabel = region.shape === 'ellipse' ? '圆形选区' : '矩形选区';
-    const note = region.note.trim() || globalNote.trim() || '按整体说明修改此处';
-    return `区域 ${index + 1}（${shapeLabel}，位置约 ${Math.round(region.x * 100)}%,${Math.round(region.y * 100)}%）: ${note}`;
+  const count = regions.length;
+  const items = regions.map((region, index) => {
+    const shapeLabel = region.shape === 'ellipse' ? '圆形框' : '矩形框';
+    return `${index + 1}. 【必须改】第 ${index + 1} 号${shapeLabel}（图中${describeRegionPlace(region)}）：${regionInstruction(region, globalNote)}`;
   });
-
   const overall = globalNote.trim();
+  const review =
+    count > 1
+      ? `改完后自检：${regions.map((_, index) => `${index + 1} 号框`).join('、')} 是否都已按清单改掉。漏改任何一处都不合格。`
+      : '';
+
   return [
-    '这里有两张参考图：第一张是干净原图，第二张是同一张图的框选标注图。',
-    '请以第一张原图为生成主体，第二张只用来定位要改的范围，不要把标注框、编号或说明文字画进结果。',
-    '除标注区域外，构图、人物身份、光影、背景和未标注细节必须与原图保持一致，不要重绘整张图。',
-    overall ? `整体修改说明：${overall}` : '',
-    ...labeled,
+    `这次一共要改 ${count} 处，必须全部改完，禁止只改第 1 处。`,
+    '改动清单：',
+    ...items,
+    review,
+    overall ? `补充说明：${overall}` : '',
+    '参考图：第一张是干净原图，第二张是带编号框的标注图，编号与上面清单一一对应。',
+    '只改编号框内的内容；框外的构图、字体风格、光影、背景和未标注文字保持原样。',
+    '最终结果不要出现标注框、编号圆点、清单文字或说明标签。',
   ]
     .filter(Boolean)
     .join('\n');
 }
 
+function drawAnnotationLegend(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  regions: EditRegion[],
+  globalNote: string
+) {
+  const pad = Math.max(16, Math.round(width * 0.018));
+  const lineH = Math.max(22, Math.round(width * 0.022));
+  const lines = [
+    `必须全部改完：共 ${regions.length} 处`,
+    ...regions.map((region, index) => `${index + 1}. ${regionInstruction(region, globalNote)}`),
+  ];
+
+  ctx.save();
+  ctx.font = `700 ${Math.round(lineH * 0.72)}px ui-sans-serif, system-ui, sans-serif`;
+  const textWidth = Math.max(...lines.map((line) => ctx.measureText(line).width));
+  const boxW = Math.min(width - pad * 2, textWidth + pad * 1.6);
+  const boxH = pad * 0.8 + lines.length * lineH;
+  const regionsAreHigh = regions.every((region) => region.y < 0.55);
+  const boxY = regionsAreHigh ? height - boxH - pad : pad;
+
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.78)';
+  ctx.fillRect(pad, boxY, boxW, boxH);
+  ctx.textBaseline = 'top';
+  ctx.textAlign = 'left';
+  lines.forEach((line, index) => {
+    ctx.fillStyle = index === 0 ? '#f8fafc' : regionColor(index - 1);
+    ctx.fillText(line, pad * 1.35, boxY + pad * 0.45 + index * lineH, boxW - pad);
+  });
+  ctx.restore();
+}
+
 async function exportAnnotatedImage(
   sourceUrl: string,
-  regions: EditRegion[]
+  regions: EditRegion[],
+  globalNote: string
 ): Promise<{ original: File; annotated: File }> {
   const original = await fetchImageAsFile(sourceUrl, `original-${Date.now()}.png`);
   const objectUrl = URL.createObjectURL(original);
@@ -125,15 +181,19 @@ async function exportAnnotatedImage(
 
   ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
   const stroke = Math.max(4, Math.round(canvas.width * 0.0045));
+  const badgeSize = Math.max(28, Math.round(canvas.width * 0.028));
+
+  drawAnnotationLegend(ctx, canvas.width, canvas.height, regions, globalNote);
 
   regions.forEach((region, index) => {
     const x = region.x * canvas.width;
     const y = region.y * canvas.height;
     const w = region.w * canvas.width;
     const h = region.h * canvas.height;
+    const color = regionColor(index);
 
     ctx.save();
-    ctx.strokeStyle = '#38bdf8';
+    ctx.strokeStyle = color;
     ctx.lineWidth = stroke;
     ctx.setLineDash([stroke * 2.2, stroke * 1.4]);
     if (region.shape === 'ellipse') {
@@ -144,10 +204,8 @@ async function exportAnnotatedImage(
       ctx.strokeRect(x, y, w, h);
     }
 
-    const badge = String(index + 1);
-    const badgeSize = Math.max(28, Math.round(canvas.width * 0.028));
     ctx.setLineDash([]);
-    ctx.fillStyle = '#0ea5e9';
+    ctx.fillStyle = color;
     ctx.beginPath();
     ctx.arc(x + 8 + badgeSize / 2, y + 8 + badgeSize / 2, badgeSize / 2, 0, Math.PI * 2);
     ctx.fill();
@@ -155,21 +213,7 @@ async function exportAnnotatedImage(
     ctx.font = `700 ${Math.round(badgeSize * 0.55)}px ui-sans-serif, system-ui, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(badge, x + 8 + badgeSize / 2, y + 8 + badgeSize / 2);
-
-    if (region.note.trim()) {
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'top';
-      ctx.font = `600 ${Math.round(badgeSize * 0.42)}px ui-sans-serif, system-ui, sans-serif`;
-      const label = region.note.trim().slice(0, 24);
-      const labelX = x + badgeSize + 16;
-      const labelY = y + 10;
-      const metrics = ctx.measureText(label);
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.72)';
-      ctx.fillRect(labelX - 6, labelY - 4, metrics.width + 12, badgeSize * 0.62);
-      ctx.fillStyle = '#f8fafc';
-      ctx.fillText(label, labelX, labelY);
-    }
+    ctx.fillText(String(index + 1), x + 8 + badgeSize / 2, y + 8 + badgeSize / 2);
     ctx.restore();
   });
 
@@ -366,7 +410,7 @@ export function ImageRegionEditor({
 
     setBusy(true);
     try {
-      const { original, annotated } = await exportAnnotatedImage(sourceUrl, regions);
+      const { original, annotated } = await exportAnnotatedImage(sourceUrl, regions, globalNote);
       const aspectRatio =
         typeof generation.params?.aspectRatio === 'string'
           ? generation.params.aspectRatio
@@ -405,7 +449,7 @@ export function ImageRegionEditor({
           <div>
             <p className="text-sm font-medium text-foreground">区域编辑</p>
             <p className="text-xs text-foreground/45">
-              框选或画圈标出要改的位置。应用后会把原图和框选图一起作为两张参考图
+              框选多处时，每处都要写说明。应用后会把全部选区写进提示词，并和原图一起作为参考图
             </p>
           </div>
           <button
@@ -465,22 +509,27 @@ export function ImageRegionEditor({
               />
               {regions.map((region, index) => {
                 const isSelected = region.id === selectedId;
+                const color = regionColor(index);
                 return (
                   <div
                     key={region.id}
                     className={cn(
                       'pointer-events-none absolute border-2',
                       region.shape === 'ellipse' ? 'rounded-full' : 'rounded-sm',
-                      isSelected ? 'border-sky-400 bg-sky-400/10' : 'border-sky-300/80 bg-sky-400/5'
+                      isSelected ? 'bg-white/10' : 'bg-black/5'
                     )}
                     style={{
                       left: `${region.x * 100}%`,
                       top: `${region.y * 100}%`,
                       width: `${region.w * 100}%`,
                       height: `${region.h * 100}%`,
+                      borderColor: color,
                     }}
                   >
-                    <span className="absolute -left-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-sky-500 px-1 text-[10px] font-semibold text-white">
+                    <span
+                      className="absolute -left-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-semibold text-white"
+                      style={{ backgroundColor: color }}
+                    >
                       {index + 1}
                     </span>
                     {isSelected &&
@@ -503,35 +552,45 @@ export function ImageRegionEditor({
         </div>
 
         <div className="space-y-3 border-t border-border/70 p-4">
-          {selected && (
-            <div className="flex items-center gap-2">
-              <span className="shrink-0 text-xs text-foreground/50">
-                选区 {regions.findIndex((region) => region.id === selected.id) + 1}
-              </span>
-              <input
-                value={selected.note}
-                onChange={(event) => {
-                  const note = event.target.value;
-                  setRegions((current) =>
-                    current.map((region) =>
-                      region.id === selected.id ? { ...region, note } : region
-                    )
-                  );
-                }}
-                placeholder="只改这个选区：例如把左眼改成轮回眼"
-                className="h-9 min-w-0 flex-1 rounded-lg border border-border/70 bg-input/70 px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring/30"
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  setRegions((current) => current.filter((region) => region.id !== selected.id));
-                  setSelectedId(null);
-                }}
-                className="inline-flex h-9 items-center gap-1 rounded-lg border border-red-500/30 px-3 text-xs text-red-300 hover:bg-red-500/10"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                删除选区
-              </button>
+          {regions.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[11px] text-foreground/45">
+                将修改 {regions.length} 处，每处都要单独写清楚，生成时会全部提交
+              </p>
+              {regions.map((region, index) => (
+                <div key={region.id} className="flex items-center gap-2">
+                  <span
+                    className="inline-flex h-6 min-w-6 items-center justify-center rounded-full text-[11px] font-semibold text-white"
+                    style={{ backgroundColor: regionColor(index) }}
+                  >
+                    {index + 1}
+                  </span>
+                  <input
+                    value={region.note}
+                    onChange={(event) => {
+                      const note = event.target.value;
+                      setRegions((current) =>
+                        current.map((item) => (item.id === region.id ? { ...item, note } : item))
+                      );
+                      setSelectedId(region.id);
+                    }}
+                    onFocus={() => setSelectedId(region.id)}
+                    placeholder={`第 ${index + 1} 处怎么改，例如改成哈气咪`}
+                    className="h-9 min-w-0 flex-1 rounded-lg border border-border/70 bg-input/70 px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring/30"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRegions((current) => current.filter((item) => item.id !== region.id));
+                      setSelectedId((current) => (current === region.id ? null : current));
+                    }}
+                    className="inline-flex h-9 items-center gap-1 rounded-lg border border-red-500/30 px-3 text-xs text-red-300 hover:bg-red-500/10"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    删除
+                  </button>
+                </div>
+              ))}
             </div>
           )}
 
