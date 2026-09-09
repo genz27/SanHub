@@ -103,23 +103,24 @@ function buildRegionPrompt(regions: EditRegion[], globalNote: string): string {
   const count = regions.length;
   const items = regions.map((region, index) => {
     const shapeLabel = region.shape === 'ellipse' ? '圆形框' : '矩形框';
-    return `${index + 1}. 【必须改】第 ${index + 1} 号${shapeLabel}（图中${describeRegionPlace(region)}）：${regionInstruction(region, globalNote)}`;
+    return `${index + 1}. 第 ${index + 1} 号${shapeLabel}（${describeRegionPlace(region)}）必须改成：${regionInstruction(region, globalNote)}`;
   });
   const overall = globalNote.trim();
   const review =
     count > 1
-      ? `改完后自检：${regions.map((_, index) => `${index + 1} 号框`).join('、')} 是否都已按清单改掉。漏改任何一处都不合格。`
-      : '';
+      ? `输出前自检：${regions.map((_, index) => `${index + 1} 号`).join('、')} 是否都已换成新字。还是旧字就是失败。`
+      : '输出前自检：框内必须是新字，还是旧字就是失败。';
 
   return [
-    `这次一共要改 ${count} 处，必须全部改完，禁止只改第 1 处。`,
+    '不要原样复制任何一张参考图。',
+    '第一张是编辑稿：每个编号框里已经写了要换成的新字。请把这些新字画成第二张原图那种手写书法，并去掉框、编号、白底和清单。',
+    '第二张是干净原图，只用来对齐构图、光影、纸张质感和没有框到的文字。',
+    `这次一共要改 ${count} 处，必须全部改完。`,
     '改动清单：',
     ...items,
     review,
     overall ? `补充说明：${overall}` : '',
-    '参考图：第一张是干净原图，第二张是带编号框的标注图，编号与上面清单一一对应。',
-    '只改编号框内的内容；框外的构图、字体风格、光影、背景和未标注文字保持原样。',
-    '最终结果不要出现标注框、编号圆点、清单文字或说明标签。',
+    '框外内容保持原样。最终结果里不要出现标注框、编号、清单或提示标签。',
   ]
     .filter(Boolean)
     .join('\n');
@@ -158,6 +159,50 @@ function drawAnnotationLegend(
   ctx.restore();
 }
 
+function fitLabelSize(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+  maxHeight: number
+): number {
+  let size = Math.min(maxHeight * 0.62, maxWidth * 0.48, 96);
+  while (size > 14) {
+    ctx.font = `700 ${Math.round(size)}px "KaiTi", "STKaiti", "Songti SC", serif`;
+    if (ctx.measureText(text).width <= maxWidth * 0.88) return size;
+    size -= 2;
+  }
+  return 14;
+}
+
+function drawReplacementInRegion(
+  ctx: CanvasRenderingContext2D,
+  region: EditRegion,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  text: string
+) {
+  ctx.save();
+  ctx.beginPath();
+  if (region.shape === 'ellipse') {
+    ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+  } else {
+    ctx.rect(x, y, w, h);
+  }
+  ctx.fillStyle = 'rgba(250, 248, 242, 0.94)';
+  ctx.fill();
+
+  const label = text.slice(0, 24);
+  const fontSize = fitLabelSize(ctx, label, w, h);
+  ctx.fillStyle = '#1c1917';
+  ctx.font = `700 ${Math.round(fontSize)}px "KaiTi", "STKaiti", "Songti SC", serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, x + w / 2, y + h / 2, w * 0.9);
+  ctx.restore();
+}
+
 async function exportAnnotatedImage(
   sourceUrl: string,
   regions: EditRegion[],
@@ -191,6 +236,8 @@ async function exportAnnotatedImage(
     const w = region.w * canvas.width;
     const h = region.h * canvas.height;
     const color = regionColor(index);
+
+    drawReplacementInRegion(ctx, region, x, y, w, h, regionInstruction(region, globalNote));
 
     ctx.save();
     ctx.strokeStyle = color;
@@ -416,7 +463,7 @@ export function ImageRegionEditor({
           ? generation.params.aspectRatio
           : undefined;
       return {
-        files: [original, annotated],
+        files: [annotated, original],
         prompt: buildRegionPrompt(regions, globalNote),
         aspectRatio,
       };
@@ -449,7 +496,7 @@ export function ImageRegionEditor({
           <div>
             <p className="text-sm font-medium text-foreground">区域编辑</p>
             <p className="text-xs text-foreground/45">
-              框选多处时，每处都要写说明。应用后会把全部选区写进提示词，并和原图一起作为参考图
+              框选多处时，每处都要写说明。应用后会先提交带新字的标注稿，再带上原图保持画风
             </p>
           </div>
           <button

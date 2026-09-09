@@ -388,7 +388,7 @@ export function ImageGenerationPage({
         return result.files.map((file, index) => ({
           file,
           preview: URL.createObjectURL(file),
-          label: index === 0 ? '原图' : index === 1 ? '选区标注' : undefined,
+          label: index === 0 ? '选区标注' : index === 1 ? '原图' : undefined,
         }));
       });
       setPrompt(result.prompt);
@@ -875,7 +875,7 @@ export function ImageGenerationPage({
       if (!applyRegionEditToComposer(result)) return;
       toast({
         title: '已应用到输入',
-        description: '原图和框选图已一起作为参考图，确认后可立即生成',
+        description: '标注稿在前、原图在后，确认后可立即生成',
       });
     },
     [applyRegionEditToComposer]
@@ -907,7 +907,7 @@ export function ImageGenerationPage({
         });
         toast({
           title: '区域编辑已提交',
-          description: '已用原图和框选图一起作为参考图提交',
+          description: '已用标注稿和原图一起作为参考图提交',
         });
         setDailyUsage((prev) => ({ ...prev, imageCount: prev.imageCount + 1 }));
         if (!keepPrompt) {
