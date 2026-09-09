@@ -467,7 +467,7 @@ export default function UserProfilePage() {
                   rel="noopener noreferrer"
                   className="ml-auto text-foreground/50 hover:text-foreground/80 transition-colors"
                 >
-                  在 Sora 中打开 →
+                  打开原链接 →
                 </a>
               </div>
             </div>

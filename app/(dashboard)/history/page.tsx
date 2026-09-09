@@ -100,14 +100,14 @@ const getHistoryMediaKind = (filter: HistoryFilter): HistoryMediaKind => {
 };
 
 const VIDEO_CHANNEL_BADGE_LABELS: Record<string, string> = {
-  sora: 'Sora 视频',
+  sora: '视频',
   grok2api: 'Grok 视频',
   flow2api: 'Veo 视频',
   'openai-compatible': 'OpenAI 视频',
 };
 
 const IMAGE_CHANNEL_BADGE_LABELS: Record<string, string> = {
-  sora: 'Sora 图像',
+  sora: '图像',
   gemini: 'Gemini 图像',
   gitee: 'Gitee 图像',
   modelscope: 'ModelScope 图像',
@@ -116,7 +116,7 @@ const IMAGE_CHANNEL_BADGE_LABELS: Record<string, string> = {
 };
 
 const IMAGE_TYPE_BADGE_LABELS: Record<string, string> = {
-  'sora-image': 'Sora 图像',
+  'sora-image': '图像',
   'gemini-image': 'Gemini 图像',
   'zimage-image': 'Gitee 图像',
   'gitee-image': 'Gitee 图像',
@@ -173,8 +173,6 @@ export default function HistoryPage() {
   const [sortOrder, setSortOrder] = useState<'latest' | 'oldest'>('latest');
   const [deleting, setDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<{type: 'single'|'batch'|'all', id?: string} | null>(null);
-  const [unwatermarking, setUnwatermarking] = useState(false);
-  const [unwatermarkUrl, setUnwatermarkUrl] = useState<string | null>(null);
   const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
   const loadingRef = useRef(false);
   const lastResyncAtRef = useRef(0);
@@ -548,50 +546,6 @@ export default function HistoryPage() {
     }
   };
 
-  // 去水印功能
-  const handleUnwatermark = async (permalink: string) => {
-    if (!permalink) {
-      toast({
-        title: '无法去水印',
-        description: '缺少视频分享链接',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setUnwatermarking(true);
-    setUnwatermarkUrl(null);
-
-    try {
-      const res = await fetch('/api/sora/unwatermark', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ permalink }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || '获取无水印链接失败');
-      }
-
-      setUnwatermarkUrl(data.data.download_link);
-      toast({
-        title: '去水印成功',
-        description: '已获取无水印下载链接',
-      });
-    } catch (error) {
-      console.error('Unwatermark failed:', error);
-      toast({
-        title: '去水印失败',
-        description: error instanceof Error ? error.message : '请稍后重试',
-        variant: 'destructive',
-      });
-    } finally {
-      setUnwatermarking(false);
-    }
-  };
-
   // 删除失败记录
   const handleDeleteFailed = async () => {
     setDeleting(true);
@@ -857,7 +811,7 @@ export default function HistoryPage() {
         {/* Top Horizontal Stats Card */}
         <div className="shrink-0 bg-card/40 border border-border/70 rounded-2xl p-4 flex justify-between items-center w-full mb-6 text-center select-none shadow-sm backdrop-blur-sm">
           <div className="flex-1 min-w-0">
-            <p className="text-xl sm:text-2xl font-light text-sky-400">{stats.pending}</p>
+            <p className="text-xl sm:text-2xl font-medium tracking-tight">{stats.pending}</p>
             <p className="text-[10px] sm:text-xs text-foreground/45 mt-1 font-light">进行中</p>
           </div>
           <div className="w-px h-6 bg-border/40 shrink-0" />
@@ -1113,11 +1067,8 @@ export default function HistoryPage() {
           generation={selected}
           badge={resolveGenerationBadge(selected)}
           isVideo={isVideoType(selected)}
-          unwatermarkUrl={unwatermarkUrl}
-          unwatermarking={unwatermarking}
-          onClose={() => { setSelected(null); setUnwatermarkUrl(null); }}
+          onClose={() => setSelected(null)}
           onDownload={(url, id, type) => downloadFile(url, id, type)}
-          onUnwatermark={(permalink) => handleUnwatermark(permalink)}
         />
       )}
 

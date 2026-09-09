@@ -1,283 +1,200 @@
-# SanHub - AI 创意工作室
+# SanHub
 
 <p align="center">
   <img src="https://img.shields.io/badge/Next.js-14-black?style=flat-square&logo=next.js" alt="Next.js" />
-  <img src="https://img.shields.io/badge/TypeScript-5.0-blue?style=flat-square&logo=typescript" alt="TypeScript" />
-  <img src="https://img.shields.io/badge/TailwindCSS-3.4-38bdf8?style=flat-square&logo=tailwindcss" alt="TailwindCSS" />
+  <img src="https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/UI-Vercel_dark-111111?style=flat-square" alt="Vercel dark UI" />
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License" />
 </p>
 
 <p align="center">
-  融合 <b>OpenAI Sora</b>、<b>Google Gemini</b>、<b>Z-Image</b>、<b>Gitee AI</b> 等多种 AI 生成服务的统一创作平台
+  自托管 AI 创作平台：图像、视频、角色卡与节点工作流。<br />
+  界面默认深色，沿用 Vercel 式的克制排版与边框层次，不绑定单一模型厂商。
 </p>
 
 ---
 
-## ✨ 功能特性
+## 产品形态
 
-### 🎬 视频生成
-- Sora 视频生成（10s / 15s）
-- 支持 16:9、9:16、1:1 多种比例
-- 参考图/视频驱动生成
-- 实时任务状态追踪
-- **三种创作模式**：普通生成、视频 Remix、视频分镜
+SanHub 是一个渠道聚合的创作后台，而不是某个封闭模型的套壳。管理员在后台接入图像 / 视频 / 对话渠道后，用户在统一创作页提交任务、在历史里回看，在工作区里把节点串成流程。
 
-### 🎨 图像生成
-- **Gemini Nano** - 极速出图模式
-- **Gemini Pro** - 4K 高清模式
-- **Z-Image** - ModelScope 图像生成
-- **Gitee AI** - 国产 AI 图像服务
-- 风格迁移与编辑
+界面默认黑色（`hsl(220 14% 6%)` 底、浅字、细边框）。没有独立的亮色主题。
 
-### �览️ 工作空间
-- 可视化工作流画布
-- 节点拖拽与连接
-- 多工作空间管理
-- AI 对话节点集成
+## 功能
 
-### 📝 提示词模板
-- 11 种预设创作模板
-- 3x3 电影镜头图、分镜故事板
-- 角色情绪板、场景概念图
-- 剧本大纲、场景对话生成
-- 电影海报风格等
+### 创作
 
-### 🖼️ 作品广场
-- 瀑布流浏览社区作品
-- 热门 / 最新排序
-- 一键复制提示词
-- 作品公开分享
-- 用户主页展示
+- `/create`：图片 / 视频统一入口，按已启用模型切换
+- 文生图、图生图、参考图复用
+- 视频支持参考图、时长与比例（取决于渠道）
+- 任务异步提交，状态轮询，失败退积分
 
-### 🎤 角色卡
-- 视频驱动角色创建
-- 自动提取角色头像
-- 角色库管理
+### 工作区
 
-### 🛠️ 系统管理
-- 用户管理与权限控制
-- **图像渠道管理** - 统一管理图像生成渠道和模型
-- **视频渠道管理** - 统一管理视频生成渠道和模型
-- **AI 对话模型管理**
-- **Sora Token 管理**
-- 渠道内模型独立定价
-- 系统公告发布
-- 注册开关控制
-- PicUI 图床集成
+- `/workspace/[id]`：独立编辑器布局，不套仪表盘侧栏
+- 按节点类型懒加载 catalog
+- 图像 / 视频 / 对话节点可连接
 
-### 🔐 安全特性
-- NextAuth.js 认证
-- 验证码保护
-- 请求频率限制
-- 用户禁用机制
+### 角色卡
 
-## 🛠️ 技术栈
+- 从视频或参考图提取角色
+- 历史页独立 tab，工作区可引用
+
+### 历史与广场
+
+- `/history`：图像 / 视频 / 角色卡，顶栏统计全部进行中任务
+- `/square`：可选社区浏览（后台开关）
+
+### 管理
+
+- 用户、积分、卡密、邀请码
+- 图像渠道、视频渠道、对话模型，按模型定价
+- 公告、注册开关、图床（PicUI / S3 兼容）
+- 公开站点文案（名称、页脚、说明）
+
+## 技术栈
 
 | 类别 | 技术 |
 |------|------|
-| **框架** | Next.js 14 (App Router) |
-| **语言** | TypeScript |
-| **样式** | TailwindCSS + shadcn/ui 风格 |
-| **认证** | NextAuth.js |
-| **数据库** | SQLite / MySQL（可切换） |
-| **图标** | Lucide React |
-| **部署** | Docker / Vercel / EdgeOne |
-| **图床** | PicUI (可选) |
+| 框架 | Next.js 14 App Router |
+| 语言 | TypeScript |
+| 样式 | Tailwind CSS，默认深色 |
+| 认证 | NextAuth.js Credentials |
+| 数据库 | SQLite 或 MySQL |
+| 对象存储 | 本地 `data/media`、PicUI、S3 兼容 |
+| 部署 | Docker / Vercel |
 
-## 🚀 快速开始
+热路径按切片读配置和 catalog，不再把管理端整包打进出图 / 出视频 / 媒体服务。
 
-### 方式一：Docker 部署（推荐）
+## 快速开始
 
-**零配置，一行命令启动：**
+### Docker
 
 ```bash
-git clone https://github.com/genz27/sanhub.git && cd sanhub && docker-compose up -d
+git clone https://github.com/genz27/sanhub.git
+cd sanhub
+docker-compose up -d
 ```
 
-启动后访问 http://localhost:3000
+访问 http://localhost:3000
 
 | 项目 | 值 |
 |------|-----|
 | 默认管理员邮箱 | `admin@sanhub.local` |
 | 默认管理员密码 | `sanhub123` |
 
-> ⚠️ **首次登录后请立即在「用户设置」中修改密码！**
-
-**常用命令：**
+首次登录后立刻改密码。
 
 ```bash
-docker-compose logs -f    # 查看日志
-docker-compose down       # 停止服务
-docker-compose up -d --build  # 重新构建
+docker-compose logs -f
+docker-compose down
+docker-compose up -d --build
 ```
 
-**生产环境部署（使用自定义域名）：**
-
-编辑 `docker-compose.yml`，取消注释并修改：
+域名访问时在 `docker-compose.yml` 里设置：
 
 ```yaml
 environment:
-  - NEXTAUTH_URL=https://your-domain.com  # 必填：你的访问域名
-  - ADMIN_EMAIL=admin@example.com         # 可选：自定义管理员邮箱
-  - ADMIN_PASSWORD=your-secure-password   # 可选：自定义管理员密码
+  - NEXTAUTH_URL=https://your-domain.com
+  - ADMIN_EMAIL=admin@example.com
+  - ADMIN_PASSWORD=your-secure-password
 ```
 
-> 💡 `NEXTAUTH_URL` 只有在使用域名访问时才需要配置，本地 `localhost:3000` 访问无需设置。
+本地 `localhost:3000` 不需要 `NEXTAUTH_URL`。
 
----
-
-### 方式二：本地开发
+### 本地开发
 
 ```bash
-# 1. 克隆项目
 git clone https://github.com/genz27/sanhub.git
 cd sanhub
-
-# 2. 安装依赖
 npm install
-
-# 3. 配置环境变量
 cp .env.example .env.local
-# 编辑 .env.local，至少设置 NEXTAUTH_SECRET 和 ADMIN_EMAIL/ADMIN_PASSWORD
-
-# 4. 启动开发服务器
 npm run dev
 ```
 
-访问 http://localhost:3000
+`.env.local` 至少设置 `NEXTAUTH_SECRET`，以及首次管理员 `ADMIN_EMAIL` / `ADMIN_PASSWORD`。首次启动会建库并创建管理员。
 
-首次运行会自动创建数据库和管理员账号。
+## 数据库
 
-## 💾 数据库选择
-
-| 类型 | 优势 | 适用场景 |
-|------|------|----------|
-| **SQLite** | 零配置、开箱即用 | 开发环境、小规模部署 |
-| **MySQL** | 高并发、多实例支持 | 生产环境 |
-
-切换数据库只需修改 `.env.local`：
+| 类型 | 适用 |
+|------|------|
+| SQLite | 默认，开发或单机 |
+| MySQL | 生产、多实例 |
 
 ```env
-# SQLite（默认）
 DB_TYPE=sqlite
 
-# MySQL（推荐使用 MYSQL_*，同时兼容旧的 DB_* 别名）
-DB_TYPE=mysql
+# DB_TYPE=mysql
 MYSQL_HOST=localhost
 MYSQL_PORT=3306
 MYSQL_USER=root
 MYSQL_PASSWORD=password
 MYSQL_DATABASE=sanhub
-# MYSQL_SSL=false
 ```
 
-## 📁 项目结构
+仍兼容旧的 `DB_HOST` / `DB_USER` / `DB_NAME` 别名。
+
+## 渠道
+
+模型密钥和 Base URL 配在管理后台，不写死在前端。
+
+**图像渠道**常见类型：`gemini`、`openai-compatible`、`openai-chat`、`modelscope`、`gitee`、`apexerapi`。
+
+**视频渠道**常见类型：
+
+- `openai-compatible`：OpenAI Chat Completions
+- `flow2api`：`POST /v1/chat/completions`，支持 `image_url`
+- `grok2api`：Chat Completions + `video_config`
+- `apexerapi`：`/v1/videos` 一类任务接口
+
+积分在 `/admin/image-channels` 与 `/admin/video-channels` 按模型配置。历史库里的旧任务类型名可能仍带历史前缀，只影响展示与兼容读取，不代表产品还绑定该厂商。
+
+## 图床
+
+| 方式 | 说明 |
+|------|------|
+| PicUI | 后台配置 Token 后上传，返回 URL |
+| S3 兼容 | 通过 `/cache/s3` 读回，支持 path prefix |
+| 本地文件 | `./data/media/` |
+| Data URL | 上传失败时的回退 |
+
+## 目录
 
 ```
 sanhub/
 ├── app/
-│   ├── (auth)/              # 登录/注册页面
-│   ├── (dashboard)/         # 用户面板
-│   │   ├── video/           # 视频生成
-│   │   ├── image/           # 图像生成
-│   │   ├── workspace/       # 工作空间
-│   │   ├── gallery/         # 作品广场
-│   │   ├── square/          # 社区广场
-│   │   ├── history/         # 历史记录
-│   │   └── settings/        # 用户设置
-│   ├── admin/               # 管理后台
-│   │   ├── users/           # 用户管理
-│   │   ├── models/          # AI 聊天模型管理
-│   │   ├── image-channels/  # 图像渠道管理
-│   │   ├── video-channels/  # 视频渠道管理
-│   │   ├── tokens/          # Sora Token 管理
-│   │   ├── site/            # 网站配置
-│   │   └── announcement/    # 公告管理
-│   └── api/                 # API 路由
+│   ├── (auth)/                 # login / register
+│   ├── (dashboard)/            # create, history, square, settings
+│   ├── (editor)/workspace/     # node editor, no dashboard chrome
+│   ├── admin/                  # users, channels, site, billing
+│   └── api/                    # app and OpenAI-compatible v1
 ├── components/
-│   ├── ui/                  # 基础 UI 组件
-│   ├── generator/           # 生成器组件
-│   ├── workspace/           # 工作空间组件
-│   └── layout/              # 布局组件
-├── data/
-│   ├── media/               # 媒体文件存储
-│   └── prompts/             # 提示词模板
+│   ├── generator/              # image / video studio
+│   ├── history/                # gallery and lightbox
+│   ├── workspace/              # editor nodes
+│   └── layout/                 # sidebar, dashboard shell
 ├── lib/
-│   ├── db.ts                # 数据库操作
-│   ├── db-adapter.ts        # 数据库适配器
-│   ├── auth.ts              # 认证配置
-│   ├── image-generator.ts   # 统一图像生成器
-│   ├── sora.ts              # Sora API 封装
-│   ├── gemini.ts            # Gemini API 封装
-│   ├── zimage.ts            # Z-Image API 封装
-│   ├── model-config.ts      # 模型配置（旧，兼容）
-│   └── picui.ts             # PicUI 图床 API
-└── types/                   # TypeScript 类型定义
+│   ├── db/                     # sliced reads/writes, no mega barrel on hot paths
+│   ├── image-*.ts              # image adapters, loaded per channel
+│   └── site-config.ts          # public site copy
+├── data/                       # sqlite + local media
+└── types/
 ```
 
-## 💰 积分消耗
+## 环境变量
 
-积分消耗在管理后台的渠道管理中按模型独立配置：
+完整列表见 [.env.example](./.env.example)。渠道密钥也可以只在管理后台配置。
 
-- **图像渠道** (`/admin/image-channels`) - 每个图像模型可设置独立的 `costPerGeneration`
-- **视频渠道** (`/admin/video-channels`) - 每个视频模型按时长配置不同价格（如 10s=100, 15s=150, 25s=200）
+## API
 
-> 💡 首次使用可点击「从旧配置迁移」按钮自动创建默认渠道和模型
+对外兼容层在 `/v1/*`（图像 generations/edits、对话 completions、视频任务）。说明见 [IMAGE_API.md](./IMAGE_API.md)。这是渠道转发，不是某个厂商的官方 SDK。
 
-### 视频渠道 Type 对照（`/admin/video-channels`）
-
-- `sora`：OpenAI Sora 风格接口
-- `openai-compatible`：标准 OpenAI Chat Completions 适配
-- `flow2api`：按 Flow2API 的 `POST /v1/chat/completions` 请求方式（`model + messages`，支持 `image_url` 多模态）
-- `grok2api`：Grok 视频接口（同样走 Chat Completions，并支持 `video_config`）
-
-> 说明：`Flow2API` / `flow2apiw` 在管理接口中会被统一归一化为 `flow2api`。
-
-## 🖼️ 图床配置
-
-生成的图片和角色卡头像支持上传到 PicUI 图床，减少数据库体积。
-
-| 存储方式 | 说明 |
-|----------|------|
-| **PicUI 图床** | 配置 API Token 后自动上传，返回图片 URL |
-| **本地文件** | 未配置图床时保存到 `./data/media/` |
-| **Base64** | 全部失败时回退到数据库存储 |
-
-在管理后台 `/admin/site` 配置 PicUI Token（从 picui.cn 个人中心获取）。
-
-## 📖 环境变量
-
-详见 [.env.example](./.env.example) 文件，包含所有可配置项及说明。
-
-## 📸 截图预览
-
-<details>
-<summary>点击展开截图</summary>
-
-### 首页
-![首页](./img/home.png)
-
-### 视频生成
-![视频生成](./img/video.png)
-
-### 图像生成
-![图像生成](./img/image.png)
-
-### 管理后台
-![管理后台](./img/admin.png)
-
-</details>
-
-## 🤝 贡献
-
-欢迎提交 Issue 和 Pull Request！
-
-## 📄 许可证
+## 许可证
 
 [MIT License](./LICENSE)
 
 ---
 
 <p align="center">
-  Made with ❤️ by <a href="https://github.com/genz27">genz27</a>
+  <a href="https://github.com/genz27">genz27</a>
 </p>

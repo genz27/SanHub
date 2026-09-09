@@ -25,6 +25,7 @@
     "browser-image-compression": "^2.0.2",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
+    "geist": "^1.7.2",
     "lucide-react": "^0.460.0",
     "mysql2": "^3.20.0",
     "next": "^14.2.33",

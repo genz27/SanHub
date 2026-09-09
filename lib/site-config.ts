@@ -1,20 +1,31 @@
 import { cache } from 'react';
 import { getPublicSystemConfig } from '@/lib/db/system-config-public';
 import type { ExtendedSiteConfig } from '@/components/providers/site-config-provider';
+import {
+  DEFAULT_CONTACT_EMAIL,
+  DEFAULT_COPYRIGHT,
+  DEFAULT_POWERED_BY,
+  DEFAULT_SITE_DESCRIPTION,
+  DEFAULT_SITE_NAME,
+  DEFAULT_SITE_SUB_DESCRIPTION,
+  DEFAULT_SITE_TAGLINE,
+  resolveSiteCopy,
+} from '@/lib/site-copy';
 
 export const getPublicSiteConfig = cache(async (): Promise<ExtendedSiteConfig> => {
   const config = await getPublicSystemConfig();
 
   return {
-    siteName: config.siteConfig?.siteName || 'SANHUB',
-    siteTagline: config.siteConfig?.siteTagline || 'Let Imagination Come Alive',
-    siteDescription: config.siteConfig?.siteDescription || '「SANHUB」是专为 AI 创作打造的一站式平台',
-    siteSubDescription:
-      config.siteConfig?.siteSubDescription ||
-      '我们融合了 Sora 视频生成、Gemini 图像创作与多模型 AI 对话。在这里，技术壁垒已然消融，你唯一的使命就是释放纯粹的想象。',
-    contactEmail: config.siteConfig?.contactEmail || 'support@sanhub.com',
-    copyright: config.siteConfig?.copyright || 'Copyright © 2025 SANHUB',
-    poweredBy: config.siteConfig?.poweredBy || 'Powered by OpenAI Sora & Google Gemini',
+    siteName: resolveSiteCopy(config.siteConfig?.siteName, DEFAULT_SITE_NAME),
+    siteTagline: resolveSiteCopy(config.siteConfig?.siteTagline, DEFAULT_SITE_TAGLINE),
+    siteDescription: resolveSiteCopy(config.siteConfig?.siteDescription, DEFAULT_SITE_DESCRIPTION),
+    siteSubDescription: resolveSiteCopy(
+      config.siteConfig?.siteSubDescription,
+      DEFAULT_SITE_SUB_DESCRIPTION
+    ),
+    contactEmail: resolveSiteCopy(config.siteConfig?.contactEmail, DEFAULT_CONTACT_EMAIL),
+    copyright: resolveSiteCopy(config.siteConfig?.copyright, DEFAULT_COPYRIGHT),
+    poweredBy: resolveSiteCopy(config.siteConfig?.poweredBy, DEFAULT_POWERED_BY),
     defaultBalance: config.defaultBalance ?? 100,
     squareEnabled: config.featureFlags?.squareEnabled ?? true,
     gachaEnabled: config.featureFlags?.gachaEnabled ?? true,

@@ -1,4 +1,6 @@
 import type { Metadata } from 'next';
+import { GeistSans } from 'geist/font/sans';
+import { GeistMono } from 'geist/font/mono';
 import './globals.css';
 import { Providers } from '@/components/providers';
 import { getPublicSiteConfig } from '@/lib/site-config';
@@ -25,8 +27,8 @@ export default async function RootLayout({
   const initialSiteConfig = await getPublicSiteConfig();
   
   return (
-    <html lang="zh-CN" suppressHydrationWarning>
-      <body className="antialiased">
+    <html lang="zh-CN" className={`${GeistSans.variable} ${GeistMono.variable}`} suppressHydrationWarning>
+      <body className={`${GeistSans.className} antialiased`}>
         <Providers initialSiteConfig={initialSiteConfig}>{children}</Providers>
       </body>
     </html>

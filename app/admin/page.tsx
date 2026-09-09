@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
-import { Users, Coins, ChevronRight, TrendingUp, Activity, BarChart3, Ticket, History, MessageSquare, Image, Video, Key, Megaphone, Globe, UserPlus } from 'lucide-react';
+import { Users, Coins, ChevronRight, TrendingUp, Activity, BarChart3, Ticket, History, MessageSquare, Image, Video, Megaphone, Globe, UserPlus } from 'lucide-react';
 import type { SafeUser, StatsOverview } from '@/types';
 import { formatBalance } from '@/lib/utils';
 import { toast } from '@/components/ui/toaster';
@@ -180,7 +180,6 @@ export default function AdminPage() {
     { href: '/admin/image-channels', label: '图像渠道', desc: '管理图像生成渠道和模型', icon: Image, color: 'from-cyan-500/20 to-teal-500/20', roles: ['admin'] },
     { href: '/admin/video-channels', label: '视频渠道', desc: '管理视频生成渠道和模型', icon: Video, color: 'from-pink-500/20 to-rose-500/20', roles: ['admin'] },
     { href: '/admin/pricing', label: '积分定价', desc: '配置各服务消耗积分', icon: Coins, color: 'from-emerald-500/20 to-amber-500/20', roles: ['admin'] },
-    { href: '/admin/tokens', label: 'Sora Token', desc: '管理 Sora Token', icon: Key, color: 'from-yellow-500/20 to-orange-500/20', roles: ['admin'] },
     { href: '/admin/announcement', label: '公告管理', desc: '管理系统公告', icon: Megaphone, color: 'from-red-500/20 to-pink-500/20', roles: ['admin'] },
     { href: '/admin/site', label: '网站配置', desc: '配置网站基本信息', icon: Globe, color: 'from-indigo-500/20 to-blue-500/20', roles: ['admin'] },
     { href: '/admin/invites', label: '邀请码', desc: '管理邀请码', icon: UserPlus, color: 'from-teal-500/20 to-cyan-500/20', roles: ['admin'] },

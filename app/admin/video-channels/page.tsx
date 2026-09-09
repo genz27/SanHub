@@ -301,7 +301,7 @@ export default function VideoChannelsPage() {
   const [editingChannel, setEditingChannel] = useState<string | null>(null);
   const [channelForm, setChannelForm] = useState({
     name: '',
-    type: 'sora' as VideoChannelType,
+    type: 'openai-compatible' as VideoChannelType,
     baseUrl: '',
     apiKey: '',
     enabled: true,
@@ -373,7 +373,7 @@ export default function VideoChannelsPage() {
     setConfirm({
       open: true,
       title: '迁移确认',
-      message: '确定要从旧配置迁移吗？这将创建默认的 Sora 视频渠道和模型。',
+      message: '确定要从旧配置迁移吗？这将创建默认的视频渠道和模型。',
       variant: 'warning',
       confirmLabel: '开始迁移',
       onConfirm: doMigrate,
@@ -391,7 +391,7 @@ export default function VideoChannelsPage() {
   }, [channels, searchQuery]);
 
   const resetChannelForm = () => {
-    setChannelForm({ name: '', type: 'sora', baseUrl: '', apiKey: '', enabled: true });
+    setChannelForm({ name: '', type: 'openai-compatible', baseUrl: '', apiKey: '', enabled: true });
     setEditingChannel(null);
     setShowChannelModal(false);
   };
@@ -971,7 +971,7 @@ export default function VideoChannelsPage() {
         <div className="flex items-center gap-3">
           <button
             onClick={openAddChannel}
-            className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-sky-500 to-emerald-500 text-foreground rounded-xl font-medium hover:opacity-90"
+            className="flex items-center gap-2 px-4 py-2.5 bg-foreground text-background rounded-md font-medium hover:opacity-90"
           >
             <Plus className="w-4 h-4" />
             添加渠道
@@ -1024,7 +1024,7 @@ export default function VideoChannelsPage() {
           <button
             onClick={saveChannel}
             disabled={saving}
-            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-sky-500 to-emerald-500 text-foreground rounded-xl font-medium hover:opacity-90 disabled:opacity-50"
+            className="flex items-center gap-2 px-5 py-2.5 bg-foreground text-background rounded-md font-medium hover:opacity-90 disabled:opacity-50"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
             {editingChannel ? '更新' : '添加'}

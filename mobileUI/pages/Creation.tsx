@@ -189,8 +189,8 @@ export const VideoGeneration: React.FC = () => {
     <div className="max-w-4xl mx-auto h-full flex flex-col">
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6 gap-4">
         <div>
-          <h2 className="text-2xl font-light text-white tracking-tight">Sora 视频工坊</h2>
-          <p className="text-white/40 text-sm mt-1">Sora 引擎 / 视频重混 / 分镜脚本</p>
+          <h2 className="text-2xl font-light text-white tracking-tight">视频工坊</h2>
+          <p className="text-white/40 text-sm mt-1">文生视频 / 参考图 / 分镜脚本</p>
         </div>
         
         {/* Feature Navigation */}

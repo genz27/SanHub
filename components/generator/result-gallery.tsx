@@ -381,7 +381,7 @@ export function ResultGallery({
                       <div className="mt-2 w-24">
                         <div className="h-1.5 bg-card/60 rounded-full overflow-hidden">
                           <div 
-                            className="h-full bg-gradient-to-r from-sky-500 to-emerald-500 transition-all duration-300"
+                            className="h-full bg-foreground transition-all duration-300"
                             style={{ width: `${task.progress}%` }}
                           />
                         </div>

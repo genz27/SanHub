@@ -73,7 +73,7 @@ export default function SquarePage() {
       <div className="text-center space-y-2">
         <h1 className="text-3xl font-extralight text-foreground">搜索用户</h1>
         <p className="text-foreground/50 font-light">
-          搜索 Sora 创作者，查看他们的作品
+          搜索创作者，查看他们的作品
         </p>
       </div>
 
@@ -161,7 +161,7 @@ export default function SquarePage() {
             <User className="w-8 h-8 text-foreground/30" />
           </div>
           <p className="text-foreground/30 text-sm text-center">
-            输入用户名搜索 Sora 创作者
+            输入用户名搜索创作者
           </p>
         </div>
       )}

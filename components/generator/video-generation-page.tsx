@@ -1106,7 +1106,7 @@ export function VideoGenerationView({
                   'inline-flex h-9 items-center justify-center gap-2 px-5 rounded-lg font-medium text-sm transition-all',
                   submitting || compressing || hasChinese
                     ? 'bg-card/60 text-foreground/40 cursor-not-allowed'
-                    : 'bg-gradient-to-r from-sky-500 to-emerald-500 text-white hover:opacity-90'
+                    : 'bg-foreground text-background hover:opacity-90'
                 )}
               >
                 {submitting || compressing ? (

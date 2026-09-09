@@ -118,11 +118,11 @@ export default function LoginPage() {
           <div className="text-center space-y-4 animate-rise">
             <Link href="/" className="inline-block group">
               <div className="flex items-center justify-center gap-2 mb-2">
-                <div className="w-10 h-10 bg-gradient-to-br from-sky-500/25 to-emerald-500/25 border border-border/70 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <Sparkles className="w-5 h-5 text-foreground/80" />
+                <div className="w-8 h-8 bg-foreground text-background rounded-md flex items-center justify-center">
+                  <Sparkles className="w-4 h-4" />
                 </div>
               </div>
-              <h1 className="text-3xl font-light tracking-wider text-foreground">{siteConfig.siteName}</h1>
+              <h1 className="text-2xl font-semibold tracking-tight">{siteConfig.siteName}</h1>
             </Link>
             <p className="text-foreground/40 text-sm">欢迎回来</p>
           </div>
@@ -162,7 +162,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex items-center justify-center gap-2 px-6 py-3.5 bg-foreground text-background rounded-full font-medium hover:opacity-90 transition-all hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+              className="w-full flex items-center justify-center gap-2 px-6 py-2.5 bg-foreground text-background rounded-md text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <>

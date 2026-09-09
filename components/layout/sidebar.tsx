@@ -31,15 +31,15 @@ function formatRelativeTime(timestamp: number | null): string {
 }
 
 const navItems = [
-  { href: '/create', icon: Sparkles, label: '创作', description: '图片 / 视频统一入口', badge: 'AI', isAI: true },
-  { href: '/video/character-card', icon: User, label: '角色卡生成', description: '从视频提取角色', badge: 'NEW', isAI: true },
-  { href: '/square', icon: LayoutGrid, label: '广场', description: '探索社区创作', badge: 'HOT', isAI: false },
-  { href: '/history', icon: History, label: '历史', description: '作品记录', badge: null, isAI: false },
-  { href: '/settings', icon: Settings, label: '设置', description: '账号管理', badge: null, isAI: false },
+  { href: '/create', icon: Sparkles, label: '创作' },
+  { href: '/video/character-card', icon: User, label: '角色卡' },
+  { href: '/square', icon: LayoutGrid, label: '广场' },
+  { href: '/history', icon: History, label: '历史' },
+  { href: '/settings', icon: Settings, label: '设置' },
 ];
 
 const adminItems = [
-  { href: '/admin', icon: Shield, label: '控制台', description: '系统管理' },
+  { href: '/admin', icon: Shield, label: '控制台' },
 ];
 
 export function Sidebar({ user }: SidebarProps) {
@@ -94,12 +94,10 @@ export function Sidebar({ user }: SidebarProps) {
   }, [fetchPendingTasks]);
 
   return (
-    <>
-    <aside className="fixed left-0 top-14 bottom-0 w-56 bg-card/70 backdrop-blur-xl border-r border-border/70 hidden lg:flex flex-col">
-      {/* Navigation */}
-      <nav className="flex-1 px-3 py-2 space-y-1 overflow-y-auto">
-        <p className="text-[10px] font-medium text-foreground/40 uppercase tracking-[0.2em] px-3 py-2">
-          创作工具
+    <aside className="fixed left-0 top-14 bottom-0 w-56 bg-background border-r border-border hidden lg:flex flex-col">
+      <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
+        <p className="text-[11px] font-medium text-muted-foreground px-2 py-2">
+          创作
         </p>
         {visibleNavItems.map((item) => {
           const isCreateEntry = item.href === '/create';
@@ -111,44 +109,22 @@ export function Sidebar({ user }: SidebarProps) {
               key={item.href}
               href={item.href}
               className={cn(
-                'group relative flex items-center gap-3 pl-4 pr-3 py-3 rounded-xl transition-all duration-300 border border-transparent',
+                'flex items-center gap-2.5 px-2 py-2 rounded-md text-sm transition-colors',
                 isActive
-                  ? 'bg-gradient-to-r from-sky-500/10 to-indigo-500/5 text-foreground border-border/80 shadow-[0_4px_12px_rgba(0,0,0,0.15)] backdrop-blur-md'
-                  : 'hover:bg-card/50 text-foreground/70 hover:text-foreground'
+                  ? 'bg-accent text-foreground'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-accent/70'
               )}
             >
-              {isActive && (
-                <div className="absolute left-0 top-3 bottom-3 w-1 rounded-r-md bg-gradient-to-b from-sky-400 to-indigo-500 shadow-[0_0_8px_rgba(56,189,248,0.6)]" />
-              )}
-              <div className={cn(
-                'w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300',
-                isActive ? 'bg-gradient-to-br from-sky-500/20 to-indigo-500/20 border border-sky-500/30' : 'bg-card/60 group-hover:bg-card/85 group-hover:border-border/80 border border-transparent'
-              )}>
-                <item.icon className={cn('w-3.5 h-3.5 transition-transform duration-300 group-hover:scale-110', isActive ? 'text-sky-400' : 'text-foreground/60')} />
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <p className={cn(
-                    'text-sm font-semibold tracking-wide transition-colors duration-300',
-                    isActive ? 'text-foreground' : 'text-foreground/75 group-hover:text-foreground'
-                  )}>{item.label}</p>
-                  {item.badge && (
-                    <span className={cn(
-                      'text-[9px] font-bold px-1.5 py-0.5 rounded border tracking-wider transition-all duration-300',
-                      isActive ? 'bg-sky-500/20 text-sky-300 border-sky-500/35 shadow-[0_0_8px_rgba(14,165,233,0.15)]' : 'bg-card/80 text-foreground/45 border-border/50 group-hover:text-foreground/65'
-                    )}>{item.badge}</span>
-                  )}
-                </div>
-              </div>
+              <item.icon className="w-4 h-4" />
+              <span>{item.label}</span>
             </Link>
           );
         })}
       </nav>
 
-      {/* Admin Navigation */}
       {user.role === 'admin' && (
-        <div className="px-3 py-4 border-t border-border/70">
-          <p className="text-[10px] font-medium text-foreground/40 uppercase tracking-[0.2em] px-3 py-2">
+        <div className="px-3 py-3 border-t border-border">
+          <p className="text-[11px] font-medium text-muted-foreground px-2 py-2">
             管理
           </p>
           {adminItems.map((item) => {
@@ -158,71 +134,50 @@ export function Sidebar({ user }: SidebarProps) {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  'group relative flex items-center gap-3 pl-4 pr-3 py-3 rounded-xl transition-all duration-300 border border-transparent',
+                  'flex items-center gap-2.5 px-2 py-2 rounded-md text-sm transition-colors',
                   isActive
-                    ? 'bg-gradient-to-r from-sky-500/10 to-indigo-500/5 text-foreground border-border/80 shadow-[0_4px_12px_rgba(0,0,0,0.15)] backdrop-blur-md'
-                    : 'hover:bg-card/50 text-foreground/70 hover:text-foreground'
+                    ? 'bg-accent text-foreground'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-accent/70'
                 )}
               >
-                {isActive && (
-                  <div className="absolute left-0 top-3 bottom-3 w-1 rounded-r-md bg-gradient-to-b from-sky-400 to-indigo-500 shadow-[0_0_8px_rgba(56,189,248,0.6)]" />
-                )}
-                <div className={cn(
-                  'w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300',
-                  isActive ? 'bg-gradient-to-br from-sky-500/20 to-indigo-500/20 border border-sky-500/30' : 'bg-card/60 group-hover:bg-card/85 group-hover:border-border/80 border border-transparent'
-                )}>
-                  <item.icon className={cn('w-3.5 h-3.5 transition-transform duration-300 group-hover:scale-110', isActive ? 'text-sky-400' : 'text-foreground/60')} />
-                </div>
-                <div>
-                  <p className={cn(
-                    'text-sm font-semibold tracking-wide transition-colors duration-300',
-                    isActive ? 'text-foreground' : 'text-foreground/75 group-hover:text-foreground'
-                  )}>{item.label}</p>
-                </div>
+                <item.icon className="w-4 h-4" />
+                <span>{item.label}</span>
               </Link>
             );
           })}
         </div>
       )}
 
-      {/* Status Panel */}
-      <div className="px-3 py-4 border-t border-border/70">
-        <p className="text-[10px] font-medium text-foreground/40 uppercase tracking-[0.2em] px-3 py-2">
-          状态面板
-        </p>
-        <div className="space-y-3">
-          <div className="rounded-xl border border-border/70 bg-card/60 p-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-foreground/60">进行中任务</span>
-              <span className="text-sm font-semibold text-foreground">
-                {pendingCount ?? '--'}
-              </span>
-            </div>
-            <p className="mt-1 text-[10px] text-foreground/40">
-              更新于 {formatRelativeTime(pendingUpdatedAt)}
-            </p>
+      <div className="px-3 py-3 border-t border-border">
+        <div className="rounded-md border border-border bg-card px-3 py-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">进行中</span>
+            <span className="text-sm font-medium">{pendingCount ?? '--'}</span>
           </div>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            更新于 {formatRelativeTime(pendingUpdatedAt)}
+          </p>
         </div>
       </div>
 
-      {/* Footer */}
-      <div className="p-4 border-t border-border/70">
+      <div className="p-3 border-t border-border">
         <div className="flex items-center justify-center gap-3">
-          <p className="text-[10px] text-foreground/40">{siteConfig.siteName} © {new Date().getFullYear()}</p>
-          <a 
-            href="https://github.com/genz27/sanhub" 
-            target="_blank" 
+          <p className="text-[11px] text-muted-foreground">
+            {siteConfig.siteName} © {new Date().getFullYear()}
+          </p>
+          <a
+            href="https://github.com/genz27/sanhub"
+            target="_blank"
             rel="noopener noreferrer"
-            className="text-foreground/40 hover:text-foreground/70 transition-colors"
+            className="text-muted-foreground hover:text-foreground"
             title="GitHub"
           >
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
               <path fillRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clipRule="evenodd" />
             </svg>
           </a>
         </div>
       </div>
     </aside>
-    </>
   );
 }

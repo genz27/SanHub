@@ -11,9 +11,9 @@
 | `/v1/images/generations` | `POST` | OpenAI | 图像格式生成图像，支持 1 张参考图 |
 | `/v1/images/edits` | `POST` | OpenAI / multipart | 编辑接口，支持文件上传参考图 |
 | `/v1/edits` | `POST` | OpenAI / multipart | `/v1/images/edits` 的别名 |
-| `/v1/videos` | `POST` | OpenAI / NewAPI Sora | Sora2 视频生成，支持 1 张首帧参考图 |
-| `/v1/videos/{id}` | `GET` | OpenAI / NewAPI Sora | 查询视频任务状态 |
-| `/v1/videos/{id}/content` | `GET` | OpenAI / NewAPI Sora | 获取生成视频内容 |
+| `/v1/videos` | `POST` | OpenAI-compatible | 视频任务，支持 1 张首帧参考图 |
+| `/v1/videos/{id}` | `GET` | OpenAI-compatible | 查询视频任务状态 |
+| `/v1/videos/{id}/content` | `GET` | OpenAI-compatible | 获取生成视频内容 |
 
 ## 基础配置
 
@@ -58,7 +58,7 @@ Nano Banana 系列是 Google Gemini 3 代原生图像生成模型：
 | --- | --- | --- | --- |
 | `gpt-image-2` | GPT Image 2 | 1K / 2K / 4K | 高质量创意图、插画、概念设计 |
 
-### Sora 视频系列
+### 视频系列
 
 | 模型名 | 系列 | 分辨率 | 时长 | 消耗 |
 | --- | --- | --- | --- | --- |
@@ -155,7 +155,7 @@ Gemini 格式参数路径：`generationConfig.imageConfig.size`
 
 GPT Image 2 的 `image_size` 控制画质精细度，不改变输出像素尺寸；像素尺寸由 `size` 控制。
 
-### Sora2 视频参数
+### 视频参数
 
 `/v1/videos` 同时兼容 JSON 和 multipart/form-data。参考图字段支持 URL、data URI、纯 base64，也支持 multipart 文件上传。
 

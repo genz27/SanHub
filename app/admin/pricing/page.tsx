@@ -104,17 +104,17 @@ export default function PricingPage() {
 
         <div className="p-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
           <PricingInput
-            label="Sora 10秒视频"
+            label="视频 10秒"
             value={config.pricing.soraVideo10s}
             onChange={(v) => updatePricing('soraVideo10s', v)}
           />
           <PricingInput
-            label="Sora 15秒视频"
+            label="视频 15秒"
             value={config.pricing.soraVideo15s}
             onChange={(v) => updatePricing('soraVideo15s', v)}
           />
           <PricingInput
-            label="Sora 25秒视频"
+            label="视频 25秒"
             value={config.pricing.soraVideo25s}
             onChange={(v) => updatePricing('soraVideo25s', v)}
           />
@@ -132,7 +132,7 @@ export default function PricingPage() {
 
         <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <PricingInput
-            label="Sora 图像"
+            label="默认图像"
             value={config.pricing.soraImage}
             onChange={(v) => updatePricing('soraImage', v)}
           />

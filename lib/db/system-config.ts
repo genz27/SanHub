@@ -1,4 +1,14 @@
 import type { SystemConfig, PricingConfig, ImageBucketConfig } from '@/types';
+import {
+  DEFAULT_CONTACT_EMAIL,
+  DEFAULT_COPYRIGHT,
+  DEFAULT_POWERED_BY,
+  DEFAULT_SITE_DESCRIPTION,
+  DEFAULT_SITE_NAME,
+  DEFAULT_SITE_SUB_DESCRIPTION,
+  DEFAULT_SITE_TAGLINE,
+  resolveSiteCopy,
+} from '../site-copy';
 import { getAdapter } from './connection';
 import { cache, CacheKeys, CacheTTL, withCache } from '../cache';
 import { ensureDatabase } from './ready';
@@ -123,13 +133,13 @@ export async function getSystemConfig(): Promise<SystemConfig> {
           characterCardLimit: 0,
         },
         siteConfig: {
-          siteName: 'SANHUB',
-          siteTagline: 'Let Imagination Come Alive',
-          siteDescription: '「SANHUB」是专为 AI 创作打造的一站式平台',
-          siteSubDescription: '我们融合了 Sora 视频生成、Gemini 图像创作与多模型 AI 对话。在这里，技术壁垒已然消融，你唯一的使命就是释放纯粹的想象。',
-          contactEmail: 'support@sanhub.com',
-          copyright: 'Copyright © 2025 SANHUB',
-          poweredBy: 'Powered by OpenAI Sora & Google Gemini',
+          siteName: DEFAULT_SITE_NAME,
+          siteTagline: DEFAULT_SITE_TAGLINE,
+          siteDescription: DEFAULT_SITE_DESCRIPTION,
+          siteSubDescription: DEFAULT_SITE_SUB_DESCRIPTION,
+          contactEmail: DEFAULT_CONTACT_EMAIL,
+          copyright: DEFAULT_COPYRIGHT,
+          poweredBy: DEFAULT_POWERED_BY,
         },
         disabledModels: {
           imageModels: [],
@@ -216,13 +226,13 @@ export async function getSystemConfig(): Promise<SystemConfig> {
         characterCardLimit: row.daily_limit_character_card || 0,
       },
       siteConfig: {
-        siteName: row.site_name || 'SANHUB',
-        siteTagline: row.site_tagline || 'Let Imagination Come Alive',
-        siteDescription: row.site_description || '「SANHUB」是专为 AI 创作打造的一站式平台',
-        siteSubDescription: row.site_sub_description || '我们融合了 Sora 视频生成、Gemini 图像创作与多模型 AI 对话。在这里，技术壁垒已然消融，你唯一的使命就是释放纯粹的想象。',
-        contactEmail: row.contact_email || 'support@sanhub.com',
-        copyright: row.site_copyright || 'Copyright © 2025 SANHUB',
-        poweredBy: row.site_powered_by || 'Powered by OpenAI Sora & Google Gemini',
+        siteName: resolveSiteCopy(row.site_name, DEFAULT_SITE_NAME),
+        siteTagline: resolveSiteCopy(row.site_tagline, DEFAULT_SITE_TAGLINE),
+        siteDescription: resolveSiteCopy(row.site_description, DEFAULT_SITE_DESCRIPTION),
+        siteSubDescription: resolveSiteCopy(row.site_sub_description, DEFAULT_SITE_SUB_DESCRIPTION),
+        contactEmail: resolveSiteCopy(row.contact_email, DEFAULT_CONTACT_EMAIL),
+        copyright: resolveSiteCopy(row.site_copyright, DEFAULT_COPYRIGHT),
+        poweredBy: resolveSiteCopy(row.site_powered_by, DEFAULT_POWERED_BY),
       },
       disabledModels: {
         imageModels: row.disabled_image_models ? JSON.parse(row.disabled_image_models) : [],

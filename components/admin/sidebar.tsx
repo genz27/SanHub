@@ -19,8 +19,7 @@ import {
   History,
   Ticket,
   UserPlus,
-  Coins,
-  Key
+  Coins
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -47,7 +46,6 @@ const navItems: NavItem[] = [
   { href: '/admin/invites', label: '邀请码', icon: UserPlus, roles: ['admin'] },
   { href: '/admin/announcement', label: '公告管理', icon: Megaphone, roles: ['admin'] },
   { href: '/admin/pricing', label: '积分定价', icon: Coins, roles: ['admin'] },
-  { href: '/admin/tokens', label: 'Sora Token', icon: Key, roles: ['admin'] },
   { href: '/admin/site', label: '网站配置', icon: Globe, roles: ['admin'] },
 ];
 
@@ -74,12 +72,12 @@ export function AdminSidebar() {
           <span>返回首页</span>
         </Link>
         <div className="flex items-center gap-3 mt-4">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500/25 to-emerald-500/25 border border-border/70 flex items-center justify-center">
-            <Sparkles className="w-5 h-5 text-foreground/80" />
+          <div className="w-8 h-8 rounded-md bg-foreground text-background flex items-center justify-center">
+            <Sparkles className="w-4 h-4" />
           </div>
           <div>
-            <h1 className="text-lg font-semibold text-foreground">管理后台</h1>
-            <p className="text-xs text-foreground/40">{siteConfig.siteName} Admin</p>
+            <h1 className="text-sm font-semibold tracking-tight">管理后台</h1>
+            <p className="text-xs text-muted-foreground">{siteConfig.siteName} Admin</p>
           </div>
         </div>
       </div>
@@ -94,10 +92,10 @@ export function AdminSidebar() {
               href={item.href}
               onClick={() => setMobileOpen(false)}
               className={cn(
-                'flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 border border-transparent',
+                'flex items-center gap-3 px-3 py-2 rounded-md transition-colors',
                 active
-                  ? 'bg-accent/80 text-foreground border-border/70'
-                  : 'text-foreground/60 hover:bg-card/70 hover:text-foreground'
+                  ? 'bg-accent text-foreground'
+                  : 'text-muted-foreground hover:bg-accent/70 hover:text-foreground'
               )}
             >
               <item.icon className={cn('w-5 h-5', active && 'text-foreground')} />
@@ -124,7 +122,7 @@ export function AdminSidebar() {
       {/* Mobile Toggle */}
       <button
         onClick={() => setMobileOpen(!mobileOpen)}
-        className="lg:hidden fixed top-4 left-4 z-50 p-2.5 bg-card/70 backdrop-blur-sm rounded-xl text-foreground border border-border/70"
+        className="lg:hidden fixed top-4 left-4 z-50 p-2 bg-card rounded-md text-foreground border border-border"
       >
         {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
       </button>
@@ -140,7 +138,7 @@ export function AdminSidebar() {
       {/* Sidebar - Mobile */}
       <aside
         className={cn(
-          'lg:hidden fixed inset-y-0 left-0 z-40 w-72 bg-card/95 backdrop-blur-xl border-r border-border/70 flex flex-col transform transition-transform duration-300 ease-out',
+          'lg:hidden fixed inset-y-0 left-0 z-40 w-72 bg-background border-r border-border flex flex-col transform transition-transform duration-300 ease-out',
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
@@ -148,7 +146,7 @@ export function AdminSidebar() {
       </aside>
 
       {/* Sidebar - Desktop */}
-      <aside className="hidden lg:flex w-72 bg-card/70 backdrop-blur-xl border-r border-border/70 flex-col sticky top-0 h-screen">
+      <aside className="hidden lg:flex w-64 bg-background border-r border-border flex-col sticky top-0 h-screen">
         <NavContent />
       </aside>
     </>

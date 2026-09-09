@@ -2,6 +2,15 @@
 
 import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import type { SiteConfig } from '@/types';
+import {
+  DEFAULT_CONTACT_EMAIL,
+  DEFAULT_COPYRIGHT,
+  DEFAULT_POWERED_BY,
+  DEFAULT_SITE_DESCRIPTION,
+  DEFAULT_SITE_NAME,
+  DEFAULT_SITE_SUB_DESCRIPTION,
+  DEFAULT_SITE_TAGLINE,
+} from '@/lib/site-copy';
 
 // Extended config that includes runtime settings
 export interface ExtendedSiteConfig extends SiteConfig {
@@ -16,13 +25,13 @@ export interface ExtendedSiteConfig extends SiteConfig {
 }
 
 const defaultSiteConfig: ExtendedSiteConfig = {
-  siteName: 'SANHUB',
-  siteTagline: 'Let Imagination Come Alive',
-  siteDescription: '「SANHUB」是专为 AI 创作打造的一站式平台',
-  siteSubDescription: '我们融合了 Sora 视频生成、Gemini 图像创作与多模型 AI 对话。在这里，技术壁垒已然消融，你唯一的使命就是释放纯粹的想象。',
-  contactEmail: 'support@sanhub.com',
-  copyright: 'Copyright © 2025 SANHUB',
-  poweredBy: 'Powered by OpenAI Sora & Google Gemini',
+  siteName: DEFAULT_SITE_NAME,
+  siteTagline: DEFAULT_SITE_TAGLINE,
+  siteDescription: DEFAULT_SITE_DESCRIPTION,
+  siteSubDescription: DEFAULT_SITE_SUB_DESCRIPTION,
+  contactEmail: DEFAULT_CONTACT_EMAIL,
+  copyright: DEFAULT_COPYRIGHT,
+  poweredBy: DEFAULT_POWERED_BY,
   defaultBalance: 100,
   squareEnabled: true,
   gachaEnabled: true,

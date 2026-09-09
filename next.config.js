@@ -14,6 +14,7 @@ const nextConfig = {
   
   experimental: {
     optimizePackageImports: [
+      'geist',
       'lucide-react',
       'class-variance-authority',
       'clsx',

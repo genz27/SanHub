@@ -124,19 +124,19 @@ export default function RegisterPage() {
           <div className="text-center space-y-4 animate-rise">
             <Link href="/" className="inline-block group">
               <div className="flex items-center justify-center gap-2 mb-2">
-                <div className="w-10 h-10 bg-gradient-to-br from-sky-500/25 to-emerald-500/25 border border-border/70 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <Sparkles className="w-5 h-5 text-foreground/80" />
+                <div className="w-8 h-8 bg-foreground text-background rounded-md flex items-center justify-center">
+                  <Sparkles className="w-4 h-4" />
                 </div>
               </div>
-              <h1 className="text-3xl font-light tracking-wider text-foreground">{siteConfig.siteName}</h1>
+              <h1 className="text-2xl font-semibold tracking-tight">{siteConfig.siteName}</h1>
             </Link>
             <p className="text-foreground/40 text-sm">创建账号，开启创作之旅</p>
           </div>
 
           {/* Bonus hint */}
-          <div className="flex items-center justify-center gap-2 py-2.5 px-5 bg-gradient-to-r from-sky-500/10 to-emerald-500/10 border border-border/70 rounded-full mx-auto w-fit backdrop-blur-sm">
-            <Gift className="w-4 h-4 text-sky-300" />
-            <span className="text-sm text-foreground/70">新用户赠送 <span className="text-foreground font-medium">{defaultBalance}</span> 积分</span>
+          <div className="flex items-center justify-center gap-2 py-2 px-4 border border-border rounded-md mx-auto w-fit">
+            <Gift className="w-4 h-4 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">新用户赠送 <span className="text-foreground font-medium">{defaultBalance}</span> 积分</span>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -196,7 +196,7 @@ export default function RegisterPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex items-center justify-center gap-2 px-6 py-3.5 bg-foreground text-background rounded-full font-medium hover:opacity-90 transition-all hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+              className="w-full flex items-center justify-center gap-2 px-6 py-2.5 bg-foreground text-background rounded-md text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <>

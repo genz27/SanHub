@@ -21,8 +21,7 @@ services:
       # - ADMIN_EMAIL=admin@example.com
       # - ADMIN_PASSWORD=your-password
       
-      # API Keys（可选，也可在管理后台 /admin/api 配置）
-      # - SORA_API_KEY=
+      # API Keys（可选，也可在管理后台配置）
       # - GEMINI_API_KEY=
       # - ZIMAGE_API_KEY=
       # - GITEE_API_KEY=

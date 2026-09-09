@@ -27,7 +27,7 @@ interface GenerationRecord {
 const TYPE_OPTIONS = [
   { value: '', label: '全部类型' },
   { value: 'sora-video', label: '视频' },
-  { value: 'sora-image', label: 'Sora 图像' },
+  { value: 'sora-image', label: '图像' },
   { value: 'gemini-image', label: 'Gemini 图像' },
   { value: 'zimage-image', label: 'Z-Image 图像' },
   { value: 'gitee-image', label: 'Gitee 图像' },
@@ -48,7 +48,7 @@ const IMAGE_MODEL_LABELS = new Map(
 
 const TYPE_LABELS: Record<string, string> = {
   'sora-video': '视频',
-  'sora-image': 'Sora 图像',
+  'sora-image': '图像',
   'gemini-image': 'Gemini 图像',
   'zimage-image': 'Z-Image 图像',
   'gitee-image': 'Gitee 图像',

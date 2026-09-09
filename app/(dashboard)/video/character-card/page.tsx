@@ -809,8 +809,8 @@ export default function CharacterCardPage() {
                 submitting || (createMode === 'video' ? !videoFile : !imageFile)
                   ? 'bg-card/60 text-foreground/40 cursor-not-allowed'
                   : createMode === 'video'
-                    ? 'bg-gradient-to-r from-emerald-500 to-sky-500 text-foreground hover:opacity-90'
-                    : 'bg-gradient-to-r from-sky-500 to-purple-500 text-foreground hover:opacity-90'
+                    ? 'bg-foreground text-background hover:opacity-90'
+                    : 'border border-border text-foreground hover:bg-accent'
               )}
             >
               {submitting ? (

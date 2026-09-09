@@ -61,7 +61,7 @@ export default function StatsPage() {
   const totalTypeCount = stats.generationTypes.reduce((sum, item) => sum + item.count, 0);
   const typeMeta: Record<string, { label: string; color: string }> = {
     'sora-video': { label: '视频', color: 'from-sky-500 to-emerald-500' },
-    'sora-image': { label: 'Sora 图像', color: 'from-blue-500 to-cyan-500' },
+    'sora-image': { label: '图像', color: 'from-blue-500 to-cyan-500' },
     'gemini-image': { label: 'Gemini 图像', color: 'from-emerald-500 to-lime-500' },
     'zimage-image': { label: 'Z-Image 图像', color: 'from-amber-500 to-orange-500' },
     'gitee-image': { label: 'Gitee 图像', color: 'from-pink-500 to-rose-500' },

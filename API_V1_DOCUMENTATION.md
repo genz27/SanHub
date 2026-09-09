@@ -1,10 +1,12 @@
-# Sora2API v1 接口文档
+# SanHub v1 接口文档
+
+> 本文档描述 `/v1/*` 兼容层。SanHub 不再提供 Sora Token 池或官方 Sora 产品封装；视频和图像都走后台配置的渠道。产品说明见 [README.md](./README.md)。
 
 ## 概述
 
-Sora2API 是一个兼容 OpenAI API 格式的 Sora 视频/图片生成服务。本文档详细描述了所有 v1 版本的 API 接口。
+对外接口兼容 OpenAI 风格的对话、图像和视频任务格式，便于现有客户端对接。
 
-**✅ 已兼容 [new-api](https://github.com/Calcium-Ion/new-api) sora2 渠道对接格式**
+**✅ 已兼容 [new-api](https://github.com/Calcium-Ion/new-api) 视频渠道对接格式**
 
 ## 基础信息
 

@@ -45,10 +45,10 @@ export function AnnouncementBanner() {
   if (!announcement || dismissed) return null;
 
   return (
-    <div className="bg-gradient-to-r from-sky-500/10 to-emerald-500/10 border border-border/70 rounded-2xl p-4 mb-6">
+    <div className="border border-border rounded-lg p-4 mb-6 bg-card">
       <div className="flex items-start gap-3">
-        <div className="w-8 h-8 bg-sky-500/15 rounded-lg flex items-center justify-center shrink-0">
-          <Megaphone className="w-4 h-4 text-sky-300" />
+        <div className="w-8 h-8 bg-accent rounded-md flex items-center justify-center shrink-0">
+          <Megaphone className="w-4 h-4 text-foreground" />
         </div>
         <div className="flex-1 min-w-0">
           <h3 className="font-medium text-foreground mb-1">{announcement.title}</h3>

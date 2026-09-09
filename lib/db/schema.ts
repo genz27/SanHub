@@ -640,7 +640,7 @@ async function doInitializeDatabase(): Promise<void> {
     // 字段已存在，忽略错误
   }
   try {
-    await db.execute("ALTER TABLE system_config ADD COLUMN site_powered_by VARCHAR(200) DEFAULT 'Powered by OpenAI Sora & Google Gemini'");
+    await db.execute("ALTER TABLE system_config ADD COLUMN site_powered_by VARCHAR(200) DEFAULT 'Powered by SanHub'");
   } catch {
     // 字段已存在，忽略错误
   }

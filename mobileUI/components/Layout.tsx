@@ -32,7 +32,7 @@ const ADMIN_NAV: NavItem[] = [
   { label: '公告管理', path: '/admin/announcement', icon: Megaphone },
   { label: '站点设置', path: '/admin/site', icon: Settings2 },
   { label: '数据统计', path: '/admin/stats', icon: BarChart2 },
-  { label: 'API 密钥', path: '/admin/tokens', icon: Terminal },
+  { label: '视频渠道', path: '/admin/video-channels', icon: Terminal },
 ];
 
 interface LayoutProps {

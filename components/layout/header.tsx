@@ -12,7 +12,6 @@ interface HeaderProps {
   user: SafeUser;
 }
 
-// 移动端底部导航项
 const mobileNavItems = [
   { href: '/square', icon: LayoutGrid, label: '广场' },
   { href: '/create', icon: Sparkles, label: '创作' },
@@ -30,50 +29,44 @@ export function Header({ user }: HeaderProps) {
 
   return (
     <>
-      {/* Top Header */}
-      <header className="fixed top-0 left-0 right-0 h-14 bg-card/80 backdrop-blur-xl border-b border-border/50 z-50">
+      <header className="fixed top-0 left-0 right-0 h-14 bg-background border-b border-border z-50">
         <div className="h-full px-4 lg:px-6 flex items-center justify-between">
-          {/* Logo */}
           <Link href="/" className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-sky-500/20">
-              <Sparkles className="w-4 h-4 text-white" />
+            <div className="w-6 h-6 rounded-md bg-foreground text-background flex items-center justify-center text-[11px] font-semibold">
+              {siteConfig.siteName.slice(0, 1)}
             </div>
-            <span className="font-semibold text-foreground tracking-tight">{siteConfig.siteName}</span>
+            <span className="text-sm font-medium tracking-tight">{siteConfig.siteName}</span>
           </Link>
 
-          {/* Right Actions */}
-          <div className="flex items-center gap-2">
-            {/* Admin Link */}
+          <div className="flex items-center gap-1">
             {isAdmin && (
-              <Link 
+              <Link
                 href="/admin"
                 className={cn(
-                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+                  'flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors',
                   pathname.startsWith('/admin')
-                    ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
-                    : 'text-foreground/60 hover:bg-foreground/5'
+                    ? 'bg-accent text-foreground'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-accent'
                 )}
               >
                 <Shield className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">管理</span>
               </Link>
             )}
-            
-            {/* Logout - Desktop Only */}
+
             <button
-              className="hidden lg:flex p-2 hover:bg-foreground/5 rounded-lg transition-colors"
+              className="hidden lg:flex p-2 hover:bg-accent rounded-md transition-colors"
               onClick={() => signOut({ callbackUrl: '/login' })}
               title="退出登录"
             >
-              <LogOut className="w-4 h-4 text-foreground/60" />
+              <LogOut className="w-4 h-4 text-muted-foreground" />
             </button>
           </div>
         </div>
       </header>
 
-      {/* Mobile Bottom Tab Navigation - Premium Floating Dock */}
-      <div className="lg:hidden fixed bottom-5 left-0 right-0 z-50 px-4 flex justify-center">
-        <nav className="w-full max-w-sm bg-card/80 border border-border/80 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.55),0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-2xl px-2 py-1.5 flex justify-around items-center">
+      <div className="lg:hidden fixed bottom-4 left-0 right-0 z-50 px-4 flex justify-center">
+        <nav className="w-full max-w-sm bg-card border border-border rounded-lg px-2 py-1.5 flex justify-around items-center">
           {visibleMobileNavItems.map((item) => {
             const isCreateEntry = item.href === '/create';
             const isActive = isCreateEntry
@@ -84,15 +77,12 @@ export function Header({ user }: HeaderProps) {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  'relative flex flex-col items-center justify-center py-1.5 px-3 rounded-xl transition-all duration-300 active:scale-95 flex-1 min-w-0',
-                  isActive ? 'text-sky-400' : 'text-foreground/45 hover:text-foreground/75'
+                  'flex flex-col items-center justify-center py-1.5 px-3 rounded-md flex-1 min-w-0',
+                  isActive ? 'text-foreground bg-accent' : 'text-muted-foreground hover:text-foreground'
                 )}
               >
-                {isActive && (
-                  <div className="absolute inset-0 bg-gradient-to-br from-sky-500/12 to-indigo-500/12 rounded-xl border border-sky-500/25 shadow-[0_2px_12px_rgba(14,165,233,0.15)] -z-10 animate-fadeIn" />
-                )}
-                <item.icon className="w-5 h-5 mb-0.5 transition-transform duration-300" strokeWidth={isActive ? 2.2 : 1.6} />
-                <span className="text-[9px] font-bold tracking-wider">{item.label}</span>
+                <item.icon className="w-4 h-4 mb-0.5" strokeWidth={isActive ? 2.2 : 1.6} />
+                <span className="text-[10px] font-medium">{item.label}</span>
               </Link>
             );
           })}

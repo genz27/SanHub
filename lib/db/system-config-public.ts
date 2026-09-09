@@ -1,4 +1,14 @@
 import type { SystemConfig } from '@/types';
+import {
+  DEFAULT_CONTACT_EMAIL,
+  DEFAULT_COPYRIGHT,
+  DEFAULT_POWERED_BY,
+  DEFAULT_SITE_DESCRIPTION,
+  DEFAULT_SITE_NAME,
+  DEFAULT_SITE_SUB_DESCRIPTION,
+  DEFAULT_SITE_TAGLINE,
+  resolveSiteCopy,
+} from '../site-copy';
 import { getAdapter } from './connection';
 import { CacheKeys, CacheTTL, withCache } from '../cache';
 import { ensureDatabase } from './ready';
@@ -31,13 +41,13 @@ const DEFAULT_PUBLIC_SYSTEM_CONFIG: PublicSystemConfig = {
     inviterBonusPoints: 50,
   },
   siteConfig: {
-    siteName: 'SANHUB',
-    siteTagline: 'Let Imagination Come Alive',
-    siteDescription: '「SANHUB」是专为 AI 创作打造的一站式平台',
-    siteSubDescription: '我们融合了 Sora 视频生成、Gemini 图像创作与多模型 AI 对话。在这里，技术壁垒已然消融，你唯一的使命就是释放纯粹的想象。',
-    contactEmail: 'support@sanhub.com',
-    copyright: 'Copyright © 2025 SANHUB',
-    poweredBy: 'Powered by OpenAI Sora & Google Gemini',
+    siteName: DEFAULT_SITE_NAME,
+    siteTagline: DEFAULT_SITE_TAGLINE,
+    siteDescription: DEFAULT_SITE_DESCRIPTION,
+    siteSubDescription: DEFAULT_SITE_SUB_DESCRIPTION,
+    contactEmail: DEFAULT_CONTACT_EMAIL,
+    copyright: DEFAULT_COPYRIGHT,
+    poweredBy: DEFAULT_POWERED_BY,
   },
 };
 
@@ -57,13 +67,13 @@ function mapPublicSystemConfig(row: any): PublicSystemConfig {
       inviterBonusPoints: Number(row.invite_inviter_bonus) || 50,
     },
     siteConfig: {
-      siteName: row.site_name || DEFAULT_PUBLIC_SYSTEM_CONFIG.siteConfig.siteName,
-      siteTagline: row.site_tagline || DEFAULT_PUBLIC_SYSTEM_CONFIG.siteConfig.siteTagline,
-      siteDescription: row.site_description || DEFAULT_PUBLIC_SYSTEM_CONFIG.siteConfig.siteDescription,
-      siteSubDescription: row.site_sub_description || DEFAULT_PUBLIC_SYSTEM_CONFIG.siteConfig.siteSubDescription,
-      contactEmail: row.contact_email || DEFAULT_PUBLIC_SYSTEM_CONFIG.siteConfig.contactEmail,
-      copyright: row.site_copyright || DEFAULT_PUBLIC_SYSTEM_CONFIG.siteConfig.copyright,
-      poweredBy: row.site_powered_by || DEFAULT_PUBLIC_SYSTEM_CONFIG.siteConfig.poweredBy,
+      siteName: resolveSiteCopy(row.site_name, DEFAULT_SITE_NAME),
+      siteTagline: resolveSiteCopy(row.site_tagline, DEFAULT_SITE_TAGLINE),
+      siteDescription: resolveSiteCopy(row.site_description, DEFAULT_SITE_DESCRIPTION),
+      siteSubDescription: resolveSiteCopy(row.site_sub_description, DEFAULT_SITE_SUB_DESCRIPTION),
+      contactEmail: resolveSiteCopy(row.contact_email, DEFAULT_CONTACT_EMAIL),
+      copyright: resolveSiteCopy(row.site_copyright, DEFAULT_COPYRIGHT),
+      poweredBy: resolveSiteCopy(row.site_powered_by, DEFAULT_POWERED_BY),
     },
   };
 }
