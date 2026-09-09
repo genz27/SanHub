@@ -1,12 +1,26 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { History, Trash2, Search, Loader2, Eye } from 'lucide-react';
-import { formatDate, cn } from '@/lib/utils';
+import { useCallback, useEffect, useState } from 'react';
+import { Eye, History, Loader2, Trash2 } from 'lucide-react';
+import { formatDate } from '@/lib/utils';
 import { IMAGE_MODELS } from '@/lib/model-config';
 import { toast } from '@/components/ui/toaster';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { PaginationControls } from '@/components/admin/pagination';
+import { Modal } from '@/components/ui/modal';
+import {
+  AdminEmpty,
+  AdminGhostButton,
+  AdminHeader,
+  AdminPanel,
+  AdminPill,
+  AdminSearchInput,
+  AdminSelect,
+  AdminTable,
+  AdminTd,
+  AdminTh,
+  AdminToolbar,
+} from '@/components/admin/admin-chrome';
 
 const GENERATIONS_PAGE_SIZE = 50;
 
@@ -69,6 +83,25 @@ function getRecordTypeLabel(record: GenerationRecord): string {
   return TYPE_LABELS[record.type] || record.type;
 }
 
+function statusTone(status: string): 'success' | 'warning' | 'info' | 'danger' | 'neutral' {
+  if (status === 'completed') return 'success';
+  if (status === 'pending') return 'warning';
+  if (status === 'processing') return 'info';
+  if (status === 'failed') return 'danger';
+  return 'neutral';
+}
+
+function statusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    completed: '完成',
+    pending: '等待',
+    processing: '处理中',
+    failed: '失败',
+    cancelled: '取消',
+  };
+  return labels[status] || status;
+}
+
 export default function GenerationsPage() {
   const [records, setRecords] = useState<GenerationRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -80,6 +113,7 @@ export default function GenerationsPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<GenerationRecord | null>(null);
 
   const loadRecords = useCallback(async (nextPage = 1, reset = false) => {
     try {
@@ -116,15 +150,10 @@ export default function GenerationsPage() {
 
   useEffect(() => {
     const handle = setTimeout(() => {
-      loadRecords(1, true);
+      void loadRecords(1, true);
     }, 300);
     return () => clearTimeout(handle);
   }, [loadRecords, search, statusFilter, typeFilter]);
-
-  const handleDelete = (id: string) => {
-    setPendingDeleteId(id);
-    setConfirmDialogOpen(true);
-  };
 
   const confirmDelete = async () => {
     if (!pendingDeleteId) return;
@@ -138,152 +167,209 @@ export default function GenerationsPage() {
       });
       if (res.ok) {
         toast({ title: '记录已删除' });
+        if (selected?.id === pendingDeleteId) setSelected(null);
         const nextPage = records.length === 1 && page > 1 ? page - 1 : page;
-        loadRecords(nextPage, false);
+        void loadRecords(nextPage, false);
       } else {
         const data = await res.json().catch(() => ({}));
         toast({ title: '删除失败', description: data.error || '无法删除记录', variant: 'destructive' });
       }
     } catch (err) {
       toast({ title: '删除失败', description: err instanceof Error ? err.message : '无法删除记录', variant: 'destructive' });
+    } finally {
+      setPendingDeleteId(null);
     }
   };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-foreground/30" />
+      <div className="space-y-6">
+        <AdminHeader title="生成记录" description="管理所有用户的生成历史" />
+        <div className="flex h-48 items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-light text-foreground">生成记录</h1>
-        <p className="text-foreground/50 mt-1">管理所有用户的生成历史 · 共 {total} 条</p>
-      </div>
+    <div className="space-y-5">
+      <AdminHeader title="生成记录" description={`共 ${total} 条`} />
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-foreground/40" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="搜索用户或提示词..."
-            className="w-full pl-11 pr-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border/70"
+      <AdminToolbar>
+        <AdminSearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="搜索用户或提示词"
+          trailing={fetching ? <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" /> : null}
+        />
+        <AdminSelect value={typeFilter} onChange={setTypeFilter}>
+          {TYPE_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </AdminSelect>
+        <AdminSelect value={statusFilter} onChange={setStatusFilter}>
+          {STATUS_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </AdminSelect>
+      </AdminToolbar>
+
+      <AdminPanel>
+        {records.length === 0 ? (
+          <AdminEmpty
+            icon={<History className="h-8 w-8" />}
+            title="暂无记录"
+            description="调整筛选条件后再试。"
           />
-        </div>
-        <select
-          value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value)}
-          className="px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border/70"
-        >
-          {TYPE_OPTIONS.map(opt => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border/70"
-        >
-          {STATUS_OPTIONS.map(opt => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
-      </div>
-
-      {/* Records Table */}
-      <div className="bg-card/60 border border-border/70 rounded-2xl overflow-hidden">
-        <div className="overflow-x-auto no-scrollbar">
-          <table className="w-full min-w-[760px]">
+        ) : (
+          <AdminTable minWidth="960px">
             <thead>
-              <tr className="border-b border-border/70">
-                <th className="text-left text-sm font-medium text-foreground/50 px-5 py-4">用户</th>
-                <th className="text-left text-sm font-medium text-foreground/50 px-5 py-4">类型</th>
-                <th className="text-left text-sm font-medium text-foreground/50 px-5 py-4 max-w-xs">提示词</th>
-                <th className="text-center text-sm font-medium text-foreground/50 px-5 py-4">状态</th>
-                <th className="text-right text-sm font-medium text-foreground/50 px-5 py-4">积分</th>
-                <th className="text-right text-sm font-medium text-foreground/50 px-5 py-4">时间</th>
-                <th className="text-right text-sm font-medium text-foreground/50 px-5 py-4">操作</th>
+              <tr>
+                <AdminTh>时间</AdminTh>
+                <AdminTh>用户</AdminTh>
+                <AdminTh>类型</AdminTh>
+                <AdminTh>提示词</AdminTh>
+                <AdminTh>状态</AdminTh>
+                <AdminTh align="right">积分</AdminTh>
+                <AdminTh align="right">操作</AdminTh>
               </tr>
             </thead>
             <tbody>
               {records.map((record) => (
-                <tr key={record.id} className="border-b border-border/70 hover:bg-card/60">
-                  <td className="px-5 py-4">
-                    <div>
-                      <p className="text-foreground font-medium">{record.userName || '-'}</p>
-                      <p className="text-xs text-foreground/40">{record.userEmail}</p>
-                    </div>
-                  </td>
-                  <td className="px-5 py-4">
-                    <span className="px-2 py-1 text-xs rounded-full bg-card/70 text-foreground/70">
-                      {getRecordTypeLabel(record)}
+                <tr
+                  key={record.id}
+                  className="cursor-pointer hover:bg-accent/50"
+                  onClick={() => setSelected(record)}
+                >
+                  <AdminTd>
+                    <span className="whitespace-nowrap text-muted-foreground">
+                      {formatDate(record.createdAt)}
                     </span>
-                  </td>
-                  <td className="px-5 py-4 max-w-xs">
-                    <p className="text-foreground/70 truncate" title={record.prompt}>
+                  </AdminTd>
+                  <AdminTd>
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-foreground">{record.userName || '-'}</p>
+                      <p className="truncate text-xs text-muted-foreground">{record.userEmail}</p>
+                    </div>
+                  </AdminTd>
+                  <AdminTd>
+                    <AdminPill>{getRecordTypeLabel(record)}</AdminPill>
+                  </AdminTd>
+                  <AdminTd>
+                    <p className="max-w-[320px] truncate text-muted-foreground" title={record.prompt}>
                       {record.prompt || '-'}
                     </p>
-                  </td>
-                  <td className="px-5 py-4 text-center">
-                    <StatusBadge status={record.status} />
-                  </td>
-                  <td className="px-5 py-4 text-right text-red-400">-{record.cost}</td>
-                  <td className="px-5 py-4 text-right text-foreground/50 text-sm">
-                    {formatDate(record.createdAt)}
-                  </td>
-                  <td className="px-5 py-4 text-right">
-                    <div className="flex items-center justify-end gap-2">
+                  </AdminTd>
+                  <AdminTd>
+                    <AdminPill tone={statusTone(record.status)}>{statusLabel(record.status)}</AdminPill>
+                  </AdminTd>
+                  <AdminTd align="right">
+                    <span className="text-muted-foreground">-{record.cost}</span>
+                  </AdminTd>
+                  <AdminTd align="right">
+                    <div className="flex justify-end gap-2" onClick={(event) => event.stopPropagation()}>
                       {record.resultUrl && (
-                        <a
-                          href={record.resultUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-2 text-foreground/40 hover:text-foreground hover:bg-card/70 rounded-lg transition-all"
+                        <AdminGhostButton
+                          title="查看结果"
+                          onClick={() => window.open(record.resultUrl, '_blank', 'noopener,noreferrer')}
                         >
-                          <Eye className="w-4 h-4" />
-                        </a>
+                          <Eye className="h-3.5 w-3.5" />
+                          查看
+                        </AdminGhostButton>
                       )}
-                      <button
-                        onClick={() => handleDelete(record.id)}
-                        className="p-2 text-red-400/60 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
+                      <AdminGhostButton
+                        danger
+                        title="删除"
+                        onClick={() => {
+                          setPendingDeleteId(record.id);
+                          setConfirmDialogOpen(true);
+                        }}
                       >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </AdminGhostButton>
                     </div>
-                  </td>
+                  </AdminTd>
                 </tr>
               ))}
             </tbody>
-          </table>
-        </div>
-
-        {records.length === 0 && (
-          <div className="text-center py-12 text-foreground/40">
-            <History className="w-10 h-10 mx-auto mb-3 opacity-30" />
-            <p>暂无记录</p>
-          </div>
+          </AdminTable>
         )}
-      </div>
+      </AdminPanel>
 
       {total > 0 && (
         <PaginationControls
           page={page}
           pageSize={GENERATIONS_PAGE_SIZE}
           total={total}
-          onPageChange={(nextPage) => loadRecords(nextPage, false)}
+          onPageChange={(nextPage) => void loadRecords(nextPage, false)}
           loading={fetching}
         />
       )}
 
+      <Modal
+        open={selected !== null}
+        onClose={() => setSelected(null)}
+        title="生成详情"
+        size="lg"
+      >
+        {selected && (
+          <div className="space-y-4 text-sm">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <p className="text-xs text-muted-foreground">用户</p>
+                <p className="mt-1">{selected.userName || '-'}</p>
+                <p className="text-xs text-muted-foreground">{selected.userEmail}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">时间</p>
+                <p className="mt-1">{formatDate(selected.createdAt)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">类型</p>
+                <p className="mt-1">{getRecordTypeLabel(selected)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">状态 / 积分</p>
+                <p className="mt-1">
+                  {statusLabel(selected.status)} · -{selected.cost}
+                </p>
+              </div>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">提示词</p>
+              <p className="mt-2 whitespace-pre-wrap rounded-md border border-border bg-background p-3 text-foreground">
+                {selected.prompt || '-'}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              {selected.resultUrl && (
+                <AdminGhostButton
+                  onClick={() => window.open(selected.resultUrl, '_blank', 'noopener,noreferrer')}
+                >
+                  <Eye className="h-3.5 w-3.5" />
+                  打开结果
+                </AdminGhostButton>
+              )}
+              <AdminGhostButton
+                danger
+                onClick={() => {
+                  setPendingDeleteId(selected.id);
+                  setConfirmDialogOpen(true);
+                }}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                删除
+              </AdminGhostButton>
+            </div>
+          </div>
+        )}
+      </Modal>
+
       <ConfirmDialog
         open={confirmDialogOpen}
         onClose={() => setConfirmDialogOpen(false)}
-        onConfirm={confirmDelete}
+        onConfirm={() => void confirmDelete()}
         title="确认删除"
         message="确定删除此记录？"
         confirmLabel="删除"
@@ -292,27 +378,3 @@ export default function GenerationsPage() {
     </div>
   );
 }
-
-function StatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    completed: 'bg-green-500/20 text-green-400 border-green-500/30',
-    pending: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-    processing: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-    failed: 'bg-red-500/20 text-red-400 border-red-500/30',
-    cancelled: 'bg-card/70 text-foreground/50 border-border/70',
-  };
-  const labels: Record<string, string> = {
-    completed: '完成',
-    pending: '等待',
-    processing: '处理中',
-    failed: '失败',
-    cancelled: '取消',
-  };
-
-  return (
-    <span className={cn('px-2 py-1 text-xs rounded-full border', styles[status] || styles.completed)}>
-      {labels[status] || status}
-    </span>
-  );
-}
-

@@ -7,7 +7,6 @@ import {
   Copy,
   Download,
   FilterX,
-  Layers,
   Loader2,
   Plus,
   Ticket,
@@ -18,6 +17,18 @@ import { formatDate } from '@/lib/utils';
 import { toast } from '@/components/ui/toaster';
 import { PaginationControls } from '@/components/admin/pagination';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { Modal } from '@/components/ui/modal';
+import {
+  AdminEmpty,
+  AdminGhostButton,
+  AdminHeader,
+  AdminPanel,
+  AdminPill,
+  AdminPrimaryButton,
+  AdminTable,
+  AdminTd,
+  AdminTh,
+} from '@/components/admin/admin-chrome';
 
 const REDEMPTION_PAGE_SIZE = 50;
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
@@ -304,353 +315,276 @@ export default function RedemptionPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-foreground/30" />
+      <div className="space-y-6">
+        <AdminHeader title="卡密管理" description="按批次生成、查看和导出积分卡密" />
+        <div className="flex h-48 items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-        <div>
-          <h1 className="text-3xl font-light text-foreground">卡密管理</h1>
-          <p className="text-foreground/50 mt-1">按批次生成、查看和导出积分卡密，当前查看：{viewLabel}</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <label className="flex items-center gap-2 text-sm text-foreground/60">
-            <input
-              type="checkbox"
-              checked={showUsed}
-              onChange={(e) => setShowUsed(e.target.checked)}
-              className="rounded border-border/70"
-            />
-            显示已使用
-          </label>
-          {activeBatchId && (
-            <button
-              onClick={() => setActiveBatchId(null)}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-card/60 border border-border/70 text-foreground rounded-xl hover:bg-card/70 transition-all"
-            >
-              <FilterX className="w-4 h-4" />
-              清除批次筛选
-            </button>
-          )}
-          <button
-            onClick={() => copyCodes(exportableCurrentCodes, '当前列表没有可复制内容', '已复制当前列表')}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-card/60 border border-border/70 text-foreground rounded-xl hover:bg-card/70 transition-all"
-          >
-            <Copy className="w-4 h-4" />
-            复制当前列表
-          </button>
-          <button
-            onClick={() => exportCodes(exportableCurrentCodes, 'redemption-list')}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-card/60 border border-border/70 text-foreground rounded-xl hover:bg-card/70 transition-all"
-          >
-            <Download className="w-4 h-4" />
-            导出当前列表
-          </button>
-          <button
-            onClick={() => setShowCreate(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-foreground text-background rounded-xl hover:bg-foreground/90 transition-all"
-          >
-            <Plus className="w-4 h-4" />
-            生成卡密
-          </button>
-        </div>
-      </div>
+    <div className="space-y-5">
+      <AdminHeader
+        title="卡密管理"
+        description={`当前查看：${viewLabel} · ${total} 条`}
+        actions={
+          <>
+            <label className="inline-flex h-9 items-center gap-2 text-sm text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={showUsed}
+                onChange={(event) => setShowUsed(event.target.checked)}
+                className="rounded border-border"
+              />
+              显示已使用
+            </label>
+            <AdminGhostButton onClick={() => void copyCodes(exportableCurrentCodes, '当前列表没有可复制内容', '已复制当前列表')}>
+              <Copy className="h-3.5 w-3.5" />
+              复制列表
+            </AdminGhostButton>
+            <AdminGhostButton onClick={() => exportCodes(exportableCurrentCodes, 'redemption-list')}>
+              <Download className="h-3.5 w-3.5" />
+              导出
+            </AdminGhostButton>
+            <AdminPrimaryButton onClick={() => setShowCreate(true)}>
+              <Plus className="h-4 w-4" />
+              生成卡密
+            </AdminPrimaryButton>
+          </>
+        }
+      />
 
       {latestBatch && (
-        <div className="bg-card/60 border border-border/70 rounded-2xl p-5 space-y-4">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <p className="text-sm text-foreground/50">最近生成结果</p>
-              <h2 className="text-xl font-medium text-foreground mt-1">
-                {latestBatch.count} 个卡密 · 每个 {latestBatch.points} 积分
-              </h2>
-              <div className="flex flex-wrap items-center gap-2 text-sm text-foreground/50 mt-2">
-                <span>批次号 {latestBatch.batchId.slice(0, 8)}</span>
-                <span>·</span>
-                <span>{formatDate(latestBatch.createdAt)}</span>
-                <span>·</span>
-                <span>{formatExpiry(latestBatch.expiresAt)}</span>
-                {latestBatch.note && (
-                  <>
-                    <span>·</span>
-                    <span>{latestBatch.note}</span>
-                  </>
-                )}
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => copyCodes(exportableLatestCodes, '最近批次没有可复制卡密', '已复制最近批次')}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-card/70 border border-border/70 text-foreground rounded-xl hover:bg-card/80"
-              >
-                <Copy className="w-4 h-4" />
-                复制最近批次
-              </button>
-              <button
-                onClick={() => exportCodes(exportableLatestCodes, `redemption-batch-${latestBatch.batchId.slice(0, 8)}`)}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-card/70 border border-border/70 text-foreground rounded-xl hover:bg-card/80"
-              >
-                <Download className="w-4 h-4" />
-                导出最近批次
-              </button>
-              <button
-                onClick={() => setActiveBatchId(latestBatch.batchId)}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-foreground text-background rounded-xl hover:bg-foreground/90"
-              >
-                <Layers className="w-4 h-4" />
-                仅看这一批
-              </button>
-            </div>
+        <div className="flex flex-col gap-3 rounded-md border border-border bg-card px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0 text-sm">
+            <p className="font-medium text-foreground">
+              最近批次 {latestBatch.batchId.slice(0, 8)} · {latestBatch.count} 张 · 每张 {latestBatch.points} 积分
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {formatDate(latestBatch.createdAt)} · {formatExpiry(latestBatch.expiresAt)}
+              {latestBatch.note ? ` · ${latestBatch.note}` : ''}
+            </p>
           </div>
-          <p className="text-xs text-foreground/40">
-            复制和导出默认优先取未使用卡密；如果该结果里全部已使用，则导出完整列表。
-          </p>
+          <div className="flex flex-wrap gap-2">
+            <AdminGhostButton onClick={() => void copyCodes(exportableLatestCodes, '最近批次没有可复制卡密', '已复制最近批次')}>
+              <Copy className="h-3.5 w-3.5" />
+              复制
+            </AdminGhostButton>
+            <AdminGhostButton onClick={() => exportCodes(exportableLatestCodes, `redemption-batch-${latestBatch.batchId.slice(0, 8)}`)}>
+              <Download className="h-3.5 w-3.5" />
+              导出
+            </AdminGhostButton>
+            <AdminGhostButton onClick={() => setActiveBatchId(latestBatch.batchId)}>
+              仅看这一批
+            </AdminGhostButton>
+          </div>
         </div>
       )}
 
-      <div className="grid grid-cols-1 xl:grid-cols-[320px_minmax(0,1fr)] gap-6">
-        <div className="bg-card/60 border border-border/70 rounded-2xl p-5 space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-sky-500/15 flex items-center justify-center">
-              <Layers className="w-5 h-5 text-sky-300" />
-            </div>
-            <div>
-              <h2 className="text-lg font-medium text-foreground">最近批次</h2>
-              <p className="text-sm text-foreground/50">快速查看、筛选或清理未使用卡密</p>
-            </div>
-          </div>
+      {recentBatches.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveBatchId(null)}
+            className={`inline-flex h-8 items-center rounded-md border px-2.5 text-xs ${
+              !activeBatchId
+                ? 'border-foreground bg-foreground text-background'
+                : 'border-border text-muted-foreground hover:bg-accent'
+            }`}
+          >
+            全部
+          </button>
+          {recentBatches.map((batch) => {
+            const isActive = activeBatchId === batch.batchId;
+            return (
+              <div key={batch.batchId} className="inline-flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setActiveBatchId(isActive ? null : batch.batchId)}
+                  className={`inline-flex h-8 items-center rounded-md border px-2.5 text-xs ${
+                    isActive
+                      ? 'border-foreground bg-foreground text-background'
+                      : 'border-border text-muted-foreground hover:bg-accent'
+                  }`}
+                >
+                  {batch.batchId.slice(0, 8)} · 未用 {batch.unusedCount}
+                </button>
+                <button
+                  type="button"
+                  title="删除未使用卡密"
+                  disabled={batch.unusedCount === 0 || deletingBatchId === batch.batchId}
+                  onClick={() => setPendingDeleteBatchId(batch.batchId)}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40"
+                >
+                  {deletingBatchId === batch.batchId ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-3.5 w-3.5" />
+                  )}
+                </button>
+              </div>
+            );
+          })}
+          {activeBatchId && (
+            <AdminGhostButton onClick={() => setActiveBatchId(null)}>
+              <FilterX className="h-3.5 w-3.5" />
+              清除筛选
+            </AdminGhostButton>
+          )}
+        </div>
+      )}
 
-          {recentBatches.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-border/70 p-6 text-sm text-foreground/40 text-center">
-              还没有生成批次
-            </div>
-          ) : (
-            <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
-              {recentBatches.map((batch) => {
-                const isActive = activeBatchId === batch.batchId;
+      <AdminPanel>
+        {codes.length === 0 ? (
+          <AdminEmpty
+            icon={<Ticket className="h-8 w-8" />}
+            title={activeBatchId ? '这个批次下暂无符合条件的卡密' : '暂无卡密'}
+            description="生成一批卡密后会显示在这里。"
+          />
+        ) : (
+          <AdminTable minWidth="1040px">
+            <thead>
+              <tr>
+                <AdminTh>卡密</AdminTh>
+                <AdminTh>批次</AdminTh>
+                <AdminTh align="right">积分</AdminTh>
+                <AdminTh>备注</AdminTh>
+                <AdminTh>有效期</AdminTh>
+                <AdminTh>状态</AdminTh>
+                <AdminTh>时间</AdminTh>
+                <AdminTh align="right">操作</AdminTh>
+              </tr>
+            </thead>
+            <tbody>
+              {codes.map((code) => {
+                const isExpired = Boolean(code.expiresAt && code.expiresAt < Date.now() && !code.usedBy);
                 return (
-                  <div
-                    key={batch.batchId}
-                    className={`rounded-2xl border p-4 transition-all ${
-                      isActive ? 'border-sky-500/50 bg-sky-500/10' : 'border-border/70 bg-card/50'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-medium text-foreground">批次 {batch.batchId.slice(0, 8)}</p>
-                        <p className="text-sm text-foreground/50 mt-1">
-                          {batch.count} 个，总计 {batch.points} 积分/个
-                        </p>
+                  <tr key={code.id} className="hover:bg-accent/50">
+                    <AdminTd>
+                      <code className="rounded border border-border bg-background px-1.5 py-0.5 font-mono text-xs">
+                        {code.code}
+                      </code>
+                    </AdminTd>
+                    <AdminTd>
+                      <span className="text-muted-foreground">{code.batchId ? code.batchId.slice(0, 8) : '-'}</span>
+                    </AdminTd>
+                    <AdminTd align="right">+{code.points}</AdminTd>
+                    <AdminTd>
+                      <span className="text-muted-foreground">{code.note || '-'}</span>
+                    </AdminTd>
+                    <AdminTd>
+                      <span className="text-muted-foreground">{formatExpiry(code.expiresAt)}</span>
+                    </AdminTd>
+                    <AdminTd>
+                      {code.usedBy ? (
+                        <AdminPill>已使用</AdminPill>
+                      ) : isExpired ? (
+                        <AdminPill tone="warning">已过期</AdminPill>
+                      ) : (
+                        <AdminPill tone="success">可发放</AdminPill>
+                      )}
+                    </AdminTd>
+                    <AdminTd>
+                      <div className="text-muted-foreground">
+                        <div>{formatDate(code.createdAt)}</div>
+                        {code.usedAt && (
+                          <div className="mt-0.5 text-[11px]">使用于 {formatDate(code.usedAt)}</div>
+                        )}
                       </div>
-                      <span className="px-2 py-1 rounded-full text-xs border border-border/70 text-foreground/60">
-                        未用 {batch.unusedCount}
-                      </span>
-                    </div>
-                    <div className="mt-3 space-y-1 text-xs text-foreground/45">
-                      <p>生成时间：{formatDate(batch.createdAt)}</p>
-                      <p>有效期：{formatExpiry(batch.expiresAt)}</p>
-                      <p>备注：{batch.note || '无备注'}</p>
-                    </div>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <button
-                        onClick={() => setActiveBatchId(isActive ? null : batch.batchId)}
-                        className="px-3 py-2 rounded-xl bg-card/70 border border-border/70 text-sm text-foreground hover:bg-card/80"
-                      >
-                        {isActive ? '取消查看' : '查看批次'}
-                      </button>
-                      <button
-                        onClick={() => setPendingDeleteBatchId(batch.batchId)}
-                        disabled={batch.unusedCount === 0 || deletingBatchId === batch.batchId}
-                        className="px-3 py-2 rounded-xl bg-red-500/10 border border-red-500/20 text-sm text-red-300 hover:bg-red-500/20 disabled:opacity-40"
-                      >
-                        {deletingBatchId === batch.batchId ? '清理中...' : '删除未使用'}
-                      </button>
-                    </div>
-                  </div>
+                    </AdminTd>
+                    <AdminTd align="right">
+                      <div className="flex justify-end gap-2">
+                        <AdminGhostButton onClick={() => void copyCode(code.code, code.id)}>
+                          {copiedId === code.id ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                        </AdminGhostButton>
+                        {!code.usedBy && !isExpired && (
+                          <AdminGhostButton danger onClick={() => setPendingDeleteCodeId(code.id)}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </AdminGhostButton>
+                        )}
+                      </div>
+                    </AdminTd>
+                  </tr>
                 );
               })}
-            </div>
-          )}
-        </div>
+            </tbody>
+          </AdminTable>
+        )}
+      </AdminPanel>
 
-        <div className="space-y-4">
-          <div className="bg-card/60 border border-border/70 rounded-2xl p-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-lg font-medium text-foreground">卡密列表</h2>
-              <p className="text-sm text-foreground/50">
-                {activeBatchId ? `当前仅显示批次 ${activeBatchId.slice(0, 8)} 的记录` : `当前共 ${total} 条记录`}
-              </p>
-            </div>
-            <div className="text-sm text-foreground/45">本页优先展示最新记录，支持分页浏览</div>
-          </div>
-
-          <div className="bg-card/60 border border-border/70 rounded-2xl overflow-hidden">
-            <div className="overflow-x-auto no-scrollbar">
-              <table className="w-full min-w-[1040px]">
-                <thead>
-                  <tr className="border-b border-border/70">
-                    <th className="text-left text-sm font-medium text-foreground/50 px-5 py-4">卡密</th>
-                    <th className="text-left text-sm font-medium text-foreground/50 px-5 py-4">批次</th>
-                    <th className="text-right text-sm font-medium text-foreground/50 px-5 py-4">积分</th>
-                    <th className="text-left text-sm font-medium text-foreground/50 px-5 py-4">备注</th>
-                    <th className="text-left text-sm font-medium text-foreground/50 px-5 py-4">有效期</th>
-                    <th className="text-center text-sm font-medium text-foreground/50 px-5 py-4">状态</th>
-                    <th className="text-left text-sm font-medium text-foreground/50 px-5 py-4">时间</th>
-                    <th className="text-right text-sm font-medium text-foreground/50 px-5 py-4">操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {codes.map((code) => {
-                    const isExpired = Boolean(code.expiresAt && code.expiresAt < Date.now() && !code.usedBy);
-                    return (
-                      <tr key={code.id} className="border-b border-border/70 hover:bg-card/60 align-top">
-                        <td className="px-5 py-4">
-                          <code className="font-mono text-foreground bg-card/60 px-2 py-1 rounded">{code.code}</code>
-                        </td>
-                        <td className="px-5 py-4 text-sm text-foreground/60">{code.batchId ? code.batchId.slice(0, 8) : '-'}</td>
-                        <td className="px-5 py-4 text-right text-green-400 font-semibold">+{code.points}</td>
-                        <td className="px-5 py-4 text-foreground/60">{code.note || '无备注'}</td>
-                        <td className="px-5 py-4 text-sm text-foreground/50">{formatExpiry(code.expiresAt)}</td>
-                        <td className="px-5 py-4 text-center">
-                          {code.usedBy ? (
-                            <span className="px-2 py-1 text-xs rounded-full bg-card/70 text-foreground/50">已使用</span>
-                          ) : isExpired ? (
-                            <span className="px-2 py-1 text-xs rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/20">已过期</span>
-                          ) : (
-                            <span className="px-2 py-1 text-xs rounded-full bg-green-500/20 text-green-400 border border-green-500/30">可发放</span>
-                          )}
-                        </td>
-                        <td className="px-5 py-4 text-sm text-foreground/50">
-                          <div>{formatDate(code.createdAt)}</div>
-                          {code.usedAt && <div className="text-xs text-foreground/35 mt-1">使用于 {formatDate(code.usedAt)}</div>}
-                        </td>
-                        <td className="px-5 py-4 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <button
-                              onClick={() => copyCode(code.code, code.id)}
-                              className="p-2 text-foreground/40 hover:text-foreground hover:bg-card/70 rounded-lg transition-all"
-                              title="复制卡密"
-                            >
-                              {copiedId === code.id ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
-                            </button>
-                            {!code.usedBy && !isExpired && (
-                              <button
-                                onClick={() => setPendingDeleteCodeId(code.id)}
-                                className="p-2 text-red-400/60 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
-                                title="删除卡密"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {codes.length === 0 && (
-              <div className="text-center py-12 text-foreground/40">
-                <Ticket className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                <p>{activeBatchId ? '这个批次下暂无符合条件的卡密' : '暂无卡密'}</p>
-              </div>
-            )}
-          </div>
-
-          {total > 0 && (
-            <PaginationControls
-              page={page}
-              pageSize={REDEMPTION_PAGE_SIZE}
-              total={total}
-              onPageChange={(nextPage) => loadCodes(nextPage, false)}
-              loading={fetching}
-            />
-          )}
-        </div>
-      </div>
-
-      {showCreate && (
-        <div className="fixed inset-0 bg-background/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-card/95 border border-border/70 rounded-2xl p-6 w-full max-w-md">
-            <h2 className="text-xl font-semibold text-foreground mb-4">生成卡密</h2>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm text-foreground/60 mb-2">数量（1-100）</label>
-                <input
-                  type="number"
-                  value={count}
-                  onChange={(e) => setCount(Math.min(100, Math.max(1, Number(e.target.value))))}
-                  min={1}
-                  max={100}
-                  className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border/70"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-foreground/60 mb-2">单张积分</label>
-                <input
-                  type="number"
-                  value={points}
-                  onChange={(e) => setPoints(Math.max(1, Number(e.target.value)))}
-                  min={1}
-                  className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border/70"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-foreground/60 mb-2">有效期（天）</label>
-                <input
-                  type="number"
-                  value={expiresInDays}
-                  onChange={(e) => setExpiresInDays(Math.max(0, Number(e.target.value) || 0))}
-                  min={0}
-                  className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground focus:outline-none focus:border-border/70"
-                />
-                <p className="text-xs text-foreground/40 mt-2">填 0 表示永久有效。</p>
-              </div>
-              <div>
-                <label className="block text-sm text-foreground/60 mb-2">批次备注</label>
-                <input
-                  type="text"
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder="如：首发活动 / 渠道补偿"
-                  className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border/70"
-                />
-              </div>
-            </div>
-
-            <div className="mt-4 rounded-2xl bg-card/60 border border-border/70 p-4 text-sm text-foreground/60 space-y-2">
-              <div className="flex items-center gap-2">
-                <CalendarClock className="w-4 h-4 text-sky-300" />
-                <span>本次会生成一个独立批次，生成后可直接复制或导出最近批次。</span>
-              </div>
-              <p>预计生成 {count} 个卡密，每个 {points} 积分。</p>
-            </div>
-
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => setShowCreate(false)}
-                className="flex-1 py-3 bg-card/60 border border-border/70 text-foreground rounded-xl hover:bg-card/70 transition-all"
-              >
-                取消
-              </button>
-              <button
-                onClick={handleCreate}
-                disabled={creating}
-                className="flex-1 py-3 bg-foreground text-background rounded-xl hover:bg-foreground/90 disabled:opacity-50 transition-all"
-              >
-                {creating ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : '生成并打开结果'}
-              </button>
-            </div>
-          </div>
-        </div>
+      {total > 0 && (
+        <PaginationControls
+          page={page}
+          pageSize={REDEMPTION_PAGE_SIZE}
+          total={total}
+          onPageChange={(nextPage) => void loadCodes(nextPage, false)}
+          loading={fetching}
+        />
       )}
+
+      <Modal
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        title="生成卡密"
+        size="md"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1.5 block text-xs text-muted-foreground">数量（1-100）</label>
+            <input
+              type="number"
+              value={count}
+              onChange={(event) => setCount(Math.min(100, Math.max(1, Number(event.target.value))))}
+              min={1}
+              max={100}
+              className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring/30"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs text-muted-foreground">单张积分</label>
+            <input
+              type="number"
+              value={points}
+              onChange={(event) => setPoints(Math.max(1, Number(event.target.value)))}
+              min={1}
+              className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring/30"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs text-muted-foreground">有效期（天）</label>
+            <input
+              type="number"
+              value={expiresInDays}
+              onChange={(event) => setExpiresInDays(Math.max(0, Number(event.target.value) || 0))}
+              min={0}
+              className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring/30"
+            />
+            <p className="mt-1.5 text-xs text-muted-foreground">填 0 表示永久有效。</p>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs text-muted-foreground">批次备注</label>
+            <input
+              type="text"
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              placeholder="如：首发活动 / 渠道补偿"
+              className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/30"
+            />
+          </div>
+          <div className="flex items-start gap-2 rounded-md border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
+            <CalendarClock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            本次会生成一个独立批次。预计 {count} 张，每张 {points} 积分。
+          </div>
+          <div className="flex justify-end gap-2">
+            <AdminGhostButton onClick={() => setShowCreate(false)}>取消</AdminGhostButton>
+            <AdminPrimaryButton disabled={creating} onClick={() => void handleCreate()}>
+              {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : '生成'}
+            </AdminPrimaryButton>
+          </div>
+        </div>
+      </Modal>
 
       <ConfirmDialog
         open={pendingDeleteCodeId !== null}
@@ -658,7 +592,7 @@ export default function RedemptionPage() {
         onConfirm={() => {
           const id = pendingDeleteCodeId!;
           setPendingDeleteCodeId(null);
-          handleDeleteCode(id);
+          void handleDeleteCode(id);
         }}
         title="删除卡密"
         message="确定删除这条卡密吗？"
@@ -669,7 +603,7 @@ export default function RedemptionPage() {
         onConfirm={() => {
           const batchId = pendingDeleteBatchId!;
           setPendingDeleteBatchId(null);
-          handleDeleteBatch(batchId);
+          void handleDeleteBatch(batchId);
         }}
         title="删除批次"
         message="确定删除这个批次里所有未使用卡密吗？已使用的记录会保留。"

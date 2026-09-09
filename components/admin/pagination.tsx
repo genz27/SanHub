@@ -21,16 +21,16 @@ export function PaginationControls({
   const canNext = safePage < totalPages;
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 bg-card/60 border border-border/70 rounded-2xl px-4 py-3">
-      <div className="text-sm text-foreground/50">
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <p className="text-xs text-muted-foreground">
         共 {total} 条 · 第 {safePage}/{totalPages} 页
-      </div>
+      </p>
       <div className="flex items-center gap-2">
         <button
           type="button"
           onClick={() => onPageChange(safePage - 1)}
           disabled={!canPrev || loading}
-          className="px-3 py-1.5 text-sm bg-card/70 border border-border/70 text-foreground/70 rounded-lg hover:bg-card/80 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex h-8 items-center rounded-md border border-border px-3 text-xs text-muted-foreground hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
         >
           上一页
         </button>
@@ -38,7 +38,7 @@ export function PaginationControls({
           type="button"
           onClick={() => onPageChange(safePage + 1)}
           disabled={!canNext || loading}
-          className="px-3 py-1.5 text-sm bg-card/70 border border-border/70 text-foreground/70 rounded-lg hover:bg-card/80 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex h-8 items-center rounded-md border border-border px-3 text-xs text-muted-foreground hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
         >
           下一页
         </button>
