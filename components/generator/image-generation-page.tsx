@@ -369,7 +369,10 @@ export function ImageGenerationPage({
   );
 
   const applyRegionEditToComposer = useCallback(
-    (result: { files: File[]; prompt: string; aspectRatio?: string }) => {
+    (
+      result: { files: File[]; prompt: string; aspectRatio?: string },
+      options?: { closeEditor?: boolean }
+    ) => {
       if (currentModel && !currentModel.features.imageToImage) {
         toast({
           title: '当前模型不支持图生图',
@@ -395,7 +398,9 @@ export function ImageGenerationPage({
       if (result.aspectRatio) {
         setAspectRatio(result.aspectRatio);
       }
-      setEditingGeneration(null);
+      if (options?.closeEditor !== false) {
+        setEditingGeneration(null);
+      }
       return true;
     },
     [currentModel, onClearExternalReference]
@@ -874,8 +879,8 @@ export function ImageGenerationPage({
     (result: { files: File[]; prompt: string; aspectRatio?: string }) => {
       if (!applyRegionEditToComposer(result)) return;
       toast({
-        title: '已应用到输入',
-        description: '标注稿在前、原图在后，确认后可立即生成',
+        title: '已填入输入栏',
+        description: '可以改提示词后再点立即生成，或直接在编辑器里提交',
       });
     },
     [applyRegionEditToComposer]
@@ -883,7 +888,14 @@ export function ImageGenerationPage({
 
   const handleApplyRegionEditAndGenerate = useCallback(
     async (result: { files: File[]; prompt: string; aspectRatio?: string }) => {
-      if (!applyRegionEditToComposer(result)) return;
+      if (currentModel && !currentModel.features.imageToImage) {
+        toast({
+          title: '当前模型不支持图生图',
+          description: '请先切换到支持参考图的模型，再做区域编辑',
+          variant: 'destructive',
+        });
+        return;
+      }
       if (submissionLockRef.current) return;
 
       const validationError = isImageLimitReached
@@ -893,6 +905,11 @@ export function ImageGenerationPage({
           : '请选择模型';
       if (validationError) {
         setError(validationError);
+        toast({
+          title: '无法提交',
+          description: validationError,
+          variant: 'destructive',
+        });
         return;
       }
 
@@ -905,18 +922,23 @@ export function ImageGenerationPage({
         await submitSingleTask(result.prompt, compressedImages, createClientRequestId(), {
           aspectRatio: result.aspectRatio,
         });
+        setEditingGeneration(null);
         toast({
           title: '区域编辑已提交',
-          description: '已用标注稿和原图一起作为参考图提交',
+          description: '已直接提交生成任务，不用再点输入栏',
         });
         setDailyUsage((prev) => ({ ...prev, imageCount: prev.imageCount + 1 }));
-        if (!keepPrompt) {
-          setPrompt('');
-          clearImages();
-          onClearExternalReference?.();
+        if (keepPrompt) {
+          applyRegionEditToComposer(result, { closeEditor: false });
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : '生成失败');
+        const message = err instanceof Error ? err.message : '生成失败';
+        setError(message);
+        toast({
+          title: '提交失败',
+          description: message,
+          variant: 'destructive',
+        });
       } finally {
         submissionLockRef.current = false;
         setSubmitting(false);
@@ -924,12 +946,10 @@ export function ImageGenerationPage({
     },
     [
       applyRegionEditToComposer,
-      clearImages,
       currentModel,
       dailyLimits.imageLimit,
       isImageLimitReached,
       keepPrompt,
-      onClearExternalReference,
     ]
   );
 
@@ -1249,11 +1269,10 @@ export function ImageGenerationPage({
       {editingGeneration && (
         <ImageRegionEditor
           generation={editingGeneration}
+          submitting={submitting || compressing}
           onClose={() => setEditingGeneration(null)}
           onApply={handleApplyRegionEdit}
-          onApplyAndGenerate={(result) => {
-            void handleApplyRegionEditAndGenerate(result);
-          }}
+          onApplyAndGenerate={handleApplyRegionEditAndGenerate}
         />
       )}
     </div>
