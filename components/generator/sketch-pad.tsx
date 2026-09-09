@@ -134,12 +134,14 @@ export function SketchPad({
   onElementsChange,
   onClose,
   onConfirm,
+  onClearImported,
 }: {
   open: boolean;
   elements: SketchElement[];
   onElementsChange: (elements: SketchElement[]) => void;
   onClose: () => void;
   onConfirm: (file: File) => void;
+  onClearImported?: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -460,6 +462,21 @@ export function SketchPad({
     onElementsChange(next);
   };
 
+  const clearCanvas = () => {
+    const hadContent = elementsRef.current.length > 0;
+    if (hadContent) {
+      replaceElements([], true);
+      setSelectedId(null);
+      setEditingTextId(null);
+      drawingRef.current = null;
+      toast({
+        title: '画布已清空',
+        description: '可用撤销找回刚才的内容',
+      });
+    }
+    onClearImported?.();
+  };
+
   const handleConfirm = async () => {
     if (elements.length === 0) {
       toast({
@@ -543,6 +560,15 @@ export function SketchPad({
               title="重做"
             >
               <Redo2 className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={clearCanvas}
+              disabled={elements.length === 0}
+              className="rounded-lg border border-red-500/30 p-2 text-red-300 hover:bg-red-500/10 disabled:opacity-40"
+              title="清空画布"
+            >
+              <Trash2 className="h-4 w-4" />
             </button>
             <button
               type="button"
@@ -751,15 +777,26 @@ export function SketchPad({
                 />
               </label>
             </div>
-            <button
-              type="button"
-              onClick={() => void handleConfirm()}
-              disabled={exporting}
-              className="inline-flex h-10 items-center gap-2 rounded-full bg-sky-500 px-4 text-sm font-medium text-white hover:bg-sky-600 disabled:opacity-60"
-            >
-              <Check className="h-4 w-4" />
-              {exporting ? '导入中...' : '导入为参考图'}
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={clearCanvas}
+                disabled={elements.length === 0}
+                className="inline-flex h-10 items-center gap-2 rounded-full border border-red-500/30 px-4 text-sm font-medium text-red-300 hover:bg-red-500/10 disabled:opacity-40"
+              >
+                <Trash2 className="h-4 w-4" />
+                清空画布
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleConfirm()}
+                disabled={exporting}
+                className="inline-flex h-10 items-center gap-2 rounded-full bg-sky-500 px-4 text-sm font-medium text-white hover:bg-sky-600 disabled:opacity-60"
+              >
+                <Check className="h-4 w-4" />
+                {exporting ? '导入中...' : '导入为参考图'}
+              </button>
+            </div>
           </div>
         </div>
       </div>

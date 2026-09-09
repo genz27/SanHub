@@ -30,6 +30,7 @@ type ReferenceImageInputProps = {
   onRemoveImage: (index: number) => void;
   onClearExternalReference?: () => void;
   onOpenSketch?: () => void;
+  onDiscardSketch?: () => void;
   hasSketchDraft?: boolean;
 };
 
@@ -94,6 +95,7 @@ export function ReferenceImageInput({
   onRemoveImage,
   onClearExternalReference,
   onOpenSketch,
+  onDiscardSketch,
   hasSketchDraft = false,
 }: ReferenceImageInputProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -367,7 +369,16 @@ export function ReferenceImageInput({
                   onClick={onOpenSketch}
                   className="rounded-md border border-sky-500/40 bg-sky-500/10 px-2 py-1 text-[10px] text-sky-300 transition-colors hover:bg-sky-500/20"
                 >
-                  草图
+                  {hasSketchDraft ? '继续编辑' : '草图'}
+                </button>
+              )}
+              {hasSketchDraft && onDiscardSketch && (
+                <button
+                  type="button"
+                  onClick={onDiscardSketch}
+                  className="rounded-md border border-red-500/30 px-2 py-1 text-[10px] text-red-300 transition-colors hover:bg-red-500/10"
+                >
+                  清空草图
                 </button>
               )}
             </div>
@@ -435,18 +446,35 @@ export function ReferenceImageInput({
       )}
     </div>
     {onOpenSketch && (
-      <button
-        type="button"
-        onClick={onOpenSketch}
-        className="flex h-20 w-24 flex-col items-center justify-center rounded-lg border-2 border-dashed border-sky-500/40 bg-sky-500/8 text-sky-200 transition-colors hover:border-sky-400 hover:bg-sky-500/14"
-        title="在网页里打开草图，直接画图、改文字和简单图形"
-      >
-        <PenLine className="mb-1 h-5 w-5" />
-        <span className="text-[10px] font-medium">
-          {hasSketchDraft ? '继续编辑' : '打开草图'}
-        </span>
-        <span className="mt-0.5 text-[9px] text-sky-200/70">画笔 / 文字 / 图形</span>
-      </button>
+      <div className="relative">
+        <button
+          type="button"
+          onClick={onOpenSketch}
+          className="flex h-20 w-24 flex-col items-center justify-center rounded-lg border-2 border-dashed border-sky-500/40 bg-sky-500/8 text-sky-200 transition-colors hover:border-sky-400 hover:bg-sky-500/14"
+          title="在网页里打开草图，直接画图、改文字和简单图形"
+        >
+          <PenLine className="mb-1 h-5 w-5" />
+          <span className="text-[10px] font-medium">
+            {hasSketchDraft ? '继续编辑' : '打开草图'}
+          </span>
+          <span className="mt-0.5 text-[9px] text-sky-200/70">画笔 / 文字 / 图形</span>
+        </button>
+        {hasSketchDraft && onDiscardSketch && (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onDiscardSketch();
+            }}
+            className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white shadow-lg transition-colors hover:bg-red-600"
+            aria-label="Discard sketch draft"
+            title="清空草图"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        )}
+      </div>
     )}
     </div>
   );

@@ -188,6 +188,7 @@ export function ImageGenerationPage({
     });
     setCompressedCache(new Map());
     setSketchPreview(null);
+    setSketchElements([]);
   }, []);
 
   const currentModel = useMemo(() => {
@@ -397,6 +398,33 @@ export function ImageGenerationPage({
       return prev.filter((_, itemIndex) => itemIndex !== index);
     });
   }, [sketchPreview]);
+
+  const handleClearImportedSketch = useCallback(() => {
+    setImages((prev) => {
+      if (!sketchPreview) return prev;
+      const target = prev.find((image) => image.preview === sketchPreview);
+      if (!target) return prev;
+
+      URL.revokeObjectURL(target.preview);
+      setCompressedCache((current) => {
+        const nextCache = new Map(current);
+        nextCache.delete(target.file);
+        return nextCache;
+      });
+
+      return prev.filter((image) => image.preview !== sketchPreview);
+    });
+    setSketchPreview(null);
+  }, [sketchPreview]);
+
+  const handleDiscardSketchDraft = useCallback(() => {
+    setSketchElements([]);
+    handleClearImportedSketch();
+    toast({
+      title: '草图已清空',
+      description: '画布和已导入的草图参考图都已去掉',
+    });
+  }, [handleClearImportedSketch]);
 
   const applyRecentGenerations = useCallback((recentGenerations: Generation[]) => {
     const imageGenerations = filterGenerationsByKind(recentGenerations, 'image');
@@ -1050,6 +1078,7 @@ export function ImageGenerationPage({
                   onRemoveImage={handleRemoveReferenceImage}
                   onClearExternalReference={onClearExternalReference}
                   onOpenSketch={() => setSketchOpen(true)}
+                  onDiscardSketch={handleDiscardSketchDraft}
                   hasSketchDraft={sketchElements.length > 0}
                   listenForPaste={!sketchOpen && !editingGeneration}
                 />
@@ -1192,6 +1221,7 @@ export function ImageGenerationPage({
           onElementsChange={setSketchElements}
           onClose={() => setSketchOpen(false)}
           onConfirm={handleSketchConfirm}
+          onClearImported={handleClearImportedSketch}
         />
       )}
       {editingGeneration && (
