@@ -56,6 +56,10 @@ function regionInstruction(region: EditRegion, globalNote: string): string {
   return region.note.trim() || globalNote.trim() || '按整体说明修改此处';
 }
 
+function regionTarget(region: EditRegion, globalNote: string): string {
+  return regionInstruction(region, globalNote).replace(/^(改成|换成|改为)\s*/, '');
+}
+
 function describeRegionPlace(region: EditRegion): string {
   const vertical = region.y < 0.34 ? '上部' : region.y + region.h > 0.66 ? '下部' : '中部';
   const horizontal = region.x < 0.34 ? '左侧' : region.x + region.w > 0.66 ? '右侧' : '中间';
@@ -101,26 +105,19 @@ function resizeRegion(region: EditRegion, handle: HandleId, point: CanvasPoint):
 
 function buildRegionPrompt(regions: EditRegion[], globalNote: string): string {
   const count = regions.length;
-  const items = regions.map((region, index) => {
-    const shapeLabel = region.shape === 'ellipse' ? '圆形框' : '矩形框';
-    return `${index + 1}. 第 ${index + 1} 号${shapeLabel}（${describeRegionPlace(region)}）必须改成：${regionInstruction(region, globalNote)}`;
-  });
+  const items = regions.map(
+    (region, index) =>
+      `${index + 1}. 把${describeRegionPlace(region)}第 ${index + 1} 处改成「${regionTarget(region, globalNote)}」`
+  );
   const overall = globalNote.trim();
-  const review =
-    count > 1
-      ? `输出前自检：${regions.map((_, index) => `${index + 1} 号`).join('、')} 是否都已换成新字。还是旧字就是失败。`
-      : '输出前自检：框内必须是新字，还是旧字就是失败。';
 
   return [
-    '不要原样复制任何一张参考图。',
-    '第一张是编辑稿：每个编号框里已经写了要换成的新字。请把这些新字画成第二张原图那种手写书法，并去掉框、编号、白底和清单。',
-    '第二张是干净原图，只用来对齐构图、光影、纸张质感和没有框到的文字。',
-    `这次一共要改 ${count} 处，必须全部改完。`,
-    '改动清单：',
+    '局部改字，不要重画整张图。',
+    '第一张是改字稿，框内已经是目标新字；第二张是原图，用来对齐构图和书法。',
     ...items,
-    review,
-    overall ? `补充说明：${overall}` : '',
-    '框外内容保持原样。最终结果里不要出现标注框、编号、清单或提示标签。',
+    count > 1 ? `以上 ${count} 处都要改掉，不能只改一处，也不能留旧字。` : '框内必须是新字，不能留旧字。',
+    overall ? `补充：${overall}` : '',
+    '未框选的部分与原图一致。新字用原图手写风格。不要留下框、编号、白底或清单。',
   ]
     .filter(Boolean)
     .join('\n');
@@ -137,7 +134,7 @@ function drawAnnotationLegend(
   const lineH = Math.max(22, Math.round(width * 0.022));
   const lines = [
     `必须全部改完：共 ${regions.length} 处`,
-    ...regions.map((region, index) => `${index + 1}. ${regionInstruction(region, globalNote)}`),
+    ...regions.map((region, index) => `${index + 1}. ${regionTarget(region, globalNote)}`),
   ];
 
   ctx.save();
@@ -275,14 +272,16 @@ async function exportAnnotatedImage(
 
 export function ImageRegionEditor({
   generation,
+  submitting = false,
   onClose,
   onApply,
   onApplyAndGenerate,
 }: {
   generation: Generation;
+  submitting?: boolean;
   onClose: () => void;
   onApply: (result: RegionEditResult) => void;
-  onApplyAndGenerate: (result: RegionEditResult) => void;
+  onApplyAndGenerate: (result: RegionEditResult) => void | Promise<void>;
 }) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -496,7 +495,7 @@ export function ImageRegionEditor({
           <div>
             <p className="text-sm font-medium text-foreground">区域编辑</p>
             <p className="text-xs text-foreground/45">
-              框选多处时，每处都要写说明。应用后会先提交带新字的标注稿，再带上原图保持画风
+              框选并写好每处说明后，直接提交生成。不必先填到输入栏
             </p>
           </div>
           <button
@@ -651,26 +650,26 @@ export function ImageRegionEditor({
           <div className="flex flex-wrap items-center justify-end gap-2">
             <button
               type="button"
-              disabled={busy}
+              disabled={busy || submitting}
               onClick={async () => {
                 const result = await buildResult();
                 if (result) onApply(result);
               }}
               className="inline-flex h-10 items-center rounded-lg border border-border/70 px-4 text-sm text-foreground/80 hover:bg-card disabled:opacity-60"
             >
-              仅应用到输入
+              填入输入栏
             </button>
             <button
               type="button"
-              disabled={busy}
+              disabled={busy || submitting}
               onClick={async () => {
                 const result = await buildResult();
-                if (result) onApplyAndGenerate(result);
+                if (result) await onApplyAndGenerate(result);
               }}
               className="inline-flex h-10 items-center gap-2 rounded-lg bg-foreground px-4 text-sm font-medium text-background hover:opacity-90 disabled:opacity-60"
             >
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-              应用并生成
+              {busy || submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              {submitting ? '提交中...' : busy ? '导出中...' : '立即生成'}
             </button>
           </div>
         </div>
