@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 export type ReferenceImageItem = {
   file: File;
   preview: string;
+  label?: string;
 };
 
 type ReferenceImageInputProps = {
@@ -280,6 +281,11 @@ export function ReferenceImageInput({
                 {externalBadge}
               </div>
             )}
+            {images[0]?.label && (
+              <div className="absolute left-1 top-1 rounded bg-black/65 px-1.5 py-0.5 text-[10px] text-white">
+                {images[0].label}
+              </div>
+            )}
           </>
         ) : (
           <>
@@ -397,6 +403,11 @@ export function ReferenceImageInput({
                   loading="lazy"
                   decoding="async"
                 />
+                {image.label && (
+                  <div className="absolute bottom-1 left-1 rounded bg-black/65 px-1.5 py-0.5 text-[10px] text-white">
+                    {image.label}
+                  </div>
+                )}
                 <button
                   type="button"
                   onClick={() => onRemoveImage(index)}

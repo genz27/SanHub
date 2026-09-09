@@ -85,11 +85,7 @@ function resizeRegion(region: EditRegion, handle: HandleId, point: CanvasPoint):
   return { ...next, id: region.id, shape: region.shape, note: region.note };
 }
 
-function buildRegionPrompt(
-  regions: EditRegion[],
-  globalNote: string,
-  hasOriginalReference: boolean
-): string {
+function buildRegionPrompt(regions: EditRegion[], globalNote: string): string {
   const labeled = regions.map((region, index) => {
     const shapeLabel = region.shape === 'ellipse' ? '圆形选区' : '矩形选区';
     const note = region.note.trim() || globalNote.trim() || '按整体说明修改此处';
@@ -98,11 +94,9 @@ function buildRegionPrompt(
 
   const overall = globalNote.trim();
   return [
-    hasOriginalReference
-      ? '请以第一张参考图为原图，第二张带青色标注的参考图只用来指示修改范围。'
-      : '请以这张参考图为原图。青色虚线框、编号和文字只是修改范围标记。',
-    '除标注区域外，构图、人物身份、光影、背景和未标注细节必须保持一致，不要重绘整张图。',
-    '最终结果里不要出现标注框、编号圆点或说明文字。',
+    '这里有两张参考图：第一张是干净原图，第二张是同一张图的框选标注图。',
+    '请以第一张原图为生成主体，第二张只用来定位要改的范围，不要把标注框、编号或说明文字画进结果。',
+    '除标注区域外，构图、人物身份、光影、背景和未标注细节必须与原图保持一致，不要重绘整张图。',
     overall ? `整体修改说明：${overall}` : '',
     ...labeled,
   ]
@@ -191,13 +185,11 @@ async function exportAnnotatedImage(
 
 export function ImageRegionEditor({
   generation,
-  allowMultipleReferences = true,
   onClose,
   onApply,
   onApplyAndGenerate,
 }: {
   generation: Generation;
-  allowMultipleReferences?: boolean;
   onClose: () => void;
   onApply: (result: RegionEditResult) => void;
   onApplyAndGenerate: (result: RegionEditResult) => void;
@@ -371,14 +363,13 @@ export function ImageRegionEditor({
     setBusy(true);
     try {
       const { original, annotated } = await exportAnnotatedImage(sourceUrl, regions);
-      const files = allowMultipleReferences ? [original, annotated] : [annotated];
       const aspectRatio =
         typeof generation.params?.aspectRatio === 'string'
           ? generation.params.aspectRatio
           : undefined;
       return {
-        files,
-        prompt: buildRegionPrompt(regions, globalNote, allowMultipleReferences),
+        files: [original, annotated],
+        prompt: buildRegionPrompt(regions, globalNote),
         aspectRatio,
       };
     } catch (error) {
@@ -391,7 +382,7 @@ export function ImageRegionEditor({
     } finally {
       setBusy(false);
     }
-  }, [allowMultipleReferences, generation.params?.aspectRatio, globalNote, regions, sourceUrl]);
+  }, [generation.params?.aspectRatio, globalNote, regions, sourceUrl]);
 
   const tools = useMemo(
     () =>
@@ -410,7 +401,7 @@ export function ImageRegionEditor({
           <div>
             <p className="text-sm font-medium text-foreground">区域编辑</p>
             <p className="text-xs text-foreground/45">
-              框选或画圈标出要改的位置，选中后可拖动、缩放并填写说明
+              框选或画圈标出要改的位置。应用后会把原图和框选图一起作为两张参考图
             </p>
           </div>
           <button
