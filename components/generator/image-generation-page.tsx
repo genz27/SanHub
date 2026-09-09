@@ -876,8 +876,7 @@ export function ImageGenerationPage({
       <div
         className={cn(
           'surface order-2 shrink-0 overflow-visible mt-4',
-          embedded && 'min-h-[15rem]',
-          (availableModels.length === 0 || isImageLimitReached) && 'opacity-50 pointer-events-none'
+          embedded && 'min-h-[15rem]'
         )}
       >
         {embedded && (
@@ -890,7 +889,12 @@ export function ImageGenerationPage({
             )}
           </div>
         )}
-        <div className="space-y-3 p-4">
+        <div
+          className={cn(
+            'space-y-3 p-4',
+            (availableModels.length === 0 || isImageLimitReached) && 'pointer-events-none opacity-50'
+          )}
+        >
           <CustomSelect
             value={selectedModelId}
             onValueChange={setSelectedModelId}
