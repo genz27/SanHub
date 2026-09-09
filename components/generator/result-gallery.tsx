@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import type { Generation } from '@/types';
 import { toast } from '@/components/ui/toaster';
+import { displayPromptTitle } from '@/lib/region-edit-document';
 
 const ResultGalleryLightbox = dynamic(
   () => import('./result-gallery-lightbox').then((mod) => mod.ResultGalleryLightbox),
@@ -194,7 +195,7 @@ const GenerationResultCard = memo(function GenerationResultCard({
           {shouldLoadMedia && (
             <img
               src={generation.resultUrl}
-              alt={generation.prompt}
+              alt={displayPromptTitle(generation.prompt)}
               className={`w-full h-full object-cover transition-all duration-500 group-hover:scale-105 ${
                 imageLoaded ? 'opacity-100' : 'opacity-0'
               }`}
@@ -266,7 +267,9 @@ const GenerationResultCard = memo(function GenerationResultCard({
         </div>
       </div>
       <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-background/90 via-background/40 to-transparent pointer-events-none">
-        <p className="text-xs text-foreground/90 font-medium truncate tracking-wide">{generation.prompt || '无提示词'}</p>
+        <p className="text-xs text-foreground/90 font-medium truncate tracking-wide">
+          {displayPromptTitle(generation.prompt)}
+        </p>
       </div>
     </div>
   );
@@ -442,7 +445,7 @@ export function ResultGallery({
                   )}
                   {/* 提示词 */}
                   <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-background/80 via-background/30 to-transparent">
-                    <p className="text-xs text-foreground/80 truncate">{task.prompt || '无提示词'}</p>
+                    <p className="text-xs text-foreground/80 truncate">{displayPromptTitle(task.prompt)}</p>
                   </div>
                 </div>
               ))}
@@ -485,7 +488,7 @@ export function ResultGallery({
                     </button>
                   )}
                   <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-background/80 via-background/30 to-transparent">
-                    <p className="text-xs text-foreground/80 truncate">{task.prompt || '无提示词'}</p>
+                    <p className="text-xs text-foreground/80 truncate">{displayPromptTitle(task.prompt)}</p>
                   </div>
                 </div>
               ))}

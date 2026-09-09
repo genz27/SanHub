@@ -14,6 +14,7 @@ import {
 import type { Generation } from '@/types';
 import { formatDate } from '@/lib/utils';
 import { isVideoGenerationType } from '@/lib/generation-reference';
+import { displayPromptTitle } from '@/lib/region-edit-document';
 
 const MEDIA_ROOT_MARGIN = '600px 0px';
 
@@ -135,7 +136,7 @@ const GenerationCard = memo(function GenerationCard({
             {shouldLoadMedia && (
               <img
                 src={gen.resultUrl}
-                alt={gen.prompt}
+                alt={displayPromptTitle(gen.prompt)}
                 className={`w-full h-full object-cover transition-opacity duration-300 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
                 loading="lazy"
                 decoding="async"
@@ -162,7 +163,7 @@ const GenerationCard = memo(function GenerationCard({
         <div>
           <div className="flex items-start justify-between gap-3 mb-1.5">
             <h3 className="text-sm font-medium text-foreground line-clamp-1 flex-1 pr-2">
-              {gen.prompt || '无提示词'}
+              {displayPromptTitle(gen.prompt)}
             </h3>
             <span className="text-[10px] text-foreground/45 font-medium px-2 py-0.5 bg-card/30 border border-border/50 rounded-md whitespace-nowrap hidden sm:inline-block">
               {badge.label}
@@ -260,7 +261,7 @@ function PendingTaskCard({
         <div>
           <div className="flex items-start justify-between gap-3 mb-1.5">
             <h3 className="text-sm font-medium text-foreground line-clamp-1 flex-1 pr-2">
-              {task.prompt || '无提示词'}
+              {displayPromptTitle(task.prompt)}
             </h3>
             <span className="text-[10px] text-foreground/45 font-medium px-2 py-0.5 bg-card/30 border border-border/50 rounded-md whitespace-nowrap hidden sm:inline-block">
               {badge.label}
