@@ -30,6 +30,7 @@ type ReferenceImageInputProps = {
   onRemoveImage: (index: number) => void;
   onClearExternalReference?: () => void;
   onOpenSketch?: () => void;
+  hasSketchDraft?: boolean;
 };
 
 function getImageFilesFromList(files: FileList | File[]): File[] {
@@ -93,6 +94,7 @@ export function ReferenceImageInput({
   onRemoveImage,
   onClearExternalReference,
   onOpenSketch,
+  hasSketchDraft = false,
 }: ReferenceImageInputProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -219,8 +221,9 @@ export function ReferenceImageInput({
   };
 
   return (
+    <div className="flex shrink-0 items-start gap-2">
     <div
-      className="relative w-24 shrink-0"
+      className="relative w-24"
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -306,21 +309,6 @@ export function ReferenceImageInput({
       >
         <Clipboard className="h-3 w-3" />
       </button>
-
-      {onOpenSketch && (
-        <button
-          type="button"
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            onOpenSketch();
-          }}
-          className="mt-2 inline-flex w-full items-center justify-center gap-1 rounded-md border border-sky-500/30 bg-sky-500/10 px-1.5 py-1 text-[10px] text-sky-300 transition-colors hover:bg-sky-500/20"
-        >
-          <PenLine className="h-3 w-3" />
-          草图
-        </button>
-      )}
 
       {previewUrl && (
         <>
@@ -445,6 +433,21 @@ export function ReferenceImageInput({
           </div>
         </div>
       )}
+    </div>
+    {onOpenSketch && (
+      <button
+        type="button"
+        onClick={onOpenSketch}
+        className="flex h-20 w-24 flex-col items-center justify-center rounded-lg border-2 border-dashed border-sky-500/40 bg-sky-500/8 text-sky-200 transition-colors hover:border-sky-400 hover:bg-sky-500/14"
+        title="在网页里打开草图，直接画图、改文字和简单图形"
+      >
+        <PenLine className="mb-1 h-5 w-5" />
+        <span className="text-[10px] font-medium">
+          {hasSketchDraft ? '继续编辑' : '打开草图'}
+        </span>
+        <span className="mt-0.5 text-[9px] text-sky-200/70">画笔 / 文字 / 图形</span>
+      </button>
+    )}
     </div>
   );
 }

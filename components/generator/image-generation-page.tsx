@@ -36,6 +36,7 @@ import {
   shouldResyncGenerationFeed,
 } from '@/lib/generation-state';
 import { useClearFailedTasks } from '@/components/generator/use-clear-failed-tasks';
+import type { SketchElement } from '@/lib/sketch-document';
 
 const ResultGallery = dynamic(
   () => import('@/components/generator/result-gallery').then((mod) => mod.ResultGallery),
@@ -176,6 +177,8 @@ export function ImageGenerationPage({
   const [error, setError] = useState('');
   const [keepPrompt, setKeepPrompt] = useState(false);
   const [sketchOpen, setSketchOpen] = useState(false);
+  const [sketchElements, setSketchElements] = useState<SketchElement[]>([]);
+  const [sketchPreview, setSketchPreview] = useState<string | null>(null);
   const [editingGeneration, setEditingGeneration] = useState<Generation | null>(null);
 
   const clearImages = useCallback(() => {
@@ -184,6 +187,7 @@ export function ImageGenerationPage({
       return [];
     });
     setCompressedCache(new Map());
+    setSketchPreview(null);
   }, []);
 
   const currentModel = useMemo(() => {
@@ -331,10 +335,25 @@ export function ImageGenerationPage({
 
   const handleSketchConfirm = useCallback(
     (file: File) => {
-      handleAddReferenceFiles([file]);
+      const preview = URL.createObjectURL(file);
+      setError('');
+      onClearExternalReference?.();
+      setImages((prev) => {
+        const existingIndex = sketchPreview
+          ? prev.findIndex((image) => image.preview === sketchPreview)
+          : -1;
+        if (existingIndex >= 0) {
+          URL.revokeObjectURL(prev[existingIndex].preview);
+          return prev.map((image, index) =>
+            index === existingIndex ? { file, preview } : image
+          );
+        }
+        return [...prev, { file, preview }];
+      });
+      setSketchPreview(preview);
       setSketchOpen(false);
     },
-    [handleAddReferenceFiles]
+    [onClearExternalReference, sketchPreview]
   );
 
   const applyRegionEditToComposer = useCallback(
@@ -364,6 +383,10 @@ export function ImageGenerationPage({
       const target = prev[index];
       if (!target) return prev;
 
+      if (target.preview === sketchPreview) {
+        setSketchPreview(null);
+      }
+
       URL.revokeObjectURL(target.preview);
       setCompressedCache((current) => {
         const nextCache = new Map(current);
@@ -373,7 +396,7 @@ export function ImageGenerationPage({
 
       return prev.filter((_, itemIndex) => itemIndex !== index);
     });
-  }, []);
+  }, [sketchPreview]);
 
   const applyRecentGenerations = useCallback((recentGenerations: Generation[]) => {
     const imageGenerations = filterGenerationsByKind(recentGenerations, 'image');
@@ -1027,6 +1050,7 @@ export function ImageGenerationPage({
                   onRemoveImage={handleRemoveReferenceImage}
                   onClearExternalReference={onClearExternalReference}
                   onOpenSketch={() => setSketchOpen(true)}
+                  hasSketchDraft={sketchElements.length > 0}
                   listenForPaste={!sketchOpen && !editingGeneration}
                 />
               </div>
@@ -1164,6 +1188,8 @@ export function ImageGenerationPage({
       {sketchOpen && (
         <SketchPad
           open
+          elements={sketchElements}
+          onElementsChange={setSketchElements}
           onClose={() => setSketchOpen(false)}
           onConfirm={handleSketchConfirm}
         />
