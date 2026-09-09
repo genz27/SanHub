@@ -10,6 +10,7 @@ import {
 import { toast } from '@/components/ui/toaster';
 import { formatDate } from '@/lib/utils';
 import type { Generation } from '@/types';
+import { displayPromptTitle } from '@/lib/region-edit-document';
 
 export type HistoryMediaBadge = {
   label: string;
@@ -176,7 +177,7 @@ export function FullscreenViewer({
         ) : (
           <img
             src={gen.resultUrl}
-            alt={gen.prompt}
+            alt={displayPromptTitle(gen.prompt)}
             className={`max-w-full max-h-full w-auto h-auto ${isFullscreen ? '' : 'rounded-xl border border-border/70'} object-contain`}
             decoding="async"
           />

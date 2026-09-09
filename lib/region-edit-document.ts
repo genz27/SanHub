@@ -42,6 +42,40 @@ export function describeRegionPlace(region: EditRegion): string {
   return `${vertical}${horizontal}`;
 }
 
+const REGION_EDIT_PROMPT_MARKERS = ['局部改字', '改字稿'] as const;
+const REGION_EDIT_TARGET_RE = /改成「([^」]+)」/g;
+
+export function isRegionEditPrompt(prompt?: string | null): prompt is string {
+  if (!prompt) return false;
+  return REGION_EDIT_PROMPT_MARKERS.every((marker) => prompt.includes(marker));
+}
+
+function extractRegionEditTargets(prompt: string): string[] {
+  const targets: string[] = [];
+  const matcher = new RegExp(REGION_EDIT_TARGET_RE.source, 'g');
+  let match = matcher.exec(prompt);
+  while (match) {
+    const target = match[1]?.trim();
+    if (target) targets.push(target);
+    match = matcher.exec(prompt);
+  }
+  return targets;
+}
+
+export function regionEditDisplayTitle(prompt?: string | null): string | null {
+  if (!isRegionEditPrompt(prompt)) return null;
+  const targets = extractRegionEditTargets(prompt);
+  if (targets.length === 0) return '区域编辑';
+  if (targets.length === 1) return `改成${targets[0]}`;
+  const preview = targets.slice(0, 2).join('、');
+  const suffix = targets.length > 2 ? '…' : '';
+  return `${preview}${suffix} · ${targets.length} 处`;
+}
+
+export function displayPromptTitle(prompt?: string | null): string {
+  return regionEditDisplayTitle(prompt) ?? (prompt?.trim() || '无提示词');
+}
+
 export function buildRegionPrompt(regions: EditRegion[], globalNote: string): string {
   const count = regions.length;
   const items = regions.map(

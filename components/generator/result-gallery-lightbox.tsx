@@ -15,6 +15,7 @@ import {
 import type { Generation } from '@/types';
 import { formatDate } from '@/lib/utils';
 import { toast } from '@/components/ui/toaster';
+import { displayPromptTitle, isRegionEditPrompt } from '@/lib/region-edit-document';
 
 type FailedTask = {
   status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
@@ -93,7 +94,7 @@ export function ResultGalleryLightbox({
                     id="generation-lightbox-title"
                     className="truncate text-sm font-medium text-foreground md:text-base"
                   >
-                    {selected.prompt || '无提示词'}
+                    {displayPromptTitle(selected.prompt)}
                   </h2>
                   <p className="mt-1 text-xs text-foreground/40">
                     {formatDate(selected.createdAt)} · 消耗 {selected.cost} 积分
@@ -120,7 +121,7 @@ export function ResultGalleryLightbox({
                 ) : (
                   <img
                     src={selected.resultUrl}
-                    alt={selected.prompt}
+                    alt={displayPromptTitle(selected.prompt)}
                     className="max-h-full max-w-full rounded-xl border border-border/70 object-contain"
                     decoding="async"
                   />
@@ -212,7 +213,7 @@ export function ResultGalleryLightbox({
 
                 <div className="space-y-1">
                   <p className="text-xs font-medium text-foreground/40">
-                    提示词
+                    {isRegionEditPrompt(selected.prompt) ? '提交给模型的提示词' : '提示词'}
                   </p>
                   <div className="rounded-xl border border-border/70 bg-card/40 p-3">
                     <p className="text-sm leading-relaxed text-foreground/80 whitespace-pre-wrap break-words">
