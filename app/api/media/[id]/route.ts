@@ -122,6 +122,24 @@ export async function GET(
           return createRedirectResponse(safeUrl.toString());
         }
       }
+
+      // Canvas / fetch 不能跟随到 R2：公开桶没有 CORS。按需同源代理字节。
+      if (request.nextUrl.searchParams.get('proxy') === '1') {
+        try {
+          const { fetchExternalBuffer } = await import('@/lib/safe-fetch');
+          const { buffer, contentType } = await fetchExternalBuffer(safeUrl.toString(), {
+            origin,
+            maxBytes: 15 * 1024 * 1024,
+            timeoutMs: 30_000,
+          });
+          const mimeType = contentType.split(';')[0]?.trim() || 'image/png';
+          return createMediaResponse(request, buffer, mimeType, id);
+        } catch (error) {
+          console.error('[Media API] Failed to proxy media:', error);
+          return uncachedResponse('Failed to load media', 502);
+        }
+      }
+
       return createRedirectResponse(safeUrl.toString());
     }
     

@@ -27,3 +27,27 @@ export function withClientMediaUrl<T extends { id: string; type: string; resultU
   if (resultUrl === (generation.resultUrl || '')) return generation;
   return { ...generation, resultUrl };
 }
+
+export function toProxiedMediaUrl(url: string): string {
+  if (!url) return url;
+
+  const applyProxy = (pathname: string, search: string) => {
+    const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
+    params.set('proxy', '1');
+    const query = params.toString();
+    return query ? `${pathname}?${query}` : pathname;
+  };
+
+  if (url.startsWith('/api/media/')) {
+    const [pathname, search = ''] = url.split('?');
+    return applyProxy(pathname, search);
+  }
+
+  try {
+    const parsed = new URL(url);
+    if (!parsed.pathname.startsWith('/api/media/')) return url;
+    return `${parsed.origin}${applyProxy(parsed.pathname, parsed.search)}`;
+  } catch {
+    return url;
+  }
+}
