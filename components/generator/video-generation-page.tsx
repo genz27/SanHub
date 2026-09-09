@@ -878,7 +878,7 @@ export function VideoGenerationView({
           </div>
         )}
 
-        <div className="space-y-4 p-4">
+        <div className="space-y-3 p-4">
           <CustomSelect
             value={selectedModelId}
             onValueChange={setSelectedModelId}
@@ -920,7 +920,7 @@ export function VideoGenerationView({
             </div>
           </div>
 
-          <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             {currentModel && (
               <OptionChipGroup
                 label="比例"
@@ -943,31 +943,26 @@ export function VideoGenerationView({
                 }))}
               />
             )}
-          </div>
+            {typeof selectedDuration?.cost === 'number' && selectedDuration.cost > 0 && (
+              <span className="inline-flex h-7 items-center rounded-md border border-border/60 px-2 text-[11px] text-muted-foreground">
+                {selectedDuration.cost} 积分
+              </span>
+            )}
+            <GenerationAdvancedPanel>
+              <InlineToggle
+                checked={keepPrompt}
+                onCheckedChange={setKeepPrompt}
+                label="保留输入"
+              />
+            </GenerationAdvancedPanel>
+            {error && (
+              <div className="flex items-center gap-1.5 text-xs text-red-400">
+                <AlertCircle className="h-3 w-3" />
+                <span>{error}</span>
+              </div>
+            )}
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div className="min-w-0 space-y-2">
-              {typeof selectedDuration?.cost === 'number' && selectedDuration.cost > 0 && (
-                <div className="inline-flex h-7 items-center rounded-md border border-border/60 bg-card/40 px-2 text-[11px] text-muted-foreground">
-                  {selectedDuration.cost} 积分
-                </div>
-              )}
-              <GenerationAdvancedPanel>
-                <InlineToggle
-                  checked={keepPrompt}
-                  onCheckedChange={setKeepPrompt}
-                  label="保留输入"
-                />
-              </GenerationAdvancedPanel>
-              {error && (
-                <div className="flex items-center gap-1.5 text-xs text-red-400">
-                  <AlertCircle className="h-3 w-3" />
-                  <span>{error}</span>
-                </div>
-              )}
-            </div>
-
-            <div className="flex w-full shrink-0 items-center justify-end gap-2 sm:w-auto">
+            <div className="ml-auto flex items-center gap-2">
               {siteConfig.gachaEnabled && (
                 <button
                   onClick={handleGachaMode}

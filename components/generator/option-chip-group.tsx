@@ -25,9 +25,9 @@ export function OptionChipGroup<T extends string = string>({
   if (options.length === 0) return null;
 
   return (
-    <div className="min-w-0 space-y-1.5">
-      <p className="text-[11px] font-medium text-muted-foreground">{label}</p>
-      <div className="flex flex-wrap gap-1.5">
+    <div className="inline-flex min-w-0 items-center gap-1.5">
+      <span className="shrink-0 text-[11px] text-muted-foreground">{label}</span>
+      <div className="flex flex-wrap gap-1">
         {options.map((option) => {
           const selected = option.value === value;
           return (
@@ -37,7 +37,7 @@ export function OptionChipGroup<T extends string = string>({
               disabled={disabled}
               onClick={() => onChange(option.value)}
               className={cn(
-                'inline-flex h-8 items-center rounded-md border px-2.5 text-xs font-medium transition-colors',
+                'inline-flex h-7 items-center rounded-md border px-2 text-[11px] font-medium transition-colors',
                 selected
                   ? 'border-foreground bg-foreground text-background'
                   : 'border-border bg-card text-muted-foreground hover:border-foreground/40 hover:text-foreground',
