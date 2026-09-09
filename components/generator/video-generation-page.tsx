@@ -12,7 +12,6 @@ import {
   User,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { compressImageToWebP, fileToBase64 } from '@/lib/image-compression';
 import { toast } from '@/components/ui/toaster';
 import { CustomSelect } from '@/components/ui/select-custom';
 import { InlineToggle } from '@/components/generator/inline-toggle';
@@ -20,23 +19,19 @@ import { ReferenceImageInput } from '@/components/generator/reference-image-inpu
 import type { Task } from '@/components/generator/result-gallery';
 import { useSiteConfig } from '@/components/providers/site-config-provider';
 import type { Generation, CharacterCard, SafeVideoModel, DailyLimitConfig } from '@/types';
+import type { ReusableImageReference } from '@/lib/generation-reference';
+import { fetchGenerationFeed } from '@/lib/generation-feed';
 import {
   buildTaskFromGeneration,
-  deleteGenerationRecord,
-  deleteGenerationRecords,
-  fetchGenerationSubmit,
-  fetchPendingGenerationTasks,
-  fetchRecentUserGenerations,
   filterGenerationsByKind,
   filterTasksByKind,
   isFailedGenerationStatus,
   isTerminalGenerationStatus,
   mergeGenerationsById,
   mergeTasksById,
-  pollGenerationTask,
   replaceActiveTasks,
-  type ReusableImageReference,
-} from '@/lib/generation-client';
+  shouldResyncGenerationFeed,
+} from '@/lib/generation-state';
 
 const ResultGallery = dynamic(
   () => import('@/components/generator/result-gallery').then((mod) => mod.ResultGallery),
@@ -74,7 +69,8 @@ export function VideoGenerationView({
   const siteConfig = useSiteConfig();
   const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
   const filesRef = useRef<Array<{ file: File; preview: string }>>([]);
-  const refreshGenerationFeedRef = useRef<() => Promise<void>>(async () => {});
+  const refreshGenerationFeedRef = useRef<(includeUsage?: boolean) => Promise<void>>(async () => {});
+  const lastFeedResyncAtRef = useRef(0);
   const isActiveRef = useRef(isActive);
   const submissionLockRef = useRef(false);
   const [localExternalReference, setLocalExternalReference] =
@@ -154,7 +150,25 @@ export function VideoGenerationView({
     return availableModels.find(m => m.id === selectedModelId) || availableModels[0];
   }, [availableModels, selectedModelId]);
   const isSoraChannel = currentModel?.channelType === 'sora';
-  const canMentionCharacterCards = isSoraChannel && characterCards.length > 0;
+  const ensureCharacterCards = useCallback(async () => {
+    if (characterCardsLoadedRef.current) return;
+    characterCardsLoadedRef.current = true;
+    try {
+      const res = await fetch('/api/user/character-cards?status=completed&fields=picker');
+      if (res.ok) {
+        const data = await res.json();
+        const completedCards = (data.data || []).filter(
+          (c: CharacterCard) => c.characterName
+        );
+        setCharacterCards(completedCards);
+      } else {
+        characterCardsLoadedRef.current = false;
+      }
+    } catch (err) {
+      characterCardsLoadedRef.current = false;
+      console.error('Failed to load character cards:', err);
+    }
+  }, []);
 
   const modelsCacheRef = useRef<SafeVideoModel[] | null>(null);
 
@@ -196,27 +210,6 @@ export function VideoGenerationView({
     void loadModels();
   }, [isActive, modelsLoaded]);
 
-  // 加载每日使用量
-  useEffect(() => {
-    if (!isActive) {
-      return;
-    }
-
-    const loadDailyUsage = async () => {
-      try {
-        const res = await fetch('/api/user/daily-usage');
-        if (res.ok) {
-          const data = await res.json();
-          setDailyUsage(data.data.usage);
-          setDailyLimits(data.data.limits);
-        }
-      } catch (err) {
-        console.error('Failed to load daily usage:', err);
-      }
-    };
-    void loadDailyUsage();
-  }, [isActive]);
-
   // 当模型改变时，重置参数到默认值
   useEffect(() => {
     if (!isActiveRef.current) {
@@ -235,30 +228,6 @@ export function VideoGenerationView({
       }
     }
   }, [selectedModelId, availableModels, activeExternalReference, clearFiles, files.length, setActiveExternalReference]);
-
-  // Load character cards only when the active model can use Sora mentions.
-  useEffect(() => {
-    if (!isActive || !isSoraChannel || characterCardsLoadedRef.current) {
-      return;
-    }
-
-    const loadCharacterCards = async () => {
-      try {
-        const res = await fetch('/api/user/character-cards');
-        if (res.ok) {
-          const data = await res.json();
-          const completedCards = (data.data || []).filter(
-            (c: CharacterCard) => c.status === 'completed' && c.characterName
-          );
-          setCharacterCards(completedCards);
-          characterCardsLoadedRef.current = true;
-        }
-      } catch (err) {
-        console.error('Failed to load character cards:', err);
-      }
-    };
-    void loadCharacterCards();
-  }, [isActive, isSoraChannel]);
 
   useEffect(() => {
     if (!isSoraChannel) {
@@ -348,7 +317,7 @@ export function VideoGenerationView({
 
 
   const handlePromptKeyUp = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (!canMentionCharacterCards) {
+    if (!isSoraChannel) {
       if (showCharacterMenu) {
         setShowCharacterMenu(false);
       }
@@ -358,40 +327,34 @@ export function VideoGenerationView({
     const value = (e.target as HTMLTextAreaElement).value;
     const lastChar = value.slice(-1);
     if (lastChar === '@') {
+      void ensureCharacterCards();
       setShowCharacterMenu(true);
     } else if (e.key === 'Escape') {
       setShowCharacterMenu(false);
     }
   };
 
-  const loadRecentGenerations = useCallback(async () => {
-    try {
-      const recentGenerations = await fetchRecentUserGenerations(12);
-      const videoGenerations = filterGenerationsByKind(recentGenerations, 'video');
-      const completedVideoGenerations = videoGenerations.filter(
+  const applyRecentGenerations = useCallback((recentGenerations: Generation[]) => {
+    const videoGenerations = filterGenerationsByKind(recentGenerations, 'video');
+    const completedVideoGenerations = videoGenerations.filter(
+      (generation) =>
+        generation.resultUrl &&
+        generation.status === 'completed' &&
+        isTerminalGenerationStatus(generation.status)
+    );
+    const failedVideoTasks = videoGenerations
+      .filter((generation) => isFailedGenerationStatus(generation.status))
+      .map(
         (generation) =>
-          generation.resultUrl &&
-          generation.status === 'completed' &&
-          isTerminalGenerationStatus(generation.status)
+          ({
+            ...buildTaskFromGeneration(generation),
+            persisted: true,
+          }) satisfies Task
       );
-      const failedVideoTasks = videoGenerations
-        .filter((generation) => isFailedGenerationStatus(generation.status))
-        .map(
-          (generation) =>
-            ({
-              ...buildTaskFromGeneration(generation),
-              persisted: true,
-            }) satisfies Task
-        );
 
-      setGenerations((prev) =>
-        mergeGenerationsById(prev, completedVideoGenerations)
-      );
-      if (failedVideoTasks.length > 0) {
-        setTasks((prev) => mergeTasksById(prev, failedVideoTasks));
-      }
-    } catch (err) {
-      console.error('Failed to load recent video generations:', err);
+    setGenerations((prev) => mergeGenerationsById(prev, completedVideoGenerations));
+    if (failedVideoTasks.length > 0) {
+      setTasks((prev) => mergeTasksById(prev, failedVideoTasks));
     }
   }, []);
 
@@ -427,6 +390,7 @@ export function VideoGenerationView({
     setTasks((prev) => prev.filter((task) => !isFailedGenerationStatus(task.status)));
 
     try {
+      const { deleteGenerationRecords } = await import('@/lib/generation-delete');
       const deletedCount = await deleteGenerationRecords(failedTaskIds);
       const description = [
         deletedCount > 0 ? `已删除 ${deletedCount} 条历史错误记录` : '',
@@ -461,6 +425,7 @@ export function VideoGenerationView({
       abortControllersRef.current.set(taskId, controller);
 
       try {
+        const { pollGenerationTask } = await import('@/lib/generation-poll');
         await pollGenerationTask({
           taskId,
           taskPrompt,
@@ -491,7 +456,6 @@ export function VideoGenerationView({
             await update();
             setTasks((prev) => prev.filter((task) => task.id !== taskId));
             setGenerations((prev) => mergeGenerationsById(prev, [generation]));
-            void loadRecentGenerations();
 
             toast({
               title: '生成成功',
@@ -519,15 +483,12 @@ export function VideoGenerationView({
         }
       }
     },
-    [loadRecentGenerations, markTaskAsFailed, update]
+    [markTaskAsFailed, update]
   );
 
-  const loadPendingTasks = useCallback(async () => {
-    try {
-      const videoTasks = filterTasksByKind(
-        await fetchPendingGenerationTasks(50),
-        'video'
-      ).map(
+  const applyPendingTasks = useCallback(
+    (pendingTasks: Awaited<ReturnType<typeof fetchGenerationFeed>>['pending']) => {
+      const videoTasks = filterTasksByKind(pendingTasks, 'video').map(
         (task) =>
           ({
             ...task,
@@ -541,14 +502,21 @@ export function VideoGenerationView({
       videoTasks.forEach((task) => {
         void pollTaskStatus(task.id, task.prompt);
       });
-    } catch (err) {
-      console.error('Failed to load pending video tasks:', err);
-    }
-  }, [pollTaskStatus]);
+    },
+    [pollTaskStatus]
+  );
 
-  const refreshGenerationFeed = useCallback(async () => {
-    await Promise.allSettled([loadRecentGenerations(), loadPendingTasks()]);
-  }, [loadPendingTasks, loadRecentGenerations]);
+  const refreshGenerationFeed = useCallback(async (includeUsage = false) => {
+    try {
+      const feed = await fetchGenerationFeed(12, 'video', 50, { includeUsage });
+      applyRecentGenerations(feed.generations);
+      applyPendingTasks(feed.pending);
+      if (feed.usage) setDailyUsage(feed.usage);
+      if (feed.limits) setDailyLimits(feed.limits);
+    } catch (err) {
+      console.error('Failed to refresh video generation feed:', err);
+    }
+  }, [applyPendingTasks, applyRecentGenerations]);
 
   useEffect(() => {
     refreshGenerationFeedRef.current = refreshGenerationFeed;
@@ -562,16 +530,23 @@ export function VideoGenerationView({
       return;
     }
 
+    const resyncGenerationFeed = (force = false, includeUsage = false) => {
+      if (!force && !shouldResyncGenerationFeed(lastFeedResyncAtRef.current)) {
+        return;
+      }
+      lastFeedResyncAtRef.current = Date.now();
+      void refreshGenerationFeed(includeUsage);
+    };
     const handleWindowFocus = () => {
-      void refreshGenerationFeed();
+      resyncGenerationFeed();
     };
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        void refreshGenerationFeed();
+        resyncGenerationFeed();
       }
     };
 
-    void refreshGenerationFeed();
+    resyncGenerationFeed(true, true);
     window.addEventListener('focus', handleWindowFocus);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
@@ -626,6 +601,7 @@ export function VideoGenerationView({
       setGenerations((prev) => prev.filter((item) => item.id !== generation.id));
 
       try {
+        const { deleteGenerationRecord } = await import('@/lib/generation-delete');
         await deleteGenerationRecord(generation.id);
         if (activeExternalReference?.generationId === generation.id) {
           setActiveExternalReference(null);
@@ -673,6 +649,7 @@ export function VideoGenerationView({
         }
 
         try {
+          const { compressImageToWebP, fileToBase64 } = await import('@/lib/image-compression');
           const compressedFile = await compressImageToWebP(file);
           const base64 = await fileToBase64(compressedFile);
           nextCache.set(file, base64);
@@ -681,6 +658,7 @@ export function VideoGenerationView({
             data: base64,
           });
         } catch {
+          const { fileToBase64 } = await import('@/lib/image-compression');
           const base64 = await fileToBase64(file);
           results.push({
             mimeType: file.type || 'image/jpeg',
@@ -736,6 +714,7 @@ export function VideoGenerationView({
     }
   ) => {
     const fallbackModel = buildModelId(config.aspectRatio, config.duration);
+    const { fetchGenerationSubmit } = await import('@/lib/generation-submit');
     const res = await fetchGenerationSubmit('/api/generate/sora', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -989,7 +968,7 @@ export function VideoGenerationView({
                 ref={promptTextareaRef}
                 value={prompt}
                 onChange={(e) => handlePromptChange(e, setPrompt)}
-                onKeyUp={canMentionCharacterCards ? handlePromptKeyUp : undefined}
+                onKeyUp={isSoraChannel ? handlePromptKeyUp : undefined}
                 placeholder={isSoraChannel ? '描述视频动态，或拖入图片生成图生视频... 输入 @ 引用角色卡' : '描述视频动态，或拖入图片生成图生视频...'}
                 className="w-full px-3 py-2 bg-input/70 border border-border/70 text-foreground rounded-lg resize-none text-sm min-h-[80px] max-h-[200px] focus:outline-none focus:border-border focus:ring-2 focus:ring-ring/30 overflow-y-auto"
               />

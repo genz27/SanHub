@@ -9,7 +9,7 @@ import {
   buildReusableImageReference,
   buildReusableImageReferenceFromId,
   type ReusableImageReference,
-} from '@/lib/generation-client';
+} from '@/lib/generation-reference';
 import { cn } from '@/lib/utils';
 
 type CreateMode = 'image' | 'video';

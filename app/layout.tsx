@@ -3,7 +3,6 @@ import './globals.css';
 import { Providers } from '@/components/providers';
 import { getPublicSiteConfig } from '@/lib/site-config';
 
-// Disable caching to always get fresh config
 export const dynamic = 'force-dynamic';
 
 export async function generateMetadata(): Promise<Metadata> {

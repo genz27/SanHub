@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getAllGenerations, adminDeleteGeneration } from '@/lib/db-codes';
+import { adminDeleteGeneration, getAllGenerations } from '@/lib/db/generations';
 
 export async function GET(request: Request) {
   try {

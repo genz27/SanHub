@@ -2,13 +2,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getGeneration } from '@/lib/db';
-import { readMediaFile, isLocalFile } from '@/lib/media-storage';
-import { getVideoContentUrl } from '@/lib/sora-api';
-import { resolveAndValidateUrl } from '@/lib/safe-fetch';
+import { getGenerationMedia } from '@/lib/db/generation-lookup-reads';
 
 const MEDIA_CACHE_CONTROL = 'private, max-age=31536000, immutable';
 const MEDIA_REDIRECT_CACHE_CONTROL = 'private, max-age=3600';
+const UNCACHED_RESPONSE_HEADERS = { 'Cache-Control': 'no-store' };
+
+function uncachedResponse(body: string, status: number): NextResponse {
+  return new NextResponse(body, {
+    status,
+    headers: UNCACHED_RESPONSE_HEADERS,
+  });
+}
 
 // 媒体文件服务端点
 // 支持多种存储方式：
@@ -22,36 +27,44 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const sessionPromise = getServerSession(authOptions);
+    const { id } = await params;
+    const [session, generation] = await Promise.all([
+      sessionPromise,
+      getGenerationMedia(id),
+    ]);
     if (!session?.user) {
-      return new NextResponse('Unauthorized', { status: 401 });
+      return uncachedResponse('Unauthorized', 401);
     }
 
-    const { id } = await params;
-    
-    const generation = await getGeneration(id);
-    
     if (!generation) {
-      return new NextResponse('Not Found', { status: 404 });
+      return uncachedResponse('Not Found', 404);
     }
 
     const isOwner = generation.userId === session.user.id;
     const isAdmin = session.user.role === 'admin' || session.user.role === 'moderator';
     if (!isOwner && !isAdmin) {
-      return new NextResponse('Forbidden', { status: 403 });
+      return uncachedResponse('Forbidden', 403);
     }
     
     let resultUrl = generation.resultUrl;
-    const videoId = typeof generation.params?.videoId === 'string' ? generation.params.videoId : undefined;
-    const videoChannelId =
-      typeof generation.params?.videoChannelId === 'string' ? generation.params.videoChannelId : undefined;
+    const videoId = generation.videoId;
+    const videoChannelId = generation.videoChannelId;
     
     if (!resultUrl) {
-      return new NextResponse('No Content', { status: 204 });
+      return uncachedResponse('No Content', 204);
     }
+
+    const needsSoraContent =
+      Boolean(videoId) || (resultUrl.includes('/v1/videos/') && resultUrl.includes('/content'));
+    const soraApiPromise = needsSoraContent ? import('@/lib/sora-content') : null;
+    const videoProxyPromise = generation.type.includes('video')
+      ? import('@/lib/video-proxy')
+      : null;
 
     if (videoId) {
       try {
+        const { getVideoContentUrl } = await soraApiPromise!;
         const actualUrl = await getVideoContentUrl(videoId, videoChannelId);
         console.log('[Media API] Sora content URL resolved by videoId:', actualUrl?.substring(0, 80));
         resultUrl = actualUrl;
@@ -65,24 +78,25 @@ export async function GET(
       // 从 URL 中提取 video ID
       const match = resultUrl.match(/\/v1\/videos\/([^/]+)\/content/);
       if (match) {
-        const videoId = match[1];
+        const resolvedVideoId = match[1];
         try {
-          // 通过 API Key 获取实际的视频 URL
-          const actualUrl = await getVideoContentUrl(videoId, videoChannelId);
+          const { getVideoContentUrl } = await (soraApiPromise ?? import('@/lib/sora-content'));
+          const actualUrl = await getVideoContentUrl(resolvedVideoId, videoChannelId);
           console.log('[Media API] Sora content URL resolved:', actualUrl?.substring(0, 80));
           resultUrl = actualUrl;
         } catch (error) {
           console.error('[Media API] Failed to get Sora content URL:', error);
-          return new NextResponse('Failed to get video URL', { status: 502 });
+          return uncachedResponse('Failed to get video URL', 502);
         }
       }
     }
     
     // 1. 本地文件存储 (file:xxx.png)
-    if (isLocalFile(resultUrl)) {
+    if (resultUrl.startsWith('file:')) {
+      const { readMediaFile } = await import('@/lib/media-read');
       const file = await readMediaFile(resultUrl);
       if (!file) {
-        return new NextResponse('File not found', { status: 404 });
+        return uncachedResponse('File not found', 404);
       }
       return createMediaResponse(request, file.buffer, file.mimeType, id);
     }
@@ -92,15 +106,16 @@ export async function GET(
       const origin = new URL(request.url).origin;
       let safeUrl: URL;
       try {
+        const { resolveAndValidateUrl } = await import('@/lib/safe-fetch');
         safeUrl = await resolveAndValidateUrl(resultUrl, { origin });
       } catch (error) {
         console.error('[Media API] Blocked external URL:', error);
-        return new NextResponse('Invalid media URL', { status: 400 });
+        return uncachedResponse('Invalid media URL', 400);
       }
       // 对于视频，优先应用视频加速域名，再重定向（避免代理大文件）
-      if (generation.type.includes('video')) {
+      if (videoProxyPromise) {
         try {
-          const { applyVideoProxy } = await import('@/lib/sora-api');
+          const { applyVideoProxy } = await videoProxyPromise;
           const proxied = await applyVideoProxy(safeUrl.toString());
           return createRedirectResponse(proxied);
         } catch {
@@ -114,7 +129,7 @@ export async function GET(
     const match = resultUrl.match(/^data:([^;]+);base64,(.+)$/);
     
     if (!match) {
-      return new NextResponse('Invalid media format', { status: 400 });
+      return uncachedResponse('Invalid media format', 400);
     }
     
     const mimeType = match[1];
@@ -124,7 +139,7 @@ export async function GET(
     return createMediaResponse(request, buffer, mimeType, id);
   } catch (error) {
     console.error('[Media API] Error:', error);
-    return new NextResponse('Internal Server Error', { status: 500 });
+    return uncachedResponse('Internal Server Error', 500);
   }
 }
 

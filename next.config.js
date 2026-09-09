@@ -13,13 +13,45 @@ const nextConfig = {
   },
   
   experimental: {
+    optimizePackageImports: [
+      'lucide-react',
+      'class-variance-authority',
+      'clsx',
+      'tailwind-merge',
+      '@radix-ui/react-avatar',
+      '@radix-ui/react-dialog',
+      '@radix-ui/react-dropdown-menu',
+      '@radix-ui/react-label',
+      '@radix-ui/react-select',
+      '@radix-ui/react-slot',
+      '@radix-ui/react-tabs',
+      '@radix-ui/react-toast',
+    ],
     serverActions: {
       bodySizeLimit: '50mb',
     },
+    serverComponentsExternalPackages: [
+      'better-sqlite3',
+      'mysql2',
+      '@aws-sdk/client-s3',
+      'undici',
+      'bcryptjs',
+    ],
   },
   
+  compiler: {
+    removeConsole: process.env.NODE_ENV === 'production' ? { exclude: ['error', 'warn'] } : false,
+  },
+
   // Production response hardening.
   poweredByHeader: false,
+
+  async redirects() {
+    return [
+      { source: '/agents', destination: '/create', permanent: true },
+      { source: '/agents/:path*', destination: '/create', permanent: true },
+    ];
+  },
   
   // Response headers for API freshness, static asset caching, and security.
   async headers() {
@@ -32,7 +64,7 @@ const nextConfig = {
         ],
       },
       {
-        source: '/api/:path((?!media/).*)',
+        source: '/api/:path((?!media/|character-cards/|announcement$|image-models$|video-models$|chat/models$|prompts$|channels$|disabled-models$|user/daily-usage$|user/character-cards$|status/pending$|user/invite-code$).*)',
         headers: [
           { key: 'Cache-Control', value: 'no-store, max-age=0' },
         ],

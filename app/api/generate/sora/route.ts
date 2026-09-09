@@ -2,14 +2,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { generateWithSora } from '@/lib/sora';
-import { saveGeneration, updateUserBalance, getUserById, updateGeneration, getSystemConfig, refundGenerationBalance } from '@/lib/db';
+import {
+  refundGenerationBalance,
+  updateGeneration,
+  updateGenerationProgress,
+} from '@/lib/db/generation-mutations';
+import { saveGeneration } from '@/lib/db/generation-writes';
+import { getPricingConfig } from '@/lib/db/system-config-pricing';
+import { getRateLimitConfig } from '@/lib/db/system-config-rate-limit';
+import { updateUserBalance } from '@/lib/db/user-balance';
+import { getUserById } from '@/lib/db/user-session';
 import type { Generation, SoraGenerateRequest } from '@/types';
 import { checkRateLimit } from '@/lib/rate-limit';
-import { fetchReferenceImage } from '@/lib/reference-image';
-import { processVideoPrompt } from '@/lib/prompt-processor';
 import { assertPromptsAllowed, isPromptBlockedError } from '@/lib/prompt-blocklist';
-import { saveMediaAsync } from '@/lib/media-storage';
 
 function normalizeIncomingVideoConfigObject(input: SoraGenerateRequest): SoraGenerateRequest['videoConfigObject'] {
   const raw = (input.videoConfigObject || input.video_config) as Record<string, unknown> | undefined;
@@ -69,10 +74,12 @@ function getRateLimitDelayMs(attempt: number): number {
 }
 
 async function generateWithRateLimitRetry(
+  generateWithSoraPromise: Promise<(typeof import('@/lib/sora'))['generateWithSora']>,
   body: SoraGenerateRequest,
   onProgress: (progress: number) => void,
   taskId: string
 ) {
+  const generateWithSora = await generateWithSoraPromise;
   let attempt = 0;
   while (true) {
     try {
@@ -116,29 +123,30 @@ async function processGenerationTask(
       processedPrompt?: string;
     } = {};
     
-    // 更新状态为 processing
-    await updateGeneration(generationId, {
+    // Mark processing without blocking prompt work or the upstream call.
+    void updateGeneration(generationId, {
       status: 'processing',
       params: {
         ...baseParams,
         progress: 0,
       },
-    }).catch(err => {
+    }, userId).catch(err => {
       console.error(`[Task ${generationId}] 更新状态失败:`, err);
     });
+
+    const generateSoraPromise = import('@/lib/sora').then((mod) => mod.generateWithSora);
+    const saveMediaPromise = import('@/lib/media-storage');
+    const promptProcessPromise =
+      body.prompt && body.prompt.trim()
+        ? import('@/lib/prompt-processor').then((mod) => mod.processVideoPrompt(body.prompt))
+        : null;
 
     // 进度更新回调（节流：每5%更新一次）
     let lastProgress = 0;
     const onProgress = async (progress: number) => {
       if (progress - lastProgress >= 5 || progress >= 100) {
         lastProgress = progress;
-        await updateGeneration(generationId, { 
-          params: {
-            ...baseParams,
-            ...promptParams,
-            progress,
-          },
-        }).catch(err => {
+        await updateGenerationProgress(generationId, progress).catch(err => {
           console.error(`[Task ${generationId}] 更新进度失败:`, err);
         });
       }
@@ -146,9 +154,9 @@ async function processGenerationTask(
 
     // Process prompt (filter + translate)
     let processedBody = body;
-    if (body.prompt && body.prompt.trim()) {
+    if (promptProcessPromise) {
       try {
-        const processed = await processVideoPrompt(body.prompt);
+        const processed = await promptProcessPromise;
         promptParams = {
           originalPrompt: processed.originalPrompt,
           filteredPrompt: processed.filteredPrompt,
@@ -159,13 +167,13 @@ async function processGenerationTask(
           ...body,
           prompt: processed.processedPrompt,
         };
-        await updateGeneration(generationId, {
+        void updateGeneration(generationId, {
           params: {
             ...baseParams,
             ...promptParams,
             progress: lastProgress,
           },
-        }).catch(err => {
+        }, userId).catch(err => {
           console.error(`[Task ${generationId}] 更新提示词处理结果失败:`, err);
         });
       } catch (err) {
@@ -176,8 +184,9 @@ async function processGenerationTask(
     }
 
     // 调用 Sora API 生成内容
-    const result = await generateWithRateLimitRetry(processedBody, onProgress, generationId);
+    const result = await generateWithRateLimitRetry(generateSoraPromise, processedBody, onProgress, generationId);
 
+    const { saveMediaAsync } = await saveMediaPromise;
     const savedUrl = await saveMediaAsync(generationId, result.url, { publicBaseUrl });
 
     console.log(`[Task ${generationId}] 生成成功:`, savedUrl);
@@ -195,7 +204,7 @@ async function processGenerationTask(
         revised_prompt: result.revised_prompt,
         progress: 100,
       },
-    }).catch(err => {
+    }, userId).catch(err => {
       console.error(`[Task ${generationId}] 更新完成状态失败:`, err);
     });
 
@@ -218,7 +227,7 @@ async function processGenerationTask(
       await updateGeneration(generationId, {
         status: 'failed',
         errorMessage,
-      });
+      }, userId);
     } catch (updateErr) {
       console.error(`[Task ${generationId}] 更新失败状态时出错:`, updateErr);
     }
@@ -233,9 +242,13 @@ async function processGenerationTask(
 
 export async function POST(request: NextRequest) {
   try {
-    const systemConfig = await getSystemConfig();
-    const videoMaxRequests = Math.max(1, Number(systemConfig.rateLimit?.videoMaxRequests) || 30);
-    const videoWindowSeconds = Math.max(1, Number(systemConfig.rateLimit?.videoWindowSeconds) || 60);
+    const [rateLimitConfig, session, body] = await Promise.all([
+      getRateLimitConfig(),
+      getServerSession(authOptions),
+      request.json() as Promise<SoraGenerateRequest>,
+    ]);
+    const videoMaxRequests = Math.max(1, Number(rateLimitConfig.videoMaxRequests) || 30);
+    const videoWindowSeconds = Math.max(1, Number(rateLimitConfig.videoWindowSeconds) || 60);
     const rateLimit = checkRateLimit(
       request,
       { maxRequests: videoMaxRequests, windowSeconds: videoWindowSeconds },
@@ -248,13 +261,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 验证登录
-    const session = await getServerSession(authOptions);
     if (!session?.user) {
       return NextResponse.json({ error: '请先登录' }, { status: 401 });
     }
 
-    const body: SoraGenerateRequest = await request.json();
+    const pricingPromise = getPricingConfig();
+    const userPromise = getUserById(session.user.id);
     const hasPrompt = Boolean(body.prompt && body.prompt.trim());
     const hasFiles = Boolean(body.files && body.files.length > 0);
     const hasReferenceUrl = Boolean(body.referenceImageUrl);
@@ -266,7 +278,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await assertPromptsAllowed([body.prompt, body.style_id]);
+    void import('@/lib/sora');
+    void import('@/lib/media-storage');
+    if (hasPrompt) {
+      void import('@/lib/prompt-processor');
+    }
+    if (typeof body.modelId === 'string' && body.modelId) {
+      void import('@/lib/db/video-catalog-runtime').then(({ getVideoModelWithChannel }) =>
+        getVideoModelWithChannel(body.modelId as string).then((config) => {
+          if (!config) return;
+          const channelType = config.channel.type;
+          if (channelType !== 'sora' && channelType !== 'apexerapi') return;
+          return import('@/lib/sora-config').then((mod) =>
+            mod.warmupSoraConfig({ channelId: config.channel.id })
+          );
+        })
+      );
+    } else {
+      void import('@/lib/sora-config').then((mod) => {
+        void mod.warmupSoraConfig();
+      });
+    }
+    const assertPromise = assertPromptsAllowed([body.prompt, body.style_id]);
 
     const origin = new URL(request.url).origin;
     const normalizedVideoConfigObject = normalizeIncomingVideoConfigObject(body);
@@ -277,24 +310,32 @@ export async function POST(request: NextRequest) {
       files: body.files ? [...body.files] : [],
     };
 
-    if (body.referenceImageUrl) {
-      const referenceImage = await fetchReferenceImage(body.referenceImageUrl, {
-        origin,
-        userId: session.user.id,
-        userRole: session.user.role,
-        maxBytes: MAX_REFERENCE_IMAGE_BYTES,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        },
-      });
+    const referenceImagePromise = body.referenceImageUrl
+      ? import('@/lib/reference-image').then(({ fetchReferenceImage }) =>
+          fetchReferenceImage(body.referenceImageUrl as string, {
+            origin,
+            userId: session.user.id,
+            userRole: session.user.role,
+            maxBytes: MAX_REFERENCE_IMAGE_BYTES,
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            },
+          })
+        )
+      : null;
+
+    const [user, , pricing, referenceImage] = await Promise.all([
+      userPromise,
+      assertPromise,
+      pricingPromise,
+      referenceImagePromise,
+    ]);
+    if (referenceImage) {
       normalizedBody.files?.push({
         mimeType: referenceImage.mimeType,
         data: referenceImage.base64,
       });
     }
-
-    // 获取最新用户信息
-    const user = await getUserById(session.user.id);
     if (!user) {
       return NextResponse.json({ error: '用户不存在' }, { status: 401 });
     }
@@ -303,12 +344,12 @@ export async function POST(request: NextRequest) {
     const normalizedDuration = (body.duration || body.model || '').toLowerCase();
     const effectiveDurationSeconds = normalizedVideoConfigObject?.video_length;
     const estimatedCost = normalizedDuration.includes('25')
-      ? systemConfig.pricing.soraVideo25s
+      ? pricing.soraVideo25s
       : effectiveDurationSeconds && effectiveDurationSeconds >= 15
-        ? systemConfig.pricing.soraVideo15s
+        ? pricing.soraVideo15s
         : normalizedDuration.includes('15')
-        ? systemConfig.pricing.soraVideo15s
-        : systemConfig.pricing.soraVideo10s;
+        ? pricing.soraVideo15s
+        : pricing.soraVideo10s;
 
     // 检查余额
     if (user.balance < estimatedCost) {

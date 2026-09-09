@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createUser, getSystemConfig } from '@/lib/db';
+import { getPublicSystemConfig } from '@/lib/db/system-config-public';
+import { createUser } from '@/lib/db/user-writes';
 import { checkRateLimit, RateLimitConfig } from '@/lib/rate-limit';
 
 export async function POST(request: NextRequest) {
@@ -12,7 +13,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { name, email, password } = await request.json();
+    const [body, config] = await Promise.all([
+      request.json() as Promise<{ name?: string; email?: string; password?: string }>,
+      getPublicSystemConfig(),
+    ]);
+    const { name, email, password } = body;
 
     if (!name || !email || !password) {
       return NextResponse.json(
@@ -28,8 +33,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 检查是否允许注册
-    const config = await getSystemConfig();
     if (!config.registerEnabled) {
       return NextResponse.json(
         { error: '当前不开放注册' },
@@ -37,8 +40,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 创建用户
-    const user = await createUser(email, password, name);
+    const user = await createUser(email, password, name, 'user', config.defaultBalance);
 
     return NextResponse.json({
       success: true,

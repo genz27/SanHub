@@ -1,4 +1,4 @@
-import { getSystemConfig } from './db';
+import { getPromptSafetyConfig } from './db/system-config-prompt-safety';
 import {
   assertPromptAllowedWithConfig,
 } from './prompt-blocklist-core';
@@ -12,11 +12,7 @@ export {
 } from './prompt-blocklist-core';
 
 export async function assertPromptAllowed(prompt: string): Promise<void> {
-  const config = await getSystemConfig();
-  const promptProcessing = config.promptProcessing || {
-    blocklistEnabled: false,
-    blocklistWords: '',
-  };
+  const promptProcessing = await getPromptSafetyConfig();
 
   assertPromptAllowedWithConfig(prompt, {
     blocklistEnabled: promptProcessing.blocklistEnabled,

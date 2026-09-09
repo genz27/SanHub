@@ -1,6 +1,5 @@
-import { getImageChannels, getImageModels } from '@/lib/db';
-import { fetchExternalBuffer } from '@/lib/safe-fetch';
-import { buildDataUrl, parseDataUrl } from '@/lib/v1';
+import { CacheKeys, CacheTTL, withCache } from '@/lib/cache';
+import { buildDataUrl, parseDataUrl } from '@/lib/v1-data-url';
 import { normalizeAspectRatio, resolveImageSize as resolveImageSizeInput } from '@/lib/image-sizing';
 import type { ImageGenerateRequest } from '@/lib/image-generator';
 import type { NextRequest } from 'next/server';
@@ -125,6 +124,7 @@ export async function loadImageSource(input: string, origin: string): Promise<{ 
   }
 
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    const { fetchExternalBuffer } = await import('@/lib/safe-fetch');
     const { buffer, contentType } = await fetchExternalBuffer(trimmed, {
       origin,
       allowRelative: false,
@@ -240,53 +240,54 @@ export function resolveImageSize(size: unknown): Pick<ImageGenerateRequest, 'siz
 }
 
 export async function resolveImageModelId(model?: string): Promise<string | null> {
-  const channels = await getImageChannels(true);
-  const enabledChannelIds = new Set(channels.map((channel) => channel.id));
-  const models = (await getImageModels(true)).filter((item) => enabledChannelIds.has(item.channelId));
-  if (models.length === 0) return null;
+  const cacheKey = `${CacheKeys.IMAGE_MODELS}resolve:${(model || '').trim().toLowerCase() || '_'}`;
+  return withCache(cacheKey, CacheTTL.IMAGE_MODELS, async () => {
+    const { getSafeImageModelBadges } = await import('@/lib/db/image-catalog-badges');
+    const models = await getSafeImageModelBadges();
+    if (models.length === 0) return null;
 
-  if (!model) return models[0].id;
+    if (!model) return models[0].id;
 
-  const normalized = model.toLowerCase();
-  const byId = models.find((m) => m.id.toLowerCase() === normalized);
-  if (byId) return byId.id;
+    const normalized = model.toLowerCase();
+    const byId = models.find((m) => m.id.toLowerCase() === normalized);
+    if (byId) return byId.id;
 
-  const byApiModel = models.find((m) => m.apiModel.toLowerCase() === normalized);
-  if (byApiModel) return byApiModel.id;
+    const byApiModel = models.find((m) => m.apiModel.toLowerCase() === normalized);
+    if (byApiModel) return byApiModel.id;
 
-  const byName = models.find((m) => m.name.toLowerCase() === normalized);
-  if (byName) return byName.id;
+    const byName = models.find((m) => m.name.toLowerCase() === normalized);
+    if (byName) return byName.id;
 
-  const channelById = new Map(channels.map((channel) => [channel.id, channel]));
-  const apexerModels = models.filter((m) => channelById.get(m.channelId)?.type === 'apexerapi');
-  if (apexerModels.length > 0) {
-    if ((normalized.includes('banana') || normalized.includes('香蕉')) && (normalized.includes('pro') || normalized.includes('hd'))) {
-      const bananaPro = apexerModels.find((m) => m.apiModel.toLowerCase() === 'gemini_3.0_pro_image_preview');
-      if (bananaPro) return bananaPro.id;
+    const apexerModels = models.filter((m) => m.channelType === 'apexerapi');
+    if (apexerModels.length > 0) {
+      if ((normalized.includes('banana') || normalized.includes('香蕉')) && (normalized.includes('pro') || normalized.includes('hd'))) {
+        const bananaPro = apexerModels.find((m) => m.apiModel.toLowerCase() === 'gemini_3.0_pro_image_preview');
+        if (bananaPro) return bananaPro.id;
+      }
+      if (normalized.includes('banana') || normalized.includes('nanobanana') || normalized.includes('香蕉')) {
+        const banana2 = apexerModels.find((m) => m.apiModel.toLowerCase() === 'gemini_3.1_flash_image_preview');
+        if (banana2) return banana2.id;
+      }
+      if (normalized.includes('gpt-image')) {
+        const gptImage = apexerModels.find((m) => m.apiModel.toLowerCase() === 'gpt-image-2');
+        if (gptImage) return gptImage.id;
+      }
     }
-    if (normalized.includes('banana') || normalized.includes('nanobanana') || normalized.includes('香蕉')) {
-      const banana2 = apexerModels.find((m) => m.apiModel.toLowerCase() === 'gemini_3.1_flash_image_preview');
-      if (banana2) return banana2.id;
+
+    const aliases = ['gpt-image', 'gpt-image-1', 'gpt-image-2', 'image', 'sora-image'];
+    if (!aliases.some((alias) => normalized.includes(alias))) {
+      return null;
     }
-    if (normalized.includes('gpt-image')) {
-      const gptImage = apexerModels.find((m) => m.apiModel.toLowerCase() === 'gpt-image-2');
-      if (gptImage) return gptImage.id;
-    }
-  }
 
-  const aliases = ['gpt-image', 'gpt-image-1', 'gpt-image-2', 'image', 'sora-image'];
-  if (!aliases.some((alias) => normalized.includes(alias))) {
-    return null;
-  }
+    const apexerModel = models.find((m) => m.channelType === 'apexerapi');
+    if (apexerModel) return apexerModel.id;
 
-  const apexerModel = models.find((m) => channelById.get(m.channelId)?.type === 'apexerapi');
-  if (apexerModel) return apexerModel.id;
+    const openAIModel = models.find((m) => m.channelType === 'openai-compatible');
+    if (openAIModel) return openAIModel.id;
 
-  const openAIModel = models.find((m) => channelById.get(m.channelId)?.type === 'openai-compatible');
-  if (openAIModel) return openAIModel.id;
-
-  const soraModel = models.find((m) => channelById.get(m.channelId)?.type === 'sora');
-  return soraModel?.id || models[0].id;
+    const soraModel = models.find((m) => m.channelType === 'sora');
+    return soraModel?.id || models[0].id;
+  });
 }
 
 export function buildOpenAIImageData(url: string, responseFormat?: unknown): Record<string, string> {

@@ -1,62 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getGeneration } from '@/lib/db';
+import { getGenerationStatus } from '@/lib/db/generation-lookup-reads';
+import { toClientMediaUrl } from '@/lib/client-media-url';
+import { isOpenAIHostedVideoUrl, rewriteOpenAIVideoUrl } from '@/lib/video-proxy-url';
 
 export const dynamic = 'force-dynamic';
-
-function convertToMediaUrl(resultUrl: string | undefined, id: string, type: string): string {
-  if (!resultUrl) return '';
-
-  if (type.includes('video')) {
-    return `/api/media/${id}`;
-  }
-
-  if (resultUrl.includes('/v1/videos/') && resultUrl.includes('/content')) {
-    return `/api/media/${id}`;
-  }
-
-  if (resultUrl.startsWith('data:') || resultUrl.startsWith('file:')) {
-    return `/api/media/${id}`;
-  }
-
-  return resultUrl;
-}
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // 验证登录
-    const session = await getServerSession(authOptions);
+    const sessionPromise = getServerSession(authOptions);
+    const { id } = await params;
+    const [session, generation] = await Promise.all([
+      sessionPromise,
+      getGenerationStatus(id),
+    ]);
     if (!session?.user) {
       return NextResponse.json({ error: '请先登录' }, { status: 401 });
     }
-
-    const { id } = await params;
-    const generation = await getGeneration(id);
 
     if (!generation) {
       return NextResponse.json({ error: '任务不存在' }, { status: 404 });
     }
 
-    // 验证任务所有权
     if (generation.userId !== session.user.id) {
       return NextResponse.json({ error: '无权访问此任务' }, { status: 403 });
     }
 
-    // 解析 params（可能是 JSON 字符串或对象）
-    let generationParams: Record<string, unknown> | undefined;
-    if (generation.params) {
-      if (typeof generation.params === 'string') {
-        try {
-          generationParams = JSON.parse(generation.params);
-        } catch {
-          generationParams = undefined;
-        }
+    const isCompleted = generation.status === 'completed';
+    const isFailed = generation.status === 'failed' || generation.status === 'cancelled';
+
+    let url = '';
+    if (isCompleted) {
+      const mappedUrl = toClientMediaUrl(generation.resultUrl, generation.id, generation.type);
+      if (isOpenAIHostedVideoUrl(mappedUrl)) {
+        const { getVideoProxyConfig } = await import('@/lib/db/system-config-video-proxy');
+        url = rewriteOpenAIVideoUrl(mappedUrl, await getVideoProxyConfig());
       } else {
-        generationParams = generation.params as Record<string, unknown>;
+        url = mappedUrl;
       }
     }
 
@@ -66,13 +50,19 @@ export async function GET(
         id: generation.id,
         status: generation.status,
         type: generation.type,
-        url: convertToMediaUrl(generation.resultUrl, generation.id, generation.type),
-        cost: generation.cost,
-        progress: generationParams?.progress ?? 0,
-        errorMessage: generation.errorMessage,
-        params: generationParams,
-        createdAt: generation.createdAt,
-        updatedAt: generation.updatedAt,
+        ...(isCompleted
+          ? {
+              url,
+              cost: generation.cost,
+              createdAt: generation.createdAt,
+              updatedAt: generation.updatedAt,
+            }
+          : isFailed
+            ? { errorMessage: generation.errorMessage }
+            : {
+                url: '',
+                progress: generation.params?.progress ?? 0,
+              }),
       },
     });
   } catch (error) {

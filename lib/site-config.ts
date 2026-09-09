@@ -1,8 +1,9 @@
-import { getSystemConfig } from '@/lib/db';
+import { cache } from 'react';
+import { getPublicSystemConfig } from '@/lib/db/system-config-public';
 import type { ExtendedSiteConfig } from '@/components/providers/site-config-provider';
 
-export async function getPublicSiteConfig(): Promise<ExtendedSiteConfig> {
-  const config = await getSystemConfig();
+export const getPublicSiteConfig = cache(async (): Promise<ExtendedSiteConfig> => {
+  const config = await getPublicSystemConfig();
 
   return {
     siteName: config.siteConfig?.siteName || 'SANHUB',
@@ -23,4 +24,4 @@ export async function getPublicSiteConfig(): Promise<ExtendedSiteConfig> {
     inviteeBonusPoints: config.inviteSettings?.inviteeBonusPoints ?? 100,
     inviterBonusPoints: config.inviteSettings?.inviterBonusPoints ?? 50,
   };
-}
+});

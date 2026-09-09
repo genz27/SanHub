@@ -2,8 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getProfile, getUserFeed } from '@/lib/sora-api';
-import { getSystemConfig } from '@/lib/db';
+import { getPublicSystemConfig } from '@/lib/db/system-config-public';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,22 +48,25 @@ export async function GET(
 ) {
   try {
     // 验证登录
-    const session = await getServerSession(authOptions);
+    const soraApiPromise = import('@/lib/sora-square');
+    const [session, config, { username }] = await Promise.all([
+      getServerSession(authOptions),
+      getPublicSystemConfig(),
+      params,
+    ]);
     if (!session?.user) {
       return NextResponse.json({ error: '请先登录' }, { status: 401 });
     }
 
-    const config = await getSystemConfig();
     if (!config.featureFlags.squareEnabled) {
       return NextResponse.json({ error: '广场功能未开启' }, { status: 403 });
     }
 
-    const { username } = await params;
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '12');
     const cursor = searchParams.get('cursor') || undefined;
 
-    // 获取用户资料
+    const { getProfile, getUserFeed } = await soraApiPromise;
     const profileResult = await getProfile(username);
     const profileData = profileResult.profile;
 

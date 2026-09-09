@@ -16,15 +16,14 @@ export function AnnouncementBanner() {
   useEffect(() => {
     const fetchAnnouncement = async () => {
       try {
-        const res = await fetch('/api/announcement');
+        const dismissedAt = localStorage.getItem('announcement_dismissed_at');
+        const announcementUrl = dismissedAt
+          ? `/api/announcement?since=${encodeURIComponent(dismissedAt)}`
+          : '/api/announcement';
+        const res = await fetch(announcementUrl);
         if (res.ok) {
           const data = await res.json();
           if (data.success && data.data) {
-            // 检查是否已经关闭过这个公告
-            const dismissedAt = localStorage.getItem('announcement_dismissed_at');
-            if (dismissedAt && Number(dismissedAt) >= data.data.updatedAt) {
-              return;
-            }
             setAnnouncement(data.data);
           }
         }

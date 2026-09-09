@@ -1,8 +1,12 @@
+import { GENERATION_POLL_TIMEOUT_MS } from './polling-timeouts';
+
 export type TaskType = 'image' | 'video';
 
-export const GENERATION_TIMEOUT_MS = 30 * 60 * 1000;
-export const GENERATION_SUBMIT_TIMEOUT_MS = GENERATION_TIMEOUT_MS;
-export const GENERATION_POLL_TIMEOUT_MS = GENERATION_TIMEOUT_MS;
+export {
+  GENERATION_TIMEOUT_MS,
+  GENERATION_SUBMIT_TIMEOUT_MS,
+  GENERATION_POLL_TIMEOUT_MS,
+} from './polling-timeouts';
 
 export function getPollingInterval(elapsedMs: number, taskType: TaskType): number {
   const isFirstMinute = elapsedMs < 60_000;
@@ -53,34 +57,4 @@ export function isTransientError(error: unknown): boolean {
   ];
 
   return transientKeywords.some((keyword) => lowerMessage.includes(keyword));
-}
-
-export function getFriendlyErrorMessage(errMsg: string): string {
-  const lowerMsg = errMsg.toLowerCase();
-  if (
-    lowerMsg.includes('generation process begins') ||
-    lowerMsg.includes('missing video payload') ||
-    lowerMsg.includes('missing image payload')
-  ) {
-    return 'Server timeout. Please try again later.';
-  }
-  if (
-    lowerMsg.includes('heavy_load') ||
-    lowerMsg.includes('heavy load') ||
-    lowerMsg.includes('try again later')
-  ) {
-    return 'Server is busy. Please try again later.';
-  }
-  if (lowerMsg.includes('status: 400') || lowerMsg.includes('request failed: 400')) {
-    return 'Request failed. Please retry.';
-  }
-  if (
-    lowerMsg.includes('network') ||
-    lowerMsg.includes('socket') ||
-    lowerMsg.includes('timeout') ||
-    lowerMsg.includes('connection')
-  ) {
-    return 'Network error. Please check your connection.';
-  }
-  return errMsg;
 }

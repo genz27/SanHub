@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { createVideoModel, getVideoChannel, getVideoModels } from '@/lib/db';
+import { createVideoModel, getVideoChannel, getVideoModels } from '@/lib/db/video-channels';
 import {
   buildVideoModelDescription,
   getVeoDisplayName,

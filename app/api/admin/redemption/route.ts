@@ -8,7 +8,7 @@ import {
   getRecentRedemptionBatches,
   deleteRedemptionCode,
   deleteRedemptionCodesByBatch 
-} from '@/lib/db-codes';
+} from '@/lib/db/codes';
 
 export async function GET(request: Request) {
   try {

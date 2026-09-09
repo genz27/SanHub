@@ -10,9 +10,9 @@ export async function GET() {
       return NextResponse.json({ error: '无权限' }, { status: 403 });
     }
 
-    // 动态导入以避免循环依赖
-    const { createDatabaseAdapter } = await import('@/lib/db-adapter');
-    const db = createDatabaseAdapter();
+    const { getAdapter, initializeDatabase } = await import('@/lib/db');
+    await initializeDatabase();
+    const db = getAdapter();
 
     const [rows] = await db.execute('SELECT * FROM system_config WHERE id = 1');
     const configs = rows as any[];

@@ -7,7 +7,7 @@ import {
   createVideoModel,
   updateVideoModel,
   deleteVideoModel,
-} from '@/lib/db';
+} from '@/lib/db/video-channels';
 import type { VideoConfigObject } from '@/types';
 
 function normalizeVideoConfigObject(raw: unknown): VideoConfigObject | undefined {

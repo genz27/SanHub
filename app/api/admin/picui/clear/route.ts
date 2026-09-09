@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getSystemConfig } from '@/lib/db';
+import { getSystemConfig } from '@/lib/db/system-config';
 import { fetch as undiciFetch } from 'undici';
 
 interface PicUIImage {

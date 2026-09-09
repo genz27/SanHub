@@ -5,9 +5,9 @@ import {
   createVideoChannel,
   createVideoModel,
   getVideoChannels,
-  initializeVideoChannelsTables,
-  getSystemConfig,
-} from '@/lib/db';
+} from '@/lib/db/video-channels';
+import { initializeVideoChannelsTables } from '@/lib/db/schema';
+import { getSystemConfig } from '@/lib/db/system-config';
 
 export const dynamic = 'force-dynamic';
 

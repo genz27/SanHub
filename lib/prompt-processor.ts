@@ -1,5 +1,3 @@
-import { getChatModel, getSystemConfig } from './db';
-
 const DEFAULT_FILTER_PROMPT = 'You are a safety prompt filter for video generation. Rewrite the user prompt into a safe version while preserving creative intent as much as possible. Return only the rewritten prompt text.';
 const DEFAULT_TRANSLATE_PROMPT = 'Translate the user prompt into clear, natural English for video generation. Preserve details, style, and constraints. Return only the translated prompt text.';
 const EMPTY_PROMPT_PROCESSOR_ERROR = 'Prompt processor returned empty content';
@@ -150,7 +148,8 @@ function extractFinalPrompt(raw: string): string {
 }
 
 async function runPromptCompletion(modelId: string, instruction: string, inputPrompt: string): Promise<string> {
-  const model = await getChatModel(modelId);
+  const { getChatModelRuntime } = await import('./db/chat-catalog-runtime');
+  const model = await getChatModelRuntime(modelId);
   if (!model || !model.enabled) {
     throw new Error(`Prompt processing model is unavailable: ${modelId}`);
   }
@@ -253,8 +252,9 @@ export async function processVideoPrompt(originalPrompt: string): Promise<Proces
     };
   }
 
-  const config = await getSystemConfig();
-  const options = normalizeOptions(config.promptProcessing || {
+  const { getPromptProcessingConfig } = await import('./db/system-config-prompt-processing');
+  const promptProcessing = await getPromptProcessingConfig();
+  const options = normalizeOptions(promptProcessing || {
     filterEnabled: false,
     filterModelId: '',
     filterPrompt: DEFAULT_FILTER_PROMPT,

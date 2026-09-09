@@ -1,15 +1,17 @@
 import { NextResponse } from 'next/server';
-import { getSystemConfig } from '@/lib/db';
+import { getDisabledModelsConfig } from '@/lib/db/system-config-disabled-models';
 
 export const dynamic = 'force-dynamic';
 
 // GET /api/disabled-models - 获取禁用的模型列表
 export async function GET() {
   try {
-    const config = await getSystemConfig();
+    const disabledModels = await getDisabledModelsConfig();
     return NextResponse.json({
       success: true,
-      data: config.disabledModels,
+      data: disabledModels,
+    }, {
+      headers: { 'Cache-Control': 'private, max-age=60' },
     });
   } catch (error) {
     console.error('[DisabledModels] Error:', error);

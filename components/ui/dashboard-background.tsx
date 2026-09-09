@@ -1,182 +1,51 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 interface DashboardBackgroundProps {
   reducedEffects?: boolean;
 }
 
 export function DashboardBackground({ reducedEffects = false }: DashboardBackgroundProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const shouldReduceEffects = reducedEffects || prefersReducedMotion;
 
-  // 检测用户是否偏好减少动画
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
     setPrefersReducedMotion(mediaQuery.matches);
-    
+
     const handler = (e: MediaQueryListEvent) => setPrefersReducedMotion(e.matches);
     mediaQuery.addEventListener('change', handler);
     return () => mediaQuery.removeEventListener('change', handler);
   }, []);
 
-  // 粒子动画 - 性能优化版
-  useEffect(() => {
-    // 如果用户偏好减少动画，跳过粒子效果
-    if (shouldReduceEffects) return;
-
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext('2d', { alpha: true });
-    if (!ctx) return;
-
-    let animationId: number;
-    let isVisible = true;
-    let particles: Array<{
-      x: number;
-      y: number;
-      size: number;
-      speedX: number;
-      speedY: number;
-      opacity: number;
-    }> = [];
-
-    // 监听页面可见性，不可见时暂停动画
-    const handleVisibilityChange = () => {
-      isVisible = !document.hidden;
-      if (isVisible) {
-        lastTime = performance.now();
-        animationId = requestAnimationFrame(animate);
-      }
-    };
-
-    const resize = () => {
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      canvas.width = window.innerWidth * dpr;
-      canvas.height = window.innerHeight * dpr;
-      canvas.style.width = `${window.innerWidth}px`;
-      canvas.style.height = `${window.innerHeight}px`;
-      ctx.scale(dpr, dpr);
-      initParticles();
-    };
-
-    const initParticles = () => {
-      particles = [];
-      // 减少粒子数量，提升性能
-      const particleCount = Math.min(Math.floor((window.innerWidth * window.innerHeight) / 40000), 35);
-      for (let i = 0; i < particleCount; i++) {
-        particles.push({
-          x: Math.random() * window.innerWidth,
-          y: Math.random() * window.innerHeight,
-          size: Math.random() * 1.2 + 0.5,
-          speedX: (Math.random() - 0.5) * 0.15,
-          speedY: (Math.random() - 0.5) * 0.15,
-          opacity: Math.random() * 0.3 + 0.1,
-        });
-      }
-    };
-
-    let lastTime = 0;
-    const targetFPS = 20; // 降低到 20fps，肉眼几乎无差别
-    const frameInterval = 1000 / targetFPS;
-
-    const animate = (currentTime: number) => {
-      if (!isVisible) return;
-      
-      animationId = requestAnimationFrame(animate);
-
-      const deltaTime = currentTime - lastTime;
-      if (deltaTime < frameInterval) return;
-      lastTime = currentTime - (deltaTime % frameInterval);
-
-      ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
-
-      // 批量绘制粒子
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-      particles.forEach((particle) => {
-        particle.x += particle.speedX;
-        particle.y += particle.speedY;
-
-        if (particle.x < 0) particle.x = window.innerWidth;
-        if (particle.x > window.innerWidth) particle.x = 0;
-        if (particle.y < 0) particle.y = window.innerHeight;
-        if (particle.y > window.innerHeight) particle.y = 0;
-
-        ctx.globalAlpha = particle.opacity;
-        ctx.beginPath();
-        ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
-        ctx.fill();
-      });
-      ctx.globalAlpha = 1;
-    };
-
-    resize();
-    requestAnimationFrame(animate);
-
-    // 使用防抖处理 resize
-    let resizeTimeout: NodeJS.Timeout;
-    const debouncedResize = () => {
-      clearTimeout(resizeTimeout);
-      resizeTimeout = setTimeout(resize, 200);
-    };
-
-    window.addEventListener('resize', debouncedResize);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      window.removeEventListener('resize', debouncedResize);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      cancelAnimationFrame(animationId);
-      clearTimeout(resizeTimeout);
-    };
-  }, [shouldReduceEffects]);
-
-  // 渐变球样式 - 使用 will-change 优化 GPU 渲染
-  const blobStyle = {
-    willChange: 'transform',
-    backfaceVisibility: 'hidden' as const,
-    perspective: 1000,
-  };
-
   return (
     <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
-      {/* Base gradient */}
       <div className="absolute inset-0 bg-gradient-to-br from-background via-background/80 to-background" />
 
-      {/* 渐变球 - 使用 CSS 动画（GPU 加速），减少动画时暂停 */}
       {!shouldReduceEffects && (
         <>
-          {/* Glow A */}
-          <div 
+          <div
             className="absolute w-[400px] h-[400px] rounded-full opacity-15 blur-[80px] animate-blob"
             style={{
-              ...blobStyle,
               background: 'radial-gradient(circle, hsl(var(--glow-a) / 0.35) 0%, transparent 70%)',
               top: '-10%',
               left: '-5%',
               animationDelay: '0s',
             }}
           />
-
-          {/* Glow B */}
-          <div 
+          <div
             className="absolute w-[350px] h-[350px] rounded-full opacity-12 blur-[70px] animate-blob"
             style={{
-              ...blobStyle,
               background: 'radial-gradient(circle, hsl(var(--glow-b) / 0.35) 0%, transparent 70%)',
               top: '30%',
               right: '-5%',
               animationDelay: '2s',
             }}
           />
-
-          {/* Neutral glow */}
-          <div 
+          <div
             className="absolute w-[300px] h-[300px] rounded-full opacity-10 blur-[60px] animate-blob"
             style={{
-              ...blobStyle,
               background: 'radial-gradient(circle, rgba(255, 255, 255, 0.16) 0%, transparent 70%)',
               bottom: '5%',
               left: '30%',
@@ -186,15 +55,6 @@ export function DashboardBackground({ reducedEffects = false }: DashboardBackgro
         </>
       )}
 
-      {/* 粒子画布 - 仅在非减少动画模式下显示 */}
-      {!shouldReduceEffects && (
-        <canvas
-          ref={canvasRef}
-          className="absolute inset-0 opacity-50"
-        />
-      )}
-
-      {/* Subtle fade */}
       <div className="absolute bottom-0 left-0 right-0 h-28 bg-gradient-to-t from-background to-transparent" />
     </div>
   );

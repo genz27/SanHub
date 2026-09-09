@@ -1,15 +1,17 @@
 import { NextResponse } from 'next/server';
-import { getSystemConfig } from '@/lib/db';
+import { getChannelEnabledConfig } from '@/lib/db/system-config-channels';
 
 export const dynamic = 'force-dynamic';
 
 // GET /api/channels - 获取启用的渠道列表
 export async function GET() {
   try {
-    const config = await getSystemConfig();
+    const channelEnabled = await getChannelEnabledConfig();
     return NextResponse.json({
       success: true,
-      data: config.channelEnabled,
+      data: channelEnabled,
+    }, {
+      headers: { 'Cache-Control': 'private, max-age=60' },
     });
   } catch (error) {
     console.error('[Channels] Error:', error);

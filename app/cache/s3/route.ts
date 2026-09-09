@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getS3CachedObject } from '@/lib/picui';
+import { getS3CachedObject } from '@/lib/s3-cache';
 
 export const dynamic = 'force-dynamic';
 

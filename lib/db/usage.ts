@@ -1,49 +1,103 @@
 import { getAdapter } from './connection';
-import { initializeDatabase } from './schema';
+import { ensureDatabase } from './ready';
+import { CacheKeys, CacheTTL, withCache } from '../cache';
 
-// 获取用户今日使用量统计
 export interface DailyUsageStats {
   imageCount: number;
   videoCount: number;
   characterCardCount: number;
 }
 
-export async function getUserDailyUsage(userId: string): Promise<DailyUsageStats> {
-  await initializeDatabase();
-  const db = getAdapter();
+export type DailyUsageKind = 'all' | 'image' | 'video' | 'character-card';
 
-  // 获取今天 0 点的时间戳
+const EMPTY_USAGE: DailyUsageStats = {
+  imageCount: 0,
+  videoCount: 0,
+  characterCardCount: 0,
+};
+
+const IMAGE_TYPES_SQL = "type IN ('sora-image', 'gemini-image', 'zimage-image', 'gitee-image')";
+
+function todayStartMs(): number {
   const now = new Date();
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+}
 
-  // 统计今日图像生成数量（包括 pending/processing/completed）
-  const [imageRows] = await db.execute(
-    `SELECT COUNT(1) as count FROM generations
-     WHERE user_id = ? AND created_at >= ?
-     AND type IN ('sora-image', 'gemini-image', 'zimage-image', 'gitee-image')
-     AND status != 'cancelled'`,
-    [userId, todayStart]
+export async function getUserDailyUsage(
+  userId: string,
+  kind: DailyUsageKind = 'all'
+): Promise<DailyUsageStats> {
+  const todayStart = todayStartMs();
+
+  return withCache(
+    `${CacheKeys.DAILY_USAGE}${userId}:${todayStart}:${kind}`,
+    CacheTTL.DAILY_USAGE,
+    async () => {
+      await ensureDatabase();
+      const db = getAdapter();
+
+      if (kind === 'image') {
+        const [rows] = await db.execute(
+          `SELECT COUNT(1) AS image_count FROM generations
+           WHERE user_id = ? AND created_at >= ? AND status != 'cancelled'
+           AND ${IMAGE_TYPES_SQL}`,
+          [userId, todayStart]
+        );
+        return {
+          ...EMPTY_USAGE,
+          imageCount: Number((rows as any[])[0]?.image_count || 0),
+        };
+      }
+
+      if (kind === 'video') {
+        const [rows] = await db.execute(
+          `SELECT COUNT(1) AS video_count FROM generations
+           WHERE user_id = ? AND created_at >= ? AND status != 'cancelled'
+           AND type = 'sora-video'`,
+          [userId, todayStart]
+        );
+        return {
+          ...EMPTY_USAGE,
+          videoCount: Number((rows as any[])[0]?.video_count || 0),
+        };
+      }
+
+      if (kind === 'character-card') {
+        const [rows] = await db.execute(
+          `SELECT COUNT(1) AS count FROM character_cards
+           WHERE user_id = ? AND created_at >= ? AND status != 'cancelled'`,
+          [userId, todayStart]
+        );
+        return {
+          ...EMPTY_USAGE,
+          characterCardCount: Number((rows as any[])[0]?.count || 0),
+        };
+      }
+
+      const [generationRows, cardRows] = await Promise.all([
+        db.execute(
+          `SELECT
+             SUM(CASE WHEN ${IMAGE_TYPES_SQL} THEN 1 ELSE 0 END) AS image_count,
+             SUM(CASE WHEN type = 'sora-video' THEN 1 ELSE 0 END) AS video_count
+           FROM generations
+           WHERE user_id = ? AND created_at >= ?
+           AND status != 'cancelled'`,
+          [userId, todayStart]
+        ),
+        db.execute(
+          `SELECT COUNT(1) as count FROM character_cards
+           WHERE user_id = ? AND created_at >= ?
+           AND status != 'cancelled'`,
+          [userId, todayStart]
+        ),
+      ]);
+
+      const generation = (generationRows[0] as any[])[0] || {};
+      return {
+        imageCount: Number(generation.image_count || 0),
+        videoCount: Number(generation.video_count || 0),
+        characterCardCount: Number((cardRows[0] as any[])[0]?.count || 0),
+      };
+    }
   );
-  const imageCount = Number((imageRows as any[])[0]?.count || 0);
-
-  // 统计今日视频生成数量
-  const [videoRows] = await db.execute(
-    `SELECT COUNT(1) as count FROM generations
-     WHERE user_id = ? AND created_at >= ?
-     AND type = 'sora-video'
-     AND status != 'cancelled'`,
-    [userId, todayStart]
-  );
-  const videoCount = Number((videoRows as any[])[0]?.count || 0);
-
-  // 统计今日角色卡生成数量
-  const [cardRows] = await db.execute(
-    `SELECT COUNT(1) as count FROM character_cards
-     WHERE user_id = ? AND created_at >= ?
-     AND status != 'cancelled'`,
-    [userId, todayStart]
-  );
-  const characterCardCount = Number((cardRows as any[])[0]?.count || 0);
-
-  return { imageCount, videoCount, characterCardCount };
 }

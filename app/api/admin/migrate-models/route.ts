@@ -6,9 +6,9 @@ import {
   createImageModel,
   getImageChannels,
   getImageModels,
-  initializeImageChannelsTables,
-  getSystemConfig,
-} from '@/lib/db';
+} from '@/lib/db/image-channels';
+import { initializeImageChannelsTables } from '@/lib/db/schema';
+import { getSystemConfig } from '@/lib/db/system-config';
 import type { ChannelType, ImageModelFeatures } from '@/types';
 
 export const dynamic = 'force-dynamic';

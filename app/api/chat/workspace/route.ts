@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getChatModel, getUserById, updateUserBalance } from '@/lib/db';
+import { getChatModelRuntime } from '@/lib/db/chat-catalog-runtime';
+import { updateUserBalance } from '@/lib/db/user-balance';
+import { getUserById } from '@/lib/db/user-session';
 import { checkRateLimit, RateLimitConfig } from '@/lib/rate-limit';
 
 // Validation constants
@@ -19,12 +21,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const session = await getServerSession(authOptions);
+    const [session, body] = await Promise.all([
+      getServerSession(authOptions),
+      request.json(),
+    ]);
     if (!session?.user) {
       return NextResponse.json({ success: false, error: '未登录' }, { status: 401 });
     }
 
-    const body = await request.json();
+    const userPromise = getUserById(session.user.id);
     const { modelId, prompt, images } = body as {
       modelId: string;
       prompt: string;
@@ -38,6 +43,8 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    const modelPromise = getChatModelRuntime(modelId);
 
     if (!prompt || typeof prompt !== 'string') {
       return NextResponse.json(
@@ -78,7 +85,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const model = await getChatModel(modelId);
+    const [model, user] = await Promise.all([
+      modelPromise,
+      userPromise,
+    ]);
     if (!model || !model.enabled) {
       return NextResponse.json(
         { success: false, error: '模型不存在或已禁用' },
@@ -86,16 +96,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if model supports vision when images are provided
     if (images && images.length > 0 && !model.supportsVision) {
       return NextResponse.json(
         { success: false, error: '该模型不支持图片输入' },
         { status: 400 }
       );
     }
-
-    // Check user balance
-    const user = await getUserById(session.user.id);
     if (!user || user.balance < model.costPerMessage) {
       return NextResponse.json(
         { success: false, error: '积分不足' },

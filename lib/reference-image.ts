@@ -1,6 +1,3 @@
-import { getGeneration } from './db';
-import { isLocalFile, readMediaFile } from './media-storage';
-import { fetchExternalBuffer } from './safe-fetch';
 import type { UserRole } from '@/types';
 
 const DEFAULT_TIMEOUT_MS = 10000;
@@ -72,7 +69,8 @@ async function readInternalGenerationImage(
   generationId: string,
   options: ReferenceImageOptions
 ): Promise<ReferenceImagePayload> {
-  const generation = await getGeneration(generationId);
+  const { getGenerationMedia } = await import('./db/generation-lookup-reads');
+  const generation = await getGenerationMedia(generationId);
   if (!generation) {
     throw new Error('Reference generation not found');
   }
@@ -87,7 +85,8 @@ async function readInternalGenerationImage(
     throw new Error('Reference generation has no media');
   }
 
-  if (isLocalFile(generation.resultUrl)) {
+  if (generation.resultUrl.startsWith('file:')) {
+    const { readMediaFile } = await import('./media-read');
     const file = await readMediaFile(generation.resultUrl);
     if (!file) {
       throw new Error('Reference media file not found');
@@ -115,6 +114,7 @@ async function readInternalGenerationImage(
     return readInternalGenerationImage(nestedGenerationId, options);
   }
 
+  const { fetchExternalBuffer } = await import('./safe-fetch');
   const { buffer, contentType } = await fetchExternalBuffer(generation.resultUrl, {
     origin: options.origin,
     allowRelative: true,
@@ -146,6 +146,7 @@ export async function fetchReferenceImage(
     return parsedDataUrl;
   }
 
+  const { fetchExternalBuffer } = await import('./safe-fetch');
   const { buffer, contentType } = await fetchExternalBuffer(input, {
     origin: options.origin,
     allowRelative: true,

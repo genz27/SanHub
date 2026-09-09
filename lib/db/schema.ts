@@ -1,7 +1,6 @@
 /* eslint-disable no-console */
 import { getAdapter } from './connection';
 import type { DatabaseAdapter } from '../db-adapter';
-import bcrypt from 'bcryptjs';
 import { generateId } from '../utils';
 
 // ========================================
@@ -246,15 +245,88 @@ CREATE TABLE IF NOT EXISTS video_models (
 `;
 
 let initialized = false;
+let initializing: Promise<void> | null = null;
+
+const PERFORMANCE_INDEXES = [
+  'CREATE INDEX idx_generations_user_created ON generations (user_id, created_at)',
+  'CREATE INDEX idx_generations_user_status ON generations (user_id, status)',
+  'CREATE INDEX idx_generations_status_created ON generations (status, created_at)',
+  'CREATE INDEX idx_character_cards_user_created ON character_cards (user_id, created_at)',
+  'CREATE INDEX idx_character_cards_user_status ON character_cards (user_id, status)',
+];
+
+// Columns/tables added only via ALTER or later CREATE TABLE. Include any new
+// ALTER-only column or new table here so existing databases still migrate.
+async function hasLegacyMigrationsApplied(db: DatabaseAdapter): Promise<boolean> {
+  try {
+    await db.execute('SELECT agent_context FROM chat_sessions LIMIT 0');
+    await db.execute('SELECT video_config_object FROM video_models LIMIT 0');
+    await db.execute(
+      `SELECT
+         announcement_title,
+         video_proxy_enabled,
+         daily_limit_character_card,
+         site_name,
+         disabled_image_models,
+         channel_sora_enabled
+       FROM system_config
+       LIMIT 0`
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function ensureSystemConfigRow(db: DatabaseAdapter): Promise<void> {
+  const [configRows] = await db.execute('SELECT id FROM system_config WHERE id = 1');
+  if ((configRows as unknown[]).length === 0) {
+    await db.execute(
+      `INSERT INTO system_config (id, sora_api_key, sora_base_url, gemini_api_key, gemini_base_url)
+       VALUES (1, ?, ?, ?, ?)`,
+      [
+        process.env.SORA_API_KEY || '',
+        process.env.SORA_BASE_URL || 'http://localhost:8000',
+        process.env.GEMINI_API_KEY || '',
+        process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com',
+      ]
+    );
+  }
+}
+
+async function ensurePerformanceIndexes(db: DatabaseAdapter): Promise<void> {
+  for (const statement of PERFORMANCE_INDEXES) {
+    try {
+      await db.execute(statement);
+    } catch {
+      // Index already exists
+    }
+  }
+}
 
 export async function initializeDatabase(): Promise<void> {
-  const db = getAdapter();
+  if (initialized) return;
+  if (initializing) return initializing;
 
-  // 渠道表始终尝试创建（幂等操作，确保新表被创建）
+  initializing = doInitializeDatabase().finally(() => {
+    initializing = null;
+  });
+  return initializing;
+}
+
+async function doInitializeDatabase(): Promise<void> {
+  if (initialized) return;
+
+  const db = getAdapter();
+  if (await hasLegacyMigrationsApplied(db)) {
+    await ensureSystemConfigRow(db);
+    initialized = true;
+    console.log('Database initialized successfully');
+    return;
+  }
+
   await initializeImageChannelsTablesInternal(db);
   await initializeVideoChannelsTablesInternal(db);
-
-  if (initialized) return;
 
   const statements = CREATE_TABLES_SQL.split(';').filter((s) => s.trim());
 
@@ -277,21 +349,7 @@ export async function initializeDatabase(): Promise<void> {
     }
   }
 
-  // 初始化系统配置（如果不存在）
-  const [configRows] = await db.execute('SELECT id FROM system_config WHERE id = 1');
-  if ((configRows as unknown[]).length === 0) {
-    await db.execute(`
-      INSERT INTO system_config (id, sora_api_key, sora_base_url, gemini_api_key, gemini_base_url)
-      VALUES (1, ?, ?, ?, ?)
-    `, [
-      process.env.SORA_API_KEY || '',
-      process.env.SORA_BASE_URL || 'http://localhost:8000',
-      process.env.GEMINI_API_KEY || '',
-      process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com',
-    ]);
-  }
-
-  // 初始化管理员账号
+  await ensureSystemConfigRow(db);
   await initializeAdmin();
 
   // 添加 disabled 字段（如果不存在）
@@ -711,6 +769,8 @@ export async function initializeDatabase(): Promise<void> {
     // 列已存在，忽略错误
   }
 
+  await ensurePerformanceIndexes(db);
+
   initialized = true;
   console.log('Database initialized successfully');
 }
@@ -730,6 +790,7 @@ export async function initializeAdmin(): Promise<void> {
   );
 
   if ((existing as unknown[]).length === 0) {
+    const bcrypt = (await import('bcryptjs')).default;
     const hashedPassword = await bcrypt.hash(adminPassword, 10);
     const now = Date.now();
 
@@ -762,8 +823,6 @@ async function initializeImageChannelsTablesInternal(db: DatabaseAdapter): Promi
 // 初始化图像渠道和模型表
 export async function initializeImageChannelsTables(): Promise<void> {
   await initializeDatabase();
-  const db = getAdapter();
-  await initializeImageChannelsTablesInternal(db);
 }
 
 // 内部初始化函数（供 initializeDatabase 调用，避免循环依赖）
@@ -792,6 +851,4 @@ async function initializeVideoChannelsTablesInternal(db: DatabaseAdapter): Promi
 // 初始化视频渠道表
 export async function initializeVideoChannelsTables(): Promise<void> {
   await initializeDatabase();
-  const db = getAdapter();
-  await initializeVideoChannelsTablesInternal(db);
 }

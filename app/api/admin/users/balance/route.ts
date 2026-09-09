@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { updateUserBalance } from '@/lib/db';
+import { updateUserBalance } from '@/lib/db/user-balance';
 
 export async function POST(request: NextRequest) {
   try {

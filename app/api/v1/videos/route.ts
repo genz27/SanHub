@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createVideoTask, generateVideo, type VideoGenerationRequest, type VideoTaskResponse } from '@/lib/sora-api';
+import type { VideoGenerationRequest, VideoTaskResponse } from '@/lib/sora-api';
 import { buildErrorResponse, extractBearerToken, isAuthorized, parseDataUrl } from '@/lib/v1';
-import { processVideoPrompt } from '@/lib/prompt-processor';
 import { assertPromptsAllowed } from '@/lib/prompt-blocklist';
-import { saveMediaAsync } from '@/lib/media-storage';
 
 export const dynamic = 'force-dynamic';
 
@@ -127,6 +125,10 @@ export async function POST(request: NextRequest) {
     return buildErrorResponse('Unauthorized', 401, 'authentication_error');
   }
 
+  const soraApiPromise = import('@/lib/sora-api');
+  const saveMediaPromise = import('@/lib/media-storage');
+  const processPromptPromise = import('@/lib/prompt-processor');
+
   let parsed;
   try {
     parsed = await parseVideoRequest(request);
@@ -138,6 +140,10 @@ export async function POST(request: NextRequest) {
   if (!parsed.request.prompt) {
     return buildErrorResponse('Prompt is required', 400);
   }
+
+  const processedPromptPromise = parsed.request.prompt
+    ? processPromptPromise.then(({ processVideoPrompt }) => processVideoPrompt(parsed.request.prompt))
+    : Promise.resolve(null);
 
   try {
     await assertPromptsAllowed([
@@ -152,11 +158,12 @@ export async function POST(request: NextRequest) {
 
   try {
     const processedRequest: VideoGenerationRequest = { ...parsed.request };
-    if (processedRequest.prompt) {
-      const processed = await processVideoPrompt(processedRequest.prompt);
+    const processed = await processedPromptPromise;
+    if (processed) {
       processedRequest.prompt = processed.processedPrompt;
     }
 
+    const { createVideoTask, generateVideo } = await soraApiPromise;
     if (parsed.asyncMode) {
       const task = await createVideoTask(processedRequest);
       return NextResponse.json(task, { status: 201 });
@@ -166,6 +173,7 @@ export async function POST(request: NextRequest) {
     const origin = new URL(request.url).origin;
     const firstUrl = result.data?.[0]?.url;
     if (firstUrl) {
+      const { saveMediaAsync } = await saveMediaPromise;
       result.data[0].url = await saveMediaAsync(`v1-video-${result.id}`, firstUrl, { publicBaseUrl: origin });
     }
     const response = buildSyncResponse(processedRequest, result);

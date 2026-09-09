@@ -1,16 +1,19 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { redeemCode } from '@/lib/db-codes';
+import { redeemCode } from '@/lib/db/redeem-code-user';
 
 export async function POST(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
+    const [session, body] = await Promise.all([
+      getServerSession(authOptions),
+      request.json(),
+    ]);
     if (!session) {
       return NextResponse.json({ error: '请先登录' }, { status: 401 });
     }
 
-    const { code } = await request.json();
+    const { code } = body;
     if (!code || typeof code !== 'string') {
       return NextResponse.json({ error: '请输入卡密' }, { status: 400 });
     }

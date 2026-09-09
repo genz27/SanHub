@@ -14,6 +14,7 @@ class RateLimiter {
   constructor() {
     // 每分钟清理过期记录
     this.cleanupInterval = setInterval(() => this.cleanup(), 60000);
+    this.cleanupInterval.unref?.();
   }
 
   /**

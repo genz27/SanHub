@@ -14,23 +14,28 @@ const SITE_STATUS_MAX_AGE_MS = 5_000;
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions);
+    startVideoStatusPoller();
+    const sessionPromise = getServerSession(authOptions);
+    const now = Date.now();
+    const cached = getCachedSiteVideoStatus();
 
+    if (cached && now - cached.updatedAt < SITE_STATUS_MAX_AGE_MS) {
+      const session = await sessionPromise;
+      if (!session?.user?.id) {
+        return NextResponse.json({ error: '未登录' }, { status: 401 });
+      }
+      return NextResponse.json({ success: true, data: cached });
+    }
+
+    const [session, snapshot] = await Promise.all([
+      sessionPromise,
+      buildVideoStatusSnapshotForSite(),
+    ]);
     if (!session?.user?.id) {
       return NextResponse.json({ error: '未登录' }, { status: 401 });
     }
 
-    startVideoStatusPoller();
-
-    const now = Date.now();
-    const cached = getCachedSiteVideoStatus();
-    if (cached && now - cached.updatedAt < SITE_STATUS_MAX_AGE_MS) {
-      return NextResponse.json({ success: true, data: cached });
-    }
-
-    const snapshot = await buildVideoStatusSnapshotForSite();
     setCachedSiteVideoStatus(snapshot);
-
     return NextResponse.json({ success: true, data: snapshot });
   } catch (error) {
     console.error('[API] Failed to get site video status:', error);

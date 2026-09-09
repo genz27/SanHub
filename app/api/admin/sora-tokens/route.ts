@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getSystemConfig, updateSystemConfig } from '@/lib/db';
+import { getSystemConfig, updateSystemConfig } from '@/lib/db/system-config';
 import type { SoraStats } from '@/types';
 
 // 登录 SORA 后台获取 admin token

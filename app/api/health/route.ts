@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
-import { initializeDatabase } from '@/lib/db';
+import { ensureDatabase } from '@/lib/db/ready';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    await initializeDatabase();
+    await ensureDatabase();
     return NextResponse.json({ 
       status: 'ok', 
       message: '数据库连接正常',

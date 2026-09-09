@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateImage, type ImageGenerateRequest } from '@/lib/image-generator';
-import { saveMediaAsync } from '@/lib/media-storage';
+import type { ImageGenerateRequest } from '@/lib/image-generator';
 import {
   buildErrorResponse,
   extractBearerToken,
@@ -32,6 +31,9 @@ export async function POST(request: NextRequest) {
     return buildErrorResponse('Unauthorized', 401, 'authentication_error');
   }
 
+  const generateImagePromise = import('@/lib/image-generator').then((mod) => mod.generateImage);
+  const saveMediaPromise = import('@/lib/media-storage');
+
   let parsed;
   try {
     parsed = await parseOpenAIImageRequest(request);
@@ -48,21 +50,26 @@ export async function POST(request: NextRequest) {
     return buildErrorResponse('Prompt is required', 400);
   }
 
+  const origin = new URL(request.url).origin;
+  const imageInputsPromise = loadReferenceImages(parsed.imageReferences, origin);
+
+  let imageModelId: string | null;
   try {
-    await assertPromptsAllowed([parsed.prompt]);
+    [imageModelId] = await Promise.all([
+      resolveImageModelId(parsed.model),
+      assertPromptsAllowed([parsed.prompt]),
+    ]);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Prompt blocked by safety policy';
     return buildErrorResponse(message, 400);
   }
 
-  const imageModelId = await resolveImageModelId(parsed.model);
   if (!imageModelId) {
     return buildErrorResponse('Unknown model', 400);
   }
 
   try {
-    const origin = new URL(request.url).origin;
-    const imageInputs = await loadReferenceImages(parsed.imageReferences, origin);
+    const imageInputs = await imageInputsPromise;
     const imageRequest: ImageGenerateRequest = {
       modelId: imageModelId,
       prompt: parsed.prompt,
@@ -79,7 +86,9 @@ export async function POST(request: NextRequest) {
       imageRequest.imageSize = parsed.imageSize;
     }
 
+    const generateImage = await generateImagePromise;
     const result = await generateImage(imageRequest);
+    const { saveMediaAsync } = await saveMediaPromise;
     const outputUrl = parsed.responseFormat === 'b64_json'
       ? result.url
       : await saveMediaAsync(`v1-image-edit-${crypto.randomUUID()}`, result.url, { publicBaseUrl: origin });

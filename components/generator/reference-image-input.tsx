@@ -11,7 +11,7 @@ import {
   X,
 } from 'lucide-react';
 import { toast } from '@/components/ui/toaster';
-import type { ReusableImageReference } from '@/lib/generation-client';
+import type { ReusableImageReference } from '@/lib/generation-reference';
 import { cn } from '@/lib/utils';
 
 export type ReferenceImageItem = {

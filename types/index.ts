@@ -260,7 +260,7 @@ export interface SafeImageModel {
   allowEmptyPrompt?: boolean;
   highlight?: boolean;
   enabled: boolean;
-  costPerGeneration: number;
+  costPerGeneration?: number;
 }
 
 // ========================================

@@ -2,12 +2,12 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import {
   User,
   Upload,
-  Trash2,
   Sparkles,
   Loader2,
   AlertCircle,
@@ -16,12 +16,23 @@ import {
   Video,
 } from 'lucide-react';
 import { cn, fileToBase64 } from '@/lib/utils';
-import { fetchGenerationSubmit } from '@/lib/generation-client';
+import { fetchCharacterCardLists } from '@/lib/generation-character-cards';
 import { toast } from '@/components/ui/toaster';
 import type { CharacterCard, DailyLimitConfig } from '@/types';
-import { formatDate } from '@/lib/utils';
 import { useSiteConfig } from '@/components/providers/site-config-provider';
 import { EmptyState } from '@/components/ui/empty-state';
+
+const CharacterCardGrid = dynamic(
+  () => import('@/components/character-card/card-grid').then((mod) => mod.CharacterCardGrid),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center h-48">
+        <Loader2 className="w-6 h-6 animate-spin text-foreground/30" />
+      </div>
+    ),
+  }
+);
 
 // 进行中的任务（存储在 sessionStorage 中，刷新后保留）
 interface PendingTask {
@@ -86,14 +97,24 @@ export default function CharacterCardPage() {
     }
   }, [router, siteConfig.characterCardEnabled]);
 
-  // 加载角色卡列表（包括已完成和进行中的）
+  // Completed cards are cached; pending cards are merged in by the poller.
   const loadCharacterCards = useCallback(async () => {
     try {
-      const res = await fetch('/api/user/character-cards');
-      if (res.ok) {
-        const data = await res.json();
-        setCharacterCards(data.data || []);
-      }
+      const {
+        completed: completedCards,
+        pending: pendingCards,
+        usage,
+        limits,
+      } = await fetchCharacterCardLists({ includeUsage: true });
+      const pendingIds = new Set(pendingCards.map((card) => card.id));
+      const cards = [
+        ...pendingCards,
+        ...completedCards.filter((card) => !pendingIds.has(card.id)),
+      ];
+      setCharacterCards(cards);
+      setPendingTasks((prev) => prev.filter((task) => !pendingIds.has(task.id)));
+      if (usage) setDailyUsage(usage);
+      if (limits) setDailyLimits(limits);
     } catch (err) {
       console.error('Failed to load character cards:', err);
     } finally {
@@ -115,7 +136,8 @@ export default function CharacterCardPage() {
       } catch {
         // 忽略 sessionStorage 读取失败
       }
-      loadCharacterCards();
+      void loadCharacterCards();
+      void import('@/components/character-card/card-grid');
     }
   }, [session?.user, loadCharacterCards]);
 
@@ -124,40 +146,67 @@ export default function CharacterCardPage() {
     sessionStorage.setItem('pendingCharCards', JSON.stringify(pendingTasks));
   }, [pendingTasks]);
 
-  // 加载每日使用量
+  const hasProcessingCards =
+    characterCards.some((card) => card.status === 'processing' || card.status === 'pending') ||
+    pendingTasks.some((task) => task.status === 'processing' || task.status === 'pending');
+
   useEffect(() => {
-    const loadDailyUsage = async () => {
+    if (!hasProcessingCards) return;
+
+    const pollPendingCards = async () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       try {
-        const res = await fetch('/api/user/daily-usage');
-        if (res.ok) {
-          const data = await res.json();
-          setDailyUsage(data.data.usage);
-          setDailyLimits(data.data.limits);
+        const res = await fetch('/api/user/character-cards?pending=true&fields=status');
+        if (!res.ok) return;
+        const data = await res.json();
+        const pendingCards: Array<Pick<CharacterCard, 'id' | 'status'>> = data.data || [];
+        const pendingById = new Map(pendingCards.map((card) => [card.id, card]));
+
+        let missingActive = false;
+        setCharacterCards((prev) => {
+          const seen = new Set<string>();
+          const next = prev.map((card) => {
+            const update = pendingById.get(card.id);
+            if (update) {
+              seen.add(card.id);
+              return update.status === card.status ? card : { ...card, status: update.status };
+            }
+            if (card.status === 'pending' || card.status === 'processing') {
+              missingActive = true;
+            }
+            return card;
+          });
+          const extras = pendingCards
+            .filter((card) => !seen.has(card.id))
+            .map((card) => ({
+              id: card.id,
+              userId: '',
+              characterName: '',
+              avatarUrl: '',
+              status: card.status,
+              createdAt: Date.now(),
+              updatedAt: Date.now(),
+            }));
+          return extras.length > 0 ? [...extras, ...next] : next;
+        });
+
+        if (missingActive) {
+          void loadCharacterCards();
         }
+
+        setPendingTasks((prev) => prev.filter((task) => !pendingById.has(task.id)));
       } catch (err) {
-        console.error('Failed to load daily usage:', err);
+        console.error('Failed to poll character cards:', err);
       }
     };
-    loadDailyUsage();
-  }, []);
 
-  // 轮询检查处理中的角色卡状态（包括 pendingTasks）
-  useEffect(() => {
-    const hasProcessingInCards = characterCards.some(card => card.status === 'processing');
-    const hasProcessingInTasks = pendingTasks.some(task => task.status === 'processing');
-
-    if (!hasProcessingInCards && !hasProcessingInTasks) return;
-
-    const interval = setInterval(() => {
-      loadCharacterCards();
-      // 清理已完成或失败的 pendingTasks（已在 characterCards 中的）
-      setPendingTasks(prev => prev.filter(task =>
-        !characterCards.some(card => card.id === task.id)
-      ));
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, [characterCards, pendingTasks, loadCharacterCards]);
+    const interval = setInterval(pollPendingCards, 8_000);
+    document.addEventListener('visibilitychange', pollPendingCards);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', pollPendingCards);
+    };
+  }, [hasProcessingCards, loadCharacterCards]);
 
   // 提取视频第一帧
   const extractFirstFrame = (videoUrl: string): Promise<string> => {
@@ -356,6 +405,7 @@ export default function CharacterCardPage() {
             safetyInstructionSet: safetyInstructionSet.trim() || undefined,
           };
 
+      const { fetchGenerationSubmit } = await import('@/lib/generation-submit');
       const response = await fetchGenerationSubmit('/api/generate/character-card', {
         method: 'POST',
         headers: {
@@ -507,19 +557,11 @@ export default function CharacterCardPage() {
                 className="border border-dashed border-border/70 rounded-xl bg-gradient-to-br from-emerald-500/5 to-sky-500/5"
               />
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-                {pendingTasks.map((task) => {
-                  return <PendingTaskItem key={task.id} task={task} />;
-                })}
-                {characterCards
-                  .filter((card) => {
-                    const isDuplicate = pendingTasks.some((t) => t.id === card.id);
-                    return !isDuplicate;
-                  })
-                  .map((card) => {
-                    return <CharacterCardItem key={card.id} card={card} onDelete={handleDeleteCard} />;
-                  })}
-              </div>
+              <CharacterCardGrid
+                cards={characterCards}
+                pendingTasks={pendingTasks}
+                onDelete={handleDeleteCard}
+              />
             )}
           </div>
         </div>
@@ -785,118 +827,6 @@ export default function CharacterCardPage() {
             </button>
           </div>
         </div>
-      </div>
-    </div>
-  );
-}
-
-// 进行中任务卡片组件（内存中的任务，刷新后消失）
-function PendingTaskItem({ task }: { task: PendingTask }) {
-  const statusConfig = {
-    pending: { bg: 'bg-amber-500/20', text: 'text-amber-400', label: '排队中' },
-    processing: { bg: 'bg-blue-500/20', text: 'text-blue-400', label: '生成中' },
-    failed: { bg: 'bg-red-500/20', text: 'text-red-400', label: '失败' },
-  };
-  const status = statusConfig[task.status];
-
-  return (
-    <div className="bg-card/60 border border-border/70 rounded-xl overflow-hidden hover:border-border/70 transition-all">
-      <div className="aspect-square bg-gradient-to-br from-emerald-500/10 to-sky-500/10 flex items-center justify-center relative">
-        {task.avatarUrl ? (
-          <img src={task.avatarUrl} alt="" className="w-full h-full object-cover opacity-60" />
-        ) : (
-          <User className="w-12 h-12 text-foreground/30" />
-        )}
-        <div className="absolute inset-0 bg-background/70 flex flex-col items-center justify-center gap-2">
-          {task.status === 'processing' ? (
-            <Loader2 className="w-8 h-8 text-foreground animate-spin" />
-          ) : task.status === 'pending' ? (
-            <div className="w-8 h-8 rounded-full border-2 border-amber-400/50 border-t-amber-400 animate-spin" />
-          ) : null}
-          <span className={cn('px-2.5 py-1 text-xs rounded-full font-medium', status.bg, status.text)}>
-            {status.label}
-          </span>
-        </div>
-      </div>
-      <div className="p-3">
-        <p className="text-sm text-foreground/60 truncate">正在生成...</p>
-        <p className="text-[10px] text-foreground/30 mt-1">{formatDate(task.createdAt)}</p>
-        {task.errorMessage && (
-          <p className="text-[10px] text-red-400 mt-1 truncate">{task.errorMessage}</p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// 角色卡卡片组件
-function CharacterCardItem({ card, onDelete }: { card: CharacterCard; onDelete?: (id: string) => void }) {
-  const statusConfig = {
-    pending: { bg: 'bg-amber-500/20', text: 'text-amber-400', label: '排队中' },
-    processing: { bg: 'bg-blue-500/20', text: 'text-blue-400', label: '生成中' },
-    completed: { bg: 'bg-emerald-500/20', text: 'text-emerald-400', label: '完成' },
-    failed: { bg: 'bg-red-500/20', text: 'text-red-400', label: '失败' },
-  };
-  const status = statusConfig[card.status];
-  const isProcessing = card.status === 'processing' || card.status === 'pending';
-
-  return (
-    <div className="bg-card/60 border border-border/70 rounded-xl overflow-hidden hover:border-emerald-500/30 transition-all group">
-      <div className={cn(
-        "aspect-square flex items-center justify-center relative",
-        card.status === 'failed' ? "bg-gradient-to-br from-red-500/10 to-red-900/10" : "bg-gradient-to-br from-emerald-500/10 to-sky-500/10"
-      )}>
-        {card.avatarUrl ? (
-          <img
-            src={card.avatarUrl}
-            alt={card.characterName}
-            className={cn("w-full h-full object-cover", (card.status === 'failed' || isProcessing) && "opacity-60")}
-          />
-        ) : isProcessing ? (
-          <Loader2 className="w-10 h-10 text-foreground/30 animate-spin" />
-        ) : card.status === 'failed' ? (
-          <X className="w-10 h-10 text-red-400/50" />
-        ) : (
-          <User className="w-12 h-12 text-foreground/30" />
-        )}
-
-        {/* 状态遮罩 */}
-        {(isProcessing || card.status === 'failed') && (
-          <div className="absolute inset-0 bg-background/70 flex flex-col items-center justify-center gap-2">
-            {isProcessing && <Loader2 className="w-8 h-8 text-foreground animate-spin" />}
-            {card.status === 'failed' && <X className="w-8 h-8 text-red-400" />}
-          </div>
-        )}
-
-        {/* 删除按钮 */}
-        {onDelete && (
-          <button
-            onClick={() => onDelete(card.id)}
-            className="absolute top-2 right-2 p-1.5 bg-background/70 hover:bg-red-500 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
-            title="删除"
-          >
-            <Trash2 className="w-3.5 h-3.5 text-foreground" />
-          </button>
-        )}
-
-        {/* 状态标签 */}
-        <div className="absolute bottom-2 left-2">
-          <span className={cn('px-2 py-0.5 text-[10px] rounded-full font-medium backdrop-blur-sm', status.bg, status.text)}>
-            {status.label}
-          </span>
-        </div>
-      </div>
-
-      <div className="p-3">
-        <h3 className="text-sm font-medium text-foreground truncate">
-          {card.characterName || (card.status === 'failed' ? '生成失败' : '生成中...')}
-        </h3>
-        <p className="text-[10px] text-foreground/30 mt-1">{formatDate(card.createdAt)}</p>
-        {card.errorMessage && (
-          <p className="text-[10px] text-red-400 mt-1 line-clamp-1" title={card.errorMessage}>
-            {card.errorMessage}
-          </p>
-        )}
       </div>
     </div>
   );

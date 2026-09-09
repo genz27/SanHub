@@ -1,6 +1,6 @@
 import { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
-import { verifyPassword, getUserById, initializeDatabase } from './db';
+import { getUserById } from './db/user-session';
 import type { SafeUser } from '@/types';
 
 // ========================================
@@ -20,9 +20,7 @@ export const authOptions: NextAuthOptions = {
           throw new Error('请输入邮箱和密码');
         }
 
-        // 初始化数据库 (首次运行)
-        await initializeDatabase();
-
+        const { verifyPassword } = await import('./db/user-credentials');
         const user = await verifyPassword(
           credentials.email,
           credentials.password

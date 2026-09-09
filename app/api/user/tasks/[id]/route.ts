@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getGeneration, updateGeneration, refundGenerationBalance } from '@/lib/db';
+import { getGenerationCancelTarget } from '@/lib/db/generation-lookup-reads';
+import { refundGenerationBalance, updateGeneration } from '@/lib/db/generation-mutations';
 
 // 取消任务
 export async function DELETE(
@@ -9,13 +10,14 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const [session, generation] = await Promise.all([
+      getServerSession(authOptions),
+      getGenerationCancelTarget(params.id),
+    ]);
 
     if (!session?.user?.id) {
       return NextResponse.json({ error: '未登录' }, { status: 401 });
     }
-
-    const generation = await getGeneration(params.id);
 
     if (!generation) {
       return NextResponse.json({ error: '任务不存在' }, { status: 404 });
@@ -37,7 +39,7 @@ export async function DELETE(
     // 更新任务状态为已取消
     await updateGeneration(params.id, {
       status: 'cancelled',
-    });
+    }, generation.userId);
 
     try {
       await refundGenerationBalance(generation.id, generation.userId, generation.cost);

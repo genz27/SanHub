@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getStatsOverview } from '@/lib/db-codes';
+import { getStatsOverview } from '@/lib/db/codes';
 
 export const dynamic = 'force-dynamic';
 

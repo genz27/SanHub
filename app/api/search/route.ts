@@ -1,20 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { searchCharacters } from '@/lib/sora-api';
-import { getSystemConfig } from '@/lib/db';
+import { getPublicSystemConfig } from '@/lib/db/system-config-public';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
     // 验证登录
-    const session = await getServerSession(authOptions);
+    const soraApiPromise = import('@/lib/sora-square');
+    const [session, config] = await Promise.all([
+      getServerSession(authOptions),
+      getPublicSystemConfig(),
+    ]);
     if (!session?.user) {
       return NextResponse.json({ error: '请先登录' }, { status: 401 });
     }
 
-    const config = await getSystemConfig();
     if (!config.featureFlags.squareEnabled) {
       return NextResponse.json({ error: '广场功能未开启' }, { status: 403 });
     }
@@ -28,6 +30,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: '请输入搜索关键词' }, { status: 400 });
     }
 
+    const { searchCharacters } = await soraApiPromise;
     const result = await searchCharacters({
       username: username.trim(),
       intent,

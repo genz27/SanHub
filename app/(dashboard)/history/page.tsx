@@ -1,44 +1,66 @@
 'use client';
 /* eslint-disable @next/next/no-img-element */
 
-import { useState, useEffect, useRef, useCallback, useMemo, memo, type CSSProperties } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import dynamic from 'next/dynamic';
 import { useSession } from 'next-auth/react';
 import {
-  Download,
   Trash2,
-  Play,
   Video,
   Image as ImageIcon,
   X,
-  Check,
   CheckSquare,
   Square,
-  Copy,
   User,
   History,
-  Maximize2,
   Loader2,
-  Edit3,
-  ExternalLink,
-  Droplets,
-  Calendar,
 } from 'lucide-react';
 import { toast } from '@/components/ui/toaster';
-import type { Generation, CharacterCard, SafeImageModel, SafeVideoModel } from '@/types';
+import type { Generation, CharacterCard, ChannelType, VideoChannelType } from '@/types';
 import { formatDate } from '@/lib/utils';
-import { downloadAsset } from '@/lib/download';
 import {
-  fetchPendingGenerationTasks,
   isTerminalGenerationStatus,
   mergeGenerationsById,
-  pollGenerationTask,
   replaceActiveTasks,
-} from '@/lib/generation-client';
-import {
-  getFriendlyErrorMessage,
-} from '@/lib/polling-utils';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+} from '@/lib/generation-state';
+import { getFriendlyErrorMessage } from '@/lib/polling-errors';
 import { EmptyState } from '@/components/ui/empty-state';
+
+const ConfirmDialog = dynamic(
+  () => import('@/components/ui/confirm-dialog').then((mod) => mod.ConfirmDialog),
+  { ssr: false }
+);
+
+const FullscreenViewer = dynamic(
+  () => import('@/components/history/fullscreen-viewer').then((mod) => mod.FullscreenViewer),
+  { ssr: false }
+);
+
+const CharacterCardHistoryItem = dynamic(
+  () => import('@/components/history/character-card-item').then((mod) => mod.CharacterCardHistoryItem),
+  { ssr: false }
+);
+
+const HistoryMediaList = dynamic(
+  () => import('@/components/history/history-media-list').then((mod) => mod.HistoryMediaList),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="space-y-3">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="w-full flex gap-4 p-4 bg-card/20 border border-border/50 rounded-2xl animate-pulse">
+            <div className="w-20 h-20 sm:w-24 sm:h-24 bg-card/60 rounded-xl shrink-0" />
+            <div className="flex-1 min-w-0 space-y-3 py-1">
+              <div className="h-4 bg-card/60 rounded w-1/3" />
+              <div className="h-3 bg-card/60 rounded w-1/4" />
+              <div className="h-2 bg-card/60 rounded w-1/2" />
+            </div>
+          </div>
+        ))}
+      </div>
+    ),
+  }
+);
 
 // 任务类型
 interface Task {
@@ -67,12 +89,7 @@ const FALLBACK_VIDEO_BADGE: Badge = { label: '视频', icon: Video };
 const FALLBACK_IMAGE_BADGE: Badge = { label: '图像', icon: ImageIcon };
 const HISTORY_PAGE_SIZE = 24;
 const HISTORY_RESYNC_INTERVAL_MS = 30_000;
-const MEDIA_ROOT_MARGIN = '600px 0px';
 const HISTORY_STATUS_FILTER = 'completed';
-const CARD_CONTAIN_STYLE: CSSProperties = {
-  contentVisibility: 'auto',
-  containIntrinsicSize: '240px 135px',
-};
 
 type HistoryFilter = 'all' | 'video' | 'image' | 'character';
 type HistoryMediaKind = 'all' | 'video' | 'image';
@@ -137,270 +154,12 @@ const inferImageBadge = (type: string, model?: string): Badge => {
   return getImageBadge(undefined, type);
 };
 
-// 骨架屏组件
-const SkeletonCard = () => (
-  <div className="relative aspect-video bg-card/60 rounded-xl overflow-hidden border border-border/70 animate-pulse">
-    <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-white/10" />
-    <div className="absolute top-2 right-2 w-16 h-5 bg-card/70 rounded-md" />
-    <div className="absolute bottom-0 left-0 right-0 p-3 space-y-2">
-      <div className="h-3 bg-card/70 rounded w-3/4" />
-      <div className="h-2 bg-card/70 rounded w-1/3" />
-    </div>
-  </div>
-);
-
-function CollapsibleText({
-  text,
-  collapsedLines = 3,
-}: {
-  text: string;
-  collapsedLines?: number;
-}) {
-  const [expanded, setExpanded] = useState(false);
-
-  const collapsedClassName = useMemo(() => {
-    if (collapsedLines === 1) return 'line-clamp-1';
-    if (collapsedLines === 2) return 'line-clamp-2';
-    if (collapsedLines === 4) return 'line-clamp-4';
-    if (collapsedLines === 5) return 'line-clamp-5';
-    if (collapsedLines === 6) return 'line-clamp-6';
-    return 'line-clamp-3';
-  }, [collapsedLines]);
-
-  return (
-    <div className="min-w-0">
-      <div
-        className={`text-foreground text-sm leading-relaxed whitespace-pre-wrap break-words min-w-0 ${expanded ? '' : collapsedClassName}`}
-      >
-        {text}
-      </div>
-      <div className="mt-2 flex items-center gap-2">
-        <button
-          onClick={() => setExpanded(v => !v)}
-          className="text-xs text-foreground/50 hover:text-foreground/80 hover:underline underline-offset-4 transition-colors"
-          type="button"
-        >
-          {expanded ? '收起' : '展开'}
-        </button>
-        <button
-          onClick={() => {
-            navigator.clipboard.writeText(text);
-            toast({ title: '已复制提示词' });
-          }}
-          className="inline-flex items-center gap-1 text-xs text-foreground/50 hover:text-foreground/80 transition-colors"
-          title="复制提示词"
-          type="button"
-        >
-          <Copy className="w-3.5 h-3.5" />
-          复制
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// Memoized 列表行组件 - 避免不必要的重渲染
-interface GenerationCardProps {
-  gen: Generation;
-  badge: Badge;
-  isSelected: boolean;
-  selectMode: boolean;
-  onSelect: (id: string) => void;
-  onView: (gen: Generation) => void;
-  onDownload: (url: string, id: string, type: string) => void;
-  onDelete: (id: string) => void;
-}
-
-const GenerationCard = memo(function GenerationCard({
-  gen,
-  badge,
-  isSelected,
-  selectMode,
-  onSelect,
-  onView,
-  onDownload,
-  onDelete,
-}: GenerationCardProps) {
-  const cardRef = useRef<HTMLDivElement>(null);
-  const [imageLoaded, setImageLoaded] = useState(false);
-  const [hasRequestedMedia, setHasRequestedMedia] = useState(false);
-  const shouldLoadMedia = hasRequestedMedia;
-
-  useEffect(() => {
-    if (hasRequestedMedia) return;
-
-    const element = cardRef.current;
-    if (!element) return;
-
-    if (typeof IntersectionObserver === 'undefined') {
-      setHasRequestedMedia(true);
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (!entry.isIntersecting) return;
-        setHasRequestedMedia(true);
-        observer.disconnect();
-      },
-      { rootMargin: MEDIA_ROOT_MARGIN }
-    );
-
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [hasRequestedMedia]);
-  
-  const handleClick = useCallback(() => {
-    if (selectMode) {
-      onSelect(gen.id);
-    } else {
-      onView(gen);
-    }
-  }, [selectMode, gen, onSelect, onView]);
-
-  const isVideo = isVideoType(gen);
-
-  return (
-    <div
-      ref={cardRef}
-      className={`w-full flex gap-4 p-4 bg-card/25 hover:bg-card/35 border rounded-2xl transition-all duration-300 relative group cursor-pointer ${
-        isSelected 
-          ? 'border-sky-500 ring-1 ring-sky-500/30 bg-sky-500/5 shadow-[0_0_15px_rgba(14,165,233,0.15)]' 
-          : 'border-border/50 hover:border-sky-500/25'
-      }`}
-      onClick={handleClick}
-    >
-      {/* Left Column: Media Thumbnail */}
-      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl bg-card/50 border border-border/60 flex items-center justify-center shrink-0 relative overflow-hidden select-none">
-        {/* Status Badge */}
-        <span className="absolute top-1 left-1 z-10 px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 text-[9px] font-medium border border-emerald-500/20">
-          已完成
-        </span>
-        
-        {isVideo ? (
-          <>
-            {shouldLoadMedia ? (
-              <img
-                src={gen.resultUrl}
-                alt=""
-                className="w-full h-full object-cover"
-                loading="lazy"
-              />
-            ) : (
-              <div className="absolute inset-0 bg-gradient-to-br from-card/70 to-background/80" />
-            )}
-            <div className="absolute inset-0 bg-black/25 flex items-center justify-center">
-              <div className="w-8 h-8 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center shadow-lg">
-                <Play className="w-3.5 h-3.5 fill-white text-white translate-x-0.5" />
-              </div>
-            </div>
-          </>
-        ) : (
-          <>
-            {!imageLoaded && (
-              <div className="absolute inset-0 bg-card/60 animate-pulse" />
-            )}
-            {shouldLoadMedia && (
-              <img
-                src={gen.resultUrl}
-                alt={gen.prompt}
-                className={`w-full h-full object-cover transition-opacity duration-300 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
-                loading="lazy"
-                decoding="async"
-                onLoad={() => setImageLoaded(true)}
-              />
-            )}
-          </>
-        )}
-
-        {/* Select Mode Checkbox Overlay */}
-        {selectMode && (
-          <div className="absolute inset-0 bg-background/50 flex items-center justify-center z-10">
-            <div className={`w-6 h-6 rounded-md flex items-center justify-center border transition-all ${
-              isSelected 
-                ? 'bg-sky-500 border-sky-500 text-white shadow-md' 
-                : 'bg-card/90 border-border'
-            }`}>
-              {isSelected && <Check className="w-4 h-4" />}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Center Column: Main text details */}
-      <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
-        <div>
-          <div className="flex items-start justify-between gap-3 mb-1.5">
-            {/* Prompt Description */}
-            <h3 className="text-sm font-medium text-foreground line-clamp-1 flex-1 pr-2">
-              {gen.prompt || '无提示词'}
-            </h3>
-            {/* Top-Right Channel Badge */}
-            <span className="text-[10px] text-foreground/45 font-medium px-2 py-0.5 bg-card/30 border border-border/50 rounded-md whitespace-nowrap hidden sm:inline-block">
-              {badge.label}
-            </span>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 text-xs text-foreground/50">
-            {/* Format Badge */}
-            <span className="px-2 py-0.5 bg-card/45 border border-border/60 rounded-md text-[10px] text-foreground/60 flex items-center gap-1 font-medium select-none">
-              {isVideo ? <Video className="w-3 h-3 text-sky-400" /> : <ImageIcon className="w-3 h-3 text-emerald-400" />}
-              {isVideo ? '视频' : '图像'}
-            </span>
-            {/* Creation Date */}
-            <span className="text-[10px] text-foreground/40 flex items-center gap-1 font-light select-none">
-              <Calendar className="w-3 h-3 text-foreground/30" />
-              {formatDate(gen.createdAt)}
-            </span>
-          </div>
-        </div>
-
-        {/* Bottom Actions Row - Only visible in normal mode */}
-        {!selectMode && (
-          <div className="mt-3 flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
-            <button
-              onClick={() => onDownload(gen.resultUrl, gen.id, gen.type)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-card/50 hover:bg-card border border-border hover:border-border/80 text-[11px] font-medium rounded-lg text-foreground/80 hover:text-foreground transition-all shadow-sm"
-              title="下载到本地"
-            >
-              <Download className="w-3 h-3" />
-              下载
-            </button>
-            <button
-              onClick={() => onView(gen)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-card/50 hover:bg-card border border-border hover:border-border/80 text-[11px] font-medium rounded-lg text-foreground/80 hover:text-foreground transition-all shadow-sm"
-            >
-              查看
-            </button>
-            <button
-              onClick={() => onDelete(gen.id)}
-              className="inline-flex items-center justify-center p-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 hover:border-red-500/40 text-red-400 hover:text-red-300 rounded-lg transition-all"
-              title="删除作品"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Right Ellipsis Menu Button on Hover */}
-      {!selectMode && (
-        <div className="absolute right-4 top-4 opacity-0 group-hover:opacity-100 transition-all hidden sm:block" onClick={(e) => e.stopPropagation()}>
-          <button className="p-1.5 hover:bg-card rounded-lg text-foreground/40 hover:text-foreground/80 transition-colors">
-            <span className="text-sm font-bold block leading-none">···</span>
-          </button>
-        </div>
-      )}
-    </div>
-  );
-});
-
 export default function HistoryPage() {
   const { data: session, update } = useSession();
   const [generations, setGenerations] = useState<Generation[]>([]);
   const [pendingTasks, setPendingTasks] = useState<Task[]>([]);
-  const [videoModels, setVideoModels] = useState<SafeVideoModel[]>([]);
-  const [imageModels, setImageModels] = useState<SafeImageModel[]>([]);
+  const [videoModels, setVideoModels] = useState<Array<{ id: string; channelType: VideoChannelType }>>([]);
+  const [imageModels, setImageModels] = useState<Array<{ id: string; apiModel: string; channelType: ChannelType }>>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -419,8 +178,11 @@ export default function HistoryPage() {
   const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
   const loadingRef = useRef(false);
   const lastResyncAtRef = useRef(0);
+  const pollTaskStatusRef = useRef<(task: Task) => void>(() => {});
   const lastLoadedHistoryKindRef = useRef<HistoryMediaKind | null>(null);
   const historyMediaKindRef = useRef<HistoryMediaKind>('all');
+  const videoCatalogLoadedRef = useRef(false);
+  const imageCatalogLoadedRef = useRef(false);
 
   const videoBadgeByModelId = useMemo(
     () =>
@@ -500,7 +262,8 @@ export default function HistoryPage() {
     pageNum: number,
     append = false,
     force = false,
-    kindOverride?: HistoryMediaKind
+    kindOverride?: HistoryMediaKind,
+    includePending = false
   ) => {
     if (loadingRef.current && !force) return;
     loadingRef.current = true;
@@ -512,16 +275,38 @@ export default function HistoryPage() {
     }
     
     try {
-      // Add cache-busting timestamp to prevent browser caching
-      const timestamp = Date.now();
       const requestKind = kindOverride || historyMediaKindRef.current;
+      if (requestKind !== 'image' && !videoCatalogLoadedRef.current) {
+        void fetch('/api/video-models?fields=badges')
+          .then(async (videoRes) => {
+            if (!videoRes.ok) return;
+            const videoData = await videoRes.json();
+            setVideoModels(videoData.data?.models || []);
+            videoCatalogLoadedRef.current = true;
+          })
+          .catch((err) => console.error('Failed to load video catalog:', err));
+      }
+      if (requestKind !== 'video' && !imageCatalogLoadedRef.current) {
+        void fetch('/api/image-models?fields=badges')
+          .then(async (imageRes) => {
+            if (!imageRes.ok) return;
+            const imageData = await imageRes.json();
+            setImageModels(imageData.data?.models || []);
+            imageCatalogLoadedRef.current = true;
+          })
+          .catch((err) => console.error('Failed to load image catalog:', err));
+      }
       const params = new URLSearchParams({
         page: String(pageNum),
         limit: String(HISTORY_PAGE_SIZE),
         kind: requestKind,
         status: HISTORY_STATUS_FILTER,
-        _t: String(timestamp),
       });
+      if (includePending && !append && pageNum === 1) {
+        params.set('includePending', 'true');
+        params.set('pendingKind', 'all');
+        params.set('pendingLimit', '50');
+      }
       const res = await fetch(`/api/user/history?${params.toString()}`, {
         cache: 'no-store',
       });
@@ -541,7 +326,33 @@ export default function HistoryPage() {
           setGenerations(mergeGenerationsById([], newGenerations));
         }
 
-        if (terminalIds.size > 0) {
+        if (Array.isArray(data.pending)) {
+          const tasks: Task[] = data.pending.map((task: {
+            id: string;
+            prompt: string;
+            type: string;
+            status: string;
+            progress?: number;
+            modelId?: string;
+            model?: string;
+            createdAt: number;
+            updatedAt?: number;
+          }) => ({
+            id: task.id,
+            prompt: task.prompt,
+            type: task.type,
+            status: task.status as 'pending' | 'processing',
+            progress: typeof task.progress === 'number' ? task.progress : 0,
+            modelId: task.modelId,
+            model: task.model,
+            createdAt: task.createdAt,
+            updatedAt: task.updatedAt,
+          }));
+          setPendingTasks((prev) => replaceActiveTasks(prev, tasks));
+          tasks.forEach((task) => {
+            void pollTaskStatusRef.current(task);
+          });
+        } else if (terminalIds.size > 0) {
           setPendingTasks((prev) =>
             prev.filter((task) => !terminalIds.has(task.id))
           );
@@ -558,39 +369,16 @@ export default function HistoryPage() {
     }
   }, []);
 
-  const modelCatalogsLoadedRef = useRef(false);
-
-  const loadModelCatalogs = useCallback(async () => {
-    if (modelCatalogsLoadedRef.current) return;
-    try {
-      const [videoRes, imageRes] = await Promise.all([
-        fetch('/api/video-models'),
-        fetch('/api/image-models'),
-      ]);
-
-      if (videoRes.ok) {
-        const videoData = await videoRes.json();
-        setVideoModels(videoData.data?.models || []);
-      }
-
-      if (imageRes.ok) {
-        const imageData = await imageRes.json();
-        setImageModels(imageData.data?.models || []);
-      }
-      modelCatalogsLoadedRef.current = true;
-    } catch (err) {
-      console.error('Failed to load model catalogs:', err);
-    }
-  }, []);
-
   // 加载角色卡
   const loadCharacterCards = useCallback(async () => {
     try {
-      const res = await fetch('/api/user/character-cards');
-      if (res.ok) {
-        const data = await res.json();
-        setCharacterCards(data.data || []);
-      }
+      const { fetchCharacterCardLists } = await import('@/lib/generation-character-cards');
+      const { completed: completedCards, pending: pendingCards } = await fetchCharacterCardLists();
+      const pendingIds = new Set(pendingCards.map((card) => card.id));
+      setCharacterCards([
+        ...pendingCards,
+        ...completedCards.filter((card) => !pendingIds.has(card.id)),
+      ]);
     } catch (err) {
       console.error('Failed to load character cards:', err);
     }
@@ -605,6 +393,7 @@ export default function HistoryPage() {
     const taskType = isTaskVideoType(task.type) ? 'video' : 'image';
 
     try {
+      const { pollGenerationTask } = await import('@/lib/generation-poll');
       await pollGenerationTask({
         taskId: task.id,
         taskPrompt: task.prompt || '',
@@ -635,25 +424,16 @@ export default function HistoryPage() {
         onCompleted: async () => {
           setPendingTasks((prev) => prev.filter((pendingTask) => pendingTask.id !== task.id));
           await update();
-          await Promise.allSettled([
-            loadPendingTasksRef.current(),
-            loadHistoryRef.current(1, false, true),
-          ]);
+          await loadHistoryRef.current(1, false, true, undefined, true);
         },
         onFailed: async (errorMessage) => {
           console.error('History polling failed:', getFriendlyErrorMessage(errorMessage));
           setPendingTasks((prev) => prev.filter((pendingTask) => pendingTask.id !== task.id));
-          await Promise.allSettled([
-            loadPendingTasksRef.current(),
-            loadHistoryRef.current(1, false, true),
-          ]);
+          await loadHistoryRef.current(1, false, true, undefined, true);
         },
         onTimeout: async () => {
           setPendingTasks((prev) => prev.filter((pendingTask) => pendingTask.id !== task.id));
-          await Promise.allSettled([
-            loadPendingTasksRef.current(),
-            loadHistoryRef.current(1, false, true),
-          ]);
+          await loadHistoryRef.current(1, false, true, undefined, true);
         },
       });
     } finally {
@@ -661,28 +441,8 @@ export default function HistoryPage() {
     }
   }, [update]);
 
-  const loadPendingTasks = useCallback(async () => {
-    try {
-      const tasks: Task[] = (await fetchPendingGenerationTasks(50)).map((task) => ({
-        id: task.id,
-        prompt: task.prompt,
-        type: task.type,
-        status: task.status as 'pending' | 'processing',
-        progress: typeof task.progress === 'number' ? task.progress : 0,
-        modelId: task.modelId,
-        model: task.model,
-        createdAt: task.createdAt,
-        updatedAt: task.updatedAt,
-      }));
-
-      setPendingTasks((prev) => replaceActiveTasks(prev, tasks));
-
-      tasks.forEach((task) => {
-        void pollTaskStatus(task);
-      });
-    } catch (err) {
-      console.error('Failed to load pending tasks:', err);
-    }
+  useEffect(() => {
+    pollTaskStatusRef.current = pollTaskStatus;
   }, [pollTaskStatus]);
 
   // 初始加载 - 只在组件挂载时执行一次
@@ -698,29 +458,10 @@ export default function HistoryPage() {
       lastResyncAtRef.current = Date.now();
       const initialHistoryKind = historyMediaKindRef.current;
       lastLoadedHistoryKindRef.current = initialHistoryKind;
-      loadHistory(1, false, true, initialHistoryKind); // force load
-      loadModelCatalogs();
-      loadPendingTasks();
-      let idleCallbackId: number | null = null;
-      let timeoutId: ReturnType<typeof setTimeout> | null = null;
-
-      if (typeof window.requestIdleCallback === 'function') {
-        idleCallbackId = window.requestIdleCallback(() => {
-          void loadCharacterCards();
-        }, { timeout: 3000 });
-      } else {
-        timeoutId = setTimeout(() => {
-          void loadCharacterCards();
-        }, 1200);
-      }
+      void import('@/components/history/history-media-list');
+      void loadHistory(1, false, true, initialHistoryKind, true);
 
       return () => {
-        if (idleCallbackId !== null) {
-          window.cancelIdleCallback(idleCallbackId);
-        }
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-        }
         abortControllers.forEach(controller => controller.abort());
         abortControllers.clear();
       };
@@ -730,7 +471,12 @@ export default function HistoryPage() {
       abortControllers.forEach(controller => controller.abort());
       abortControllers.clear();
     };
-  }, [session?.user?.id, loadCharacterCards, loadHistory, loadModelCatalogs, loadPendingTasks]);
+  }, [session?.user?.id, loadHistory]);
+
+  useEffect(() => {
+    if (!session?.user?.id || filter !== 'character') return;
+    void loadCharacterCards();
+  }, [filter, loadCharacterCards, session?.user?.id]);
 
   useEffect(() => {
     if (!session?.user?.id || !initialLoadRef.current || filter === 'character') return;
@@ -751,11 +497,6 @@ export default function HistoryPage() {
     loadHistoryRef.current = loadHistory;
   }, [loadHistory]);
 
-  const loadPendingTasksRef = useRef(loadPendingTasks);
-  useEffect(() => {
-    loadPendingTasksRef.current = loadPendingTasks;
-  }, [loadPendingTasks]);
-
   useEffect(() => {
     if (!session?.user?.id || !initialLoadRef.current) return;
 
@@ -766,8 +507,7 @@ export default function HistoryPage() {
       }
 
       lastResyncAtRef.current = now;
-      void loadPendingTasks();
-      void loadHistory(1, false, true);
+      void loadHistory(1, false, true, undefined, true);
     };
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
@@ -782,7 +522,7 @@ export default function HistoryPage() {
       window.removeEventListener('focus', resync);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [loadHistory, loadPendingTasks, session?.user?.id]);
+  }, [loadHistory, session?.user?.id]);
 
   const downloadFile = async (url: string, id: string, type: string) => {
     if (!url) {
@@ -796,6 +536,7 @@ export default function HistoryPage() {
 
     const extension = type.includes('video') ? 'mp4' : 'png';
     try {
+      const { downloadAsset } = await import('@/lib/download');
       await downloadAsset(url, `sanhub-${id}.${extension}`);
     } catch (err) {
       console.error('Download failed', err);
@@ -1323,96 +1064,20 @@ export default function HistoryPage() {
             ) : searchedGenerations.length === 0 && filteredTasks.length === 0 ? (
               <EmptyState icon={<History className="w-16 h-16" />} title="暂无历史记录" description="创作的作品会显示在这里" />
             ) : (
-              <div className="space-y-3">
-                {/* Generating tasks listing (row tile) */}
-                {filteredTasks.map((task) => {
-                  const badge = resolveTaskBadge(task);
-                  const progress = task.progress || 0;
-                  const isVideo = isTaskVideoType(task.type);
-                  const remainingMinutes = progress > 0 ? Math.max(1, Math.ceil((100 - progress) / 35)) : 2;
-
-                  return (
-                    <div
-                      key={task.id}
-                      className="w-full flex flex-col sm:flex-row gap-4 p-4 bg-card/20 border border-sky-500/20 hover:border-sky-500/30 rounded-2xl transition-all duration-300 relative group"
-                    >
-                      {/* Left: Thumbnail/Progress Ring Box */}
-                      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl bg-card/50 border border-border/60 flex items-center justify-center shrink-0 relative overflow-hidden select-none">
-                        <span className="absolute top-1 left-1 z-10 px-2 py-0.5 rounded bg-sky-500/20 text-sky-400 text-[9px] font-medium border border-sky-500/20">
-                          生成中
-                        </span>
-                        
-                        {/* Circular Progress Ring */}
-                        <div className="relative w-12 h-12 flex items-center justify-center">
-                          <svg className="w-full h-full transform -rotate-90">
-                            <circle cx="24" cy="24" r="18" stroke="currentColor" className="text-border/30" strokeWidth="2.5" fill="transparent" />
-                            <circle cx="24" cy="24" r="18" stroke="currentColor" className="text-sky-400 transition-all duration-500" strokeWidth="2.5" fill="transparent"
-                              strokeDasharray={2 * Math.PI * 18}
-                              strokeDashoffset={2 * Math.PI * 18 * (1 - progress / 100)}
-                            />
-                          </svg>
-                          <span className="absolute text-[10px] font-mono font-medium text-sky-300">{progress}%</span>
-                        </div>
-                      </div>
-
-                      {/* Center Metadata details */}
-                      <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
-                        <div>
-                          <div className="flex items-start justify-between gap-3 mb-1.5">
-                            <h3 className="text-sm font-medium text-foreground line-clamp-1 flex-1 pr-2">
-                              {task.prompt || '无提示词'}
-                            </h3>
-                            <span className="text-[10px] text-foreground/45 font-medium px-2 py-0.5 bg-card/30 border border-border/50 rounded-md whitespace-nowrap hidden sm:inline-block">
-                              {badge.label}
-                            </span>
-                          </div>
-                          
-                          <div className="flex flex-wrap items-center gap-2 text-xs text-foreground/50">
-                            <span className="px-2 py-0.5 bg-card/45 border border-border/60 rounded-md text-[10px] text-foreground/60 flex items-center gap-1 font-medium select-none">
-                              {isVideo ? <Video className="w-3 h-3 text-sky-400" /> : <ImageIcon className="w-3 h-3 text-emerald-400" />}
-                              {isVideo ? '视频' : '图像'}
-                            </span>
-                            <span className="text-[10px] text-foreground/40 flex items-center gap-1 font-light select-none">
-                              <Calendar className="w-3 h-3 text-foreground/30" />
-                              {formatDate(task.createdAt)}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Bottom: progress bar & remaining time */}
-                        <div className="mt-3 flex items-center gap-3 w-full max-w-sm">
-                          <div className="flex-1 h-1 bg-card/60 border border-border/40 rounded-full overflow-hidden">
-                            <div 
-                              className="h-full bg-gradient-to-r from-sky-400 to-sky-300 transition-all duration-500 rounded-full"
-                              style={{ width: `${progress}%` }}
-                            />
-                          </div>
-                          <span className="text-[10px] text-sky-400 font-medium whitespace-nowrap select-none">
-                            剩余 {remainingMinutes} 分钟
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {/* Completed Generations list row */}
-                {searchedGenerations.map((gen) => (
-                  <GenerationCard
-                    key={gen.id}
-                    gen={gen}
-                    badge={resolveGenerationBadge(gen)}
-                    isSelected={selectedIds.has(gen.id)}
-                    selectMode={selectMode}
-                    onSelect={toggleSelect}
-                    onView={setSelected}
-                    onDownload={downloadFile}
-                    onDelete={(id) => {
-                      setShowDeleteConfirm({type: 'single', id});
-                    }}
-                  />
-                ))}
-              </div>
+              <HistoryMediaList
+                tasks={filteredTasks}
+                generations={searchedGenerations}
+                resolveTaskBadge={resolveTaskBadge}
+                resolveGenerationBadge={resolveGenerationBadge}
+                selectedIds={selectedIds}
+                selectMode={selectMode}
+                onSelect={toggleSelect}
+                onView={setSelected}
+                onDownload={downloadFile}
+                onDelete={(id) => {
+                  setShowDeleteConfirm({type: 'single', id});
+                }}
+              />
             )}
           </div>
           
@@ -1521,280 +1186,5 @@ export default function HistoryPage() {
         );
       })()}
     </>
-  );
-}
-
-// 角色卡历史记录专属行组件
-function CharacterCardHistoryItem({ 
-  card, 
-  onDelete 
-}: { 
-  card: CharacterCard; 
-  onDelete: (id: string) => void; 
-}) {
-  return (
-    <div className="w-full flex gap-4 p-4 bg-gradient-to-br from-emerald-500/5 to-sky-500/5 hover:from-emerald-500/10 hover:to-sky-500/10 border border-emerald-500/20 hover:border-emerald-500/40 rounded-2xl transition-all duration-300 relative group">
-      {/* Left: Avatar */}
-      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl bg-card/50 border border-border/60 flex items-center justify-center shrink-0 relative overflow-hidden select-none">
-        <span className="absolute top-1 left-1 z-10 px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 text-[9px] font-medium border border-emerald-500/20">
-          已完成
-        </span>
-        {card.avatarUrl ? (
-          <img
-            src={card.avatarUrl}
-            alt={card.characterName}
-            className="w-full h-full object-cover"
-            loading="lazy"
-          />
-        ) : (
-          <User className="w-10 h-10 text-emerald-300/45" />
-        )}
-      </div>
-
-      {/* Center & Right */}
-      <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
-        <div>
-          <div className="flex items-start justify-between gap-3 mb-1.5">
-            <h3 className="text-sm font-medium text-foreground truncate flex-1">
-              @{card.characterName || '未命名角色'}
-            </h3>
-            <span className="text-[10px] text-foreground/45 font-medium px-2 py-0.5 bg-card/30 border border-border/50 rounded-md whitespace-nowrap">
-              角色卡
-            </span>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 text-xs text-foreground/50">
-            <span className="px-2 py-0.5 bg-card/45 border border-border/60 rounded-md text-[10px] text-foreground/60 flex items-center gap-1 font-medium select-none">
-              <User className="w-3 h-3 text-emerald-400" />
-              角色卡
-            </span>
-            <span className="text-[10px] text-foreground/40 flex items-center gap-1 font-light select-none">
-              <Calendar className="w-3 h-3 text-foreground/30" />
-              {formatDate(card.createdAt)}
-            </span>
-          </div>
-        </div>
-
-        <div className="mt-3 flex items-center justify-end" onClick={(e) => e.stopPropagation()}>
-          <button
-            onClick={() => onDelete(card.id)}
-            className="inline-flex items-center justify-center p-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 hover:border-red-500/40 text-red-400 hover:text-red-300 rounded-lg transition-all"
-            title="删除角色卡"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ========================================
-// Fullscreen Viewer
-// ========================================
-function FullscreenViewer({
-  generation,
-  badge,
-  isVideo,
-  unwatermarkUrl,
-  unwatermarking,
-  onClose,
-  onDownload,
-  onUnwatermark,
-}: {
-  generation: Generation;
-  badge: Badge;
-  isVideo: boolean;
-  unwatermarkUrl: string | null;
-  unwatermarking: boolean;
-  onClose: () => void;
-  onDownload: (url: string, id: string, type: string) => void;
-  onUnwatermark: (permalink: string) => void;
-}) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [showPanel, setShowPanel] = useState(true);
-  const hideTimerRef = useRef<ReturnType<typeof setTimeout>>();
-
-  const toggleFullscreen = useCallback(async () => {
-    if (!containerRef.current) return;
-    if (document.fullscreenElement) {
-      await document.exitFullscreen();
-    } else {
-      await containerRef.current.requestFullscreen();
-    }
-  }, []);
-
-  useEffect(() => {
-    const onFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-      setShowPanel(true);
-    };
-    document.addEventListener('fullscreenchange', onFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
-  }, []);
-
-  // 全屏后自动隐藏面板，鼠标移动时显示
-  useEffect(() => {
-    if (!isFullscreen) return;
-    const onMouseMove = () => {
-      setShowPanel(true);
-      clearTimeout(hideTimerRef.current);
-      hideTimerRef.current = setTimeout(() => setShowPanel(false), 2500);
-    };
-    document.addEventListener('mousemove', onMouseMove);
-    onMouseMove();
-    return () => {
-      document.removeEventListener('mousemove', onMouseMove);
-      clearTimeout(hideTimerRef.current);
-    };
-  }, [isFullscreen]);
-
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !document.fullscreenElement) {
-        onClose();
-      }
-      if ((e.key === 'f' || e.key === 'F') && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        toggleFullscreen();
-      }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [onClose, toggleFullscreen]);
-
-  const gen = generation;
-
-  return (
-    <div
-      ref={containerRef}
-      className={`fixed inset-0 z-[60] flex flex-col ${isFullscreen ? 'bg-black' : 'bg-background/95 backdrop-blur-xl'}`}
-      onClick={onClose}
-    >
-      {/* 顶部工具栏 */}
-      <div className={`shrink-0 flex items-center justify-end gap-2 p-3 transition-opacity duration-300 ${
-        isFullscreen && !showPanel ? 'opacity-0 pointer-events-none' : 'opacity-100'
-      }`}>
-        <button
-          onClick={(e) => { e.stopPropagation(); toggleFullscreen(); }}
-          className="p-2 text-foreground/50 hover:text-foreground rounded-lg hover:bg-card/70 transition-colors"
-          title={isFullscreen ? '退出全屏 (Ctrl+F)' : '全屏查看 (Ctrl+F)'}
-        >
-          <Maximize2 className="w-4 h-4" />
-        </button>
-        <button
-          onClick={onClose}
-          className="p-2 text-foreground/50 hover:text-foreground rounded-lg hover:bg-card/70 transition-colors"
-          title="关闭 (Esc)"
-        >
-          <X className="w-4 h-4" />
-        </button>
-      </div>
-
-      {/* Media */}
-      <div
-        className={`flex-1 min-h-0 flex items-center justify-center transition-all duration-300 ${
-          isFullscreen ? 'p-0' : 'p-4 md:p-6'
-        }`}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {isVideo ? (
-          <video
-            src={gen.resultUrl}
-            className={`max-w-full max-h-full w-auto h-auto ${isFullscreen ? '' : 'rounded-xl border border-border/70'} object-contain`}
-            controls
-            autoPlay
-            loop
-            playsInline
-            preload="metadata"
-          />
-        ) : (
-          <img
-            src={gen.resultUrl}
-            alt={gen.prompt}
-            className={`max-w-full max-h-full w-auto h-auto ${isFullscreen ? '' : 'rounded-xl border border-border/70'} object-contain`}
-            decoding="async"
-          />
-        )}
-      </div>
-
-      {/* 信息面板 */}
-      <div
-        className={`shrink-0 w-full transition-all duration-300 ${
-          isFullscreen
-            ? showPanel
-              ? 'translate-y-0 opacity-100'
-              : 'translate-y-full opacity-0'
-            : 'translate-y-0 opacity-100'
-        } ${isFullscreen ? 'bg-black/80 backdrop-blur-sm' : 'bg-background/80 backdrop-blur-sm border-t border-border/30'}`}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="max-w-3xl mx-auto p-3 md:px-8 md:py-3">
-          <div className="flex flex-col md:flex-row md:items-start justify-between gap-3">
-            <div className="flex-1 min-w-0">
-              <CollapsibleText text={gen.prompt || '无提示词'} collapsedLines={2} />
-              <div className="flex flex-wrap items-center gap-2 mt-2">
-                <span className="text-foreground/40 text-xs">{formatDate(gen.createdAt)}</span>
-                <span className="text-foreground/30">·</span>
-                <span className="text-foreground/40 text-xs">{gen.cost} 积分</span>
-                <span className="text-foreground/30">·</span>
-                <span className="px-2 py-0.5 bg-card/70 text-foreground/60 text-xs rounded">
-                  {badge.label}
-                </span>
-                {gen.resultUrl && (
-                  <button
-                    onClick={() => { navigator.clipboard.writeText(gen.resultUrl); toast({ title: '已复制 URL' }); }}
-                    className="p-1 text-foreground/40 hover:text-foreground/80 rounded transition-colors"
-                    title="复制 URL"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2 shrink-0 w-full md:w-auto">
-              {gen.type === 'sora-video' && gen.params?.permalink && (
-                <a href={gen.params.permalink} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-2 px-4 py-2 bg-card/70 text-foreground border border-border/70 rounded-xl hover:bg-card/80 transition-colors text-xs font-medium">
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  分享页
-                </a>
-              )}
-              {gen.type === 'sora-video' && (gen.params?.permalink || gen.params?.videoId) && (
-                <button
-                  onClick={() => {
-                    const permalink = gen.params?.permalink ||
-                      (gen.params?.videoId ? `https://sora.com/share/${gen.params.videoId}` : '');
-                    if (permalink) onUnwatermark(permalink);
-                  }}
-                  disabled={unwatermarking}
-                  className="flex items-center justify-center gap-2 px-4 py-2 bg-sky-500/20 text-sky-300 border border-sky-500/30 rounded-xl hover:bg-sky-500/30 transition-colors text-xs font-medium disabled:opacity-50"
-                >
-                  {unwatermarking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Droplets className="w-3.5 h-3.5" />}
-                  {unwatermarking ? '处理中...' : '去水印'}
-                </button>
-              )}
-              {unwatermarkUrl && (
-                <button
-                  onClick={() => onDownload(unwatermarkUrl, gen.id, gen.type)}
-                  className="flex items-center justify-center gap-2 px-4 py-2 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded-xl hover:bg-emerald-500/30 transition-colors text-xs font-medium"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  无水印
-                </button>
-              )}
-              <button
-                onClick={() => onDownload(gen.resultUrl, gen.id, gen.type)}
-                className="flex items-center justify-center gap-2 px-5 py-2 bg-foreground text-background rounded-xl hover:opacity-90 transition-colors text-sm font-medium"
-              >
-                <Download className="w-3.5 h-3.5" />
-                下载
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
   );
 }

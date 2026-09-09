@@ -1,13 +1,18 @@
 /* eslint-disable no-console */
-import fs from 'fs';
 import { promises as fsp } from 'fs';
 import path from 'path';
-import {
-  resolveDefaultImageBucket,
-  uploadBufferToImageBucket,
-  uploadToPicUI,
-} from './picui';
 import { fetchWithRetry } from './http-retry';
+
+type PicuiModule = typeof import('./picui');
+
+let picuiModulePromise: Promise<PicuiModule> | null = null;
+
+function loadPicui(): Promise<PicuiModule> {
+  if (!picuiModulePromise) {
+    picuiModulePromise = import('./picui');
+  }
+  return picuiModulePromise;
+}
 
 // ========================================
 // 媒体文件存储
@@ -163,6 +168,7 @@ export async function saveMediaAsync(
   dataUrl: string,
   options: SaveMediaOptions = {}
 ): Promise<string> {
+  const { resolveDefaultImageBucket, uploadBufferToImageBucket, uploadToPicUI } = await loadPicui();
   const configuredBucket = await resolveDefaultImageBucket();
 
   if (isRemoteUrl(dataUrl)) {
@@ -215,82 +221,4 @@ export async function saveMediaAsync(
 
   // 回退到本地文件存储
   return await saveMediaToFile(id, dataUrl);
-}
-
-/**
- * 读取媒体文件
- * @param identifier 文件标识符（file:xxx.png 格式）或完整路径
- * @returns { buffer, mimeType } 或 null
- */
-export async function readMediaFile(
-  identifier: string
-): Promise<{ buffer: Buffer; mimeType: string } | null> {
-  try {
-    let filename: string;
-
-    if (identifier.startsWith('file:')) {
-      filename = identifier.slice(5);
-    } else {
-      // 可能是完整路径或其他格式
-      filename = path.basename(identifier);
-    }
-
-    const filepath = path.join(MEDIA_DIR, filename);
-
-    const buffer = await fsp.readFile(filepath);
-    const ext = path.extname(filename).slice(1).toLowerCase();
-
-    const mimeTypes: Record<string, string> = {
-      png: 'image/png',
-      jpg: 'image/jpeg',
-      jpeg: 'image/jpeg',
-      gif: 'image/gif',
-      webp: 'image/webp',
-      mp4: 'video/mp4',
-      webm: 'video/webm',
-    };
-
-    const mimeType = mimeTypes[ext] || 'application/octet-stream';
-
-    return { buffer, mimeType };
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return null;
-    }
-    console.error('[MediaStorage] Failed to read file:', error);
-    return null;
-  }
-}
-
-/**
- * 删除媒体文件
- * @param identifier 文件标识符
- */
-export function deleteMediaFile(identifier: string): boolean {
-  try {
-    if (!identifier.startsWith('file:')) {
-      return false;
-    }
-
-    const filename = identifier.slice(5);
-    const filepath = path.join(MEDIA_DIR, filename);
-
-    if (fs.existsSync(filepath)) {
-      fs.unlinkSync(filepath);
-      console.log(`[MediaStorage] Deleted: ${filename}`);
-      return true;
-    }
-
-    return false;
-  } catch (error) {
-    console.error('[MediaStorage] Failed to delete file:', error);
-    return false;
-  }
-}
-
-/**
- * 检查标识符是否为本地文件
- */
-export function isLocalFile(identifier: string): boolean {
-  return identifier.startsWith('file:');
 }

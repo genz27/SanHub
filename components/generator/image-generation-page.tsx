@@ -13,7 +13,6 @@ import {
   Image as ImageIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { compressImageToWebP, fileToBase64 } from '@/lib/image-compression';
 import type { Generation, SafeImageModel, DailyLimitConfig } from '@/types';
 import { toast } from '@/components/ui/toaster';
 import type { Task } from '@/components/generator/result-gallery';
@@ -21,23 +20,19 @@ import { InlineToggle } from '@/components/generator/inline-toggle';
 import { ReferenceImageInput } from '@/components/generator/reference-image-input';
 import { useSiteConfig } from '@/components/providers/site-config-provider';
 import { CustomSelect } from '@/components/ui/select-custom';
+import type { ReusableImageReference } from '@/lib/generation-reference';
+import { fetchGenerationFeed } from '@/lib/generation-feed';
 import {
   buildTaskFromGeneration,
-  deleteGenerationRecord,
-  deleteGenerationRecords,
-  fetchGenerationSubmit,
-  fetchPendingGenerationTasks,
-  fetchRecentUserGenerations,
   filterGenerationsByKind,
   filterTasksByKind,
   isFailedGenerationStatus,
   isTerminalGenerationStatus,
   mergeGenerationsById,
   mergeTasksById,
-  pollGenerationTask,
   replaceActiveTasks,
-  type ReusableImageReference,
-} from '@/lib/generation-client';
+  shouldResyncGenerationFeed,
+} from '@/lib/generation-state';
 
 const ResultGallery = dynamic(
   () => import('@/components/generator/result-gallery').then((mod) => mod.ResultGallery),
@@ -101,7 +96,8 @@ export function ImageGenerationPage({
   const { update } = useSession();
   const siteConfig = useSiteConfig();
   const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
-  const refreshGenerationFeedRef = useRef<() => Promise<void>>(async () => {});
+  const refreshGenerationFeedRef = useRef<(includeUsage?: boolean) => Promise<void>>(async () => {});
+  const lastFeedResyncAtRef = useRef(0);
   const imagesRef = useRef<Array<{ file: File; preview: string }>>([]);
   const isActiveRef = useRef(isActive);
   const submissionLockRef = useRef(false);
@@ -216,27 +212,6 @@ export function ImageGenerationPage({
   }, [isActive, modelsLoaded]);
 
   useEffect(() => {
-    if (!isActive) {
-      return;
-    }
-
-    const loadDailyUsage = async () => {
-      try {
-        const res = await fetch('/api/user/daily-usage');
-        if (!res.ok) return;
-
-        const data = await res.json();
-        setDailyUsage(data.data.usage);
-        setDailyLimits(data.data.limits);
-      } catch (err) {
-        console.error('Failed to load daily usage:', err);
-      }
-    };
-
-    void loadDailyUsage();
-  }, [isActive]);
-
-  useEffect(() => {
     if (!isActiveRef.current) {
       return;
     }
@@ -313,32 +288,27 @@ export function ImageGenerationPage({
     });
   }, []);
 
-  const loadRecentGenerations = useCallback(async () => {
-    try {
-      const recentGenerations = await fetchRecentUserGenerations(12);
-      const imageGenerations = filterGenerationsByKind(recentGenerations, 'image');
-      const completedImageGenerations = imageGenerations.filter(
+  const applyRecentGenerations = useCallback((recentGenerations: Generation[]) => {
+    const imageGenerations = filterGenerationsByKind(recentGenerations, 'image');
+    const completedImageGenerations = imageGenerations.filter(
+      (generation) =>
+        generation.resultUrl &&
+        generation.status === 'completed' &&
+        isTerminalGenerationStatus(generation.status)
+    );
+    const failedImageTasks = imageGenerations
+      .filter((generation) => isFailedGenerationStatus(generation.status))
+      .map(
         (generation) =>
-          generation.resultUrl &&
-          generation.status === 'completed' &&
-          isTerminalGenerationStatus(generation.status)
+          ({
+            ...buildTaskFromGeneration(generation),
+            persisted: true,
+          }) satisfies Task
       );
-      const failedImageTasks = imageGenerations
-        .filter((generation) => isFailedGenerationStatus(generation.status))
-        .map(
-          (generation) =>
-            ({
-              ...buildTaskFromGeneration(generation),
-              persisted: true,
-            }) satisfies Task
-        );
 
-      setGenerations((prev) => mergeGenerationsById(prev, completedImageGenerations));
-      if (failedImageTasks.length > 0) {
-        setTasks((prev) => mergeTasksById(prev, failedImageTasks));
-      }
-    } catch (err) {
-      console.error('Failed to load recent image generations:', err);
+    setGenerations((prev) => mergeGenerationsById(prev, completedImageGenerations));
+    if (failedImageTasks.length > 0) {
+      setTasks((prev) => mergeTasksById(prev, failedImageTasks));
     }
   }, []);
 
@@ -374,6 +344,7 @@ export function ImageGenerationPage({
     setTasks((prev) => prev.filter((task) => !isFailedGenerationStatus(task.status)));
 
     try {
+      const { deleteGenerationRecords } = await import('@/lib/generation-delete');
       const deletedCount = await deleteGenerationRecords(failedTaskIds);
       const description = [
         deletedCount > 0 ? `已删除 ${deletedCount} 条历史错误记录` : '',
@@ -407,6 +378,7 @@ export function ImageGenerationPage({
       abortControllersRef.current.set(taskId, controller);
 
       try {
+        const { pollGenerationTask } = await import('@/lib/generation-poll');
         await pollGenerationTask({
           taskId,
           taskPrompt,
@@ -433,7 +405,6 @@ export function ImageGenerationPage({
             await update();
             setTasks((prev) => prev.filter((task) => task.id !== taskId));
             setGenerations((prev) => mergeGenerationsById(prev, [generation]));
-            void loadRecentGenerations();
 
             toast({
               title: '生成成功',
@@ -461,15 +432,12 @@ export function ImageGenerationPage({
         }
       }
     },
-    [loadRecentGenerations, markTaskAsFailed, update]
+    [markTaskAsFailed, update]
   );
 
-  const loadPendingTasks = useCallback(async () => {
-    try {
-      const imageTasks = filterTasksByKind(
-        await fetchPendingGenerationTasks(50),
-        'image'
-      ).map(
+  const applyPendingTasks = useCallback(
+    (pendingTasks: Awaited<ReturnType<typeof fetchGenerationFeed>>['pending']) => {
+      const imageTasks = filterTasksByKind(pendingTasks, 'image').map(
         (task) =>
           ({
             ...task,
@@ -483,14 +451,21 @@ export function ImageGenerationPage({
       imageTasks.forEach((task) => {
         void pollTaskStatus(task.id, task.prompt);
       });
-    } catch (err) {
-      console.error('Failed to load pending image tasks:', err);
-    }
-  }, [pollTaskStatus]);
+    },
+    [pollTaskStatus]
+  );
 
-  const refreshGenerationFeed = useCallback(async () => {
-    await Promise.allSettled([loadRecentGenerations(), loadPendingTasks()]);
-  }, [loadPendingTasks, loadRecentGenerations]);
+  const refreshGenerationFeed = useCallback(async (includeUsage = false) => {
+    try {
+      const feed = await fetchGenerationFeed(12, 'image', 50, { includeUsage });
+      applyRecentGenerations(feed.generations);
+      applyPendingTasks(feed.pending);
+      if (feed.usage) setDailyUsage(feed.usage);
+      if (feed.limits) setDailyLimits(feed.limits);
+    } catch (err) {
+      console.error('Failed to refresh image generation feed:', err);
+    }
+  }, [applyPendingTasks, applyRecentGenerations]);
 
   useEffect(() => {
     refreshGenerationFeedRef.current = refreshGenerationFeed;
@@ -504,16 +479,23 @@ export function ImageGenerationPage({
       return;
     }
 
+    const resyncGenerationFeed = (force = false, includeUsage = false) => {
+      if (!force && !shouldResyncGenerationFeed(lastFeedResyncAtRef.current)) {
+        return;
+      }
+      lastFeedResyncAtRef.current = Date.now();
+      void refreshGenerationFeed(includeUsage);
+    };
     const handleWindowFocus = () => {
-      void refreshGenerationFeed();
+      resyncGenerationFeed();
     };
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        void refreshGenerationFeed();
+        resyncGenerationFeed();
       }
     };
 
-    void refreshGenerationFeed();
+    resyncGenerationFeed(true, true);
     window.addEventListener('focus', handleWindowFocus);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
@@ -552,6 +534,7 @@ export function ImageGenerationPage({
       setGenerations((prev) => prev.filter((item) => item.id !== generation.id));
 
       try {
+        const { deleteGenerationRecord } = await import('@/lib/generation-delete');
         await deleteGenerationRecord(generation.id);
         if (externalReference?.generationId === generation.id) {
           onClearExternalReference?.();
@@ -622,6 +605,7 @@ export function ImageGenerationPage({
         let base64 = compressedCache.get(img.file);
 
         if (!base64) {
+          const { compressImageToWebP, fileToBase64 } = await import('@/lib/image-compression');
           const compressedFile = await compressImageToWebP(img.file);
           base64 = await fileToBase64(compressedFile);
           setCompressedCache((prev) => new Map(prev).set(img.file, base64!));
@@ -646,6 +630,7 @@ export function ImageGenerationPage({
   ) => {
     if (!currentModel) throw new Error('请选择模型');
 
+    const { fetchGenerationSubmit } = await import('@/lib/generation-submit');
     const res = await fetchGenerationSubmit('/api/generate/image', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

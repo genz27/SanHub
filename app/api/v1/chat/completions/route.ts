@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateWithSora } from '@/lib/sora';
-import { generateImage, type ImageGenerateRequest } from '@/lib/image-generator';
-import { saveMediaAsync } from '@/lib/media-storage';
-import { getSystemConfig, getVideoChannel, getVideoChannels } from '@/lib/db';
-import { fetchWithRetry } from '@/lib/http-retry';
+import type { ImageGenerateRequest } from '@/lib/image-generator';
+import { CacheKeys, CacheTTL, withCache } from '@/lib/cache';
 import { generateId } from '@/lib/utils';
 import {
   buildErrorResponse,
@@ -19,7 +16,6 @@ import {
   resolveImageSize,
 } from '@/lib/v1-images';
 import { normalizeAspectRatio } from '@/lib/image-sizing';
-import { processVideoPrompt } from '@/lib/prompt-processor';
 import { assertPromptsAllowed } from '@/lib/prompt-blocklist';
 
 export const dynamic = 'force-dynamic';
@@ -297,32 +293,40 @@ function normalizeIncomingVideoConfigObject(payload: Record<string, unknown>):
 }
 
 async function resolveVideoChatConfig(channelId?: string): Promise<{ apiKey: string; baseUrl: string }> {
-  if (channelId) {
-    const channel = await getVideoChannel(channelId);
-    if (
-      channel &&
-      OPENAI_CHAT_VIDEO_CHANNEL_TYPES.has(channel.type) &&
-      channel.apiKey &&
-      channel.baseUrl
-    ) {
-      return { apiKey: channel.apiKey, baseUrl: channel.baseUrl };
+  return withCache(
+    `${CacheKeys.VIDEO_CHANNELS}chat:${channelId || '_'}`,
+    CacheTTL.VIDEO_MODELS,
+    async () => {
+      const { getVideoChannel, getVideoChannels } = await import('@/lib/db/video-channel-reads');
+      if (channelId) {
+        const channel = await getVideoChannel(channelId);
+        if (
+          channel &&
+          OPENAI_CHAT_VIDEO_CHANNEL_TYPES.has(channel.type) &&
+          channel.apiKey &&
+          channel.baseUrl
+        ) {
+          return { apiKey: channel.apiKey, baseUrl: channel.baseUrl };
+        }
+      }
+
+      const channels = await getVideoChannels(true);
+      const candidates = channels.filter(
+        (channel) =>
+          OPENAI_CHAT_VIDEO_CHANNEL_TYPES.has(channel.type) &&
+          channel.apiKey &&
+          channel.baseUrl
+      );
+      if (candidates.length > 0) {
+        const preferred = candidates.find((channel) => channel.type === 'openai-compatible') || candidates[0];
+        return { apiKey: preferred.apiKey, baseUrl: preferred.baseUrl };
+      }
+
+      const { getLegacySoraConfig } = await import('@/lib/db/system-config-sora');
+      const config = await getLegacySoraConfig();
+      return { apiKey: config.soraApiKey || '', baseUrl: config.soraBaseUrl || '' };
     }
-  }
-
-  const channels = await getVideoChannels(true);
-  const candidates = channels.filter(
-    (channel) =>
-      OPENAI_CHAT_VIDEO_CHANNEL_TYPES.has(channel.type) &&
-      channel.apiKey &&
-      channel.baseUrl
   );
-  if (candidates.length > 0) {
-    const preferred = candidates.find((channel) => channel.type === 'openai-compatible') || candidates[0];
-    return { apiKey: preferred.apiKey, baseUrl: preferred.baseUrl };
-  }
-
-  const config = await getSystemConfig();
-  return { apiKey: config.soraApiKey || '', baseUrl: config.soraBaseUrl || '' };
 }
 
 function isSameOrigin(left: string, right: string): boolean {
@@ -391,13 +395,7 @@ export async function POST(request: NextRequest) {
     return buildErrorResponse('Prompt or image input is required', 400);
   }
 
-  try {
-    await assertPromptsAllowed([prompt]);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Prompt blocked by safety policy';
-    return buildErrorResponse(message, 400);
-  }
-
+  const assertPromise = assertPromptsAllowed([prompt]);
   const origin = new URL(request.url).origin;
   const created = Math.floor(Date.now() / 1000);
   const completionId = `chatcmpl-${generateId()}`;
@@ -405,9 +403,44 @@ export async function POST(request: NextRequest) {
   const normalizedVideoConfigObject = normalizeIncomingVideoConfigObject(payload as Record<string, unknown>);
   const openAiStream = shouldUseOpenAiStream(payload, model, streamEnabled);
 
+  const requestedChannelId = typeof payload?.channel_id === 'string' ? payload.channel_id : undefined;
+  const likelyVideo = !openAiStream && isLikelyVideoModel(model);
+  const videoChatConfigPromise = openAiStream
+    ? resolveVideoChatConfig(requestedChannelId)
+    : null;
+  const videoReferencePromise =
+    likelyVideo && imageUrls[0]
+      ? loadImageSource(imageUrls[0], origin)
+      : null;
+  const videoPromptPromise =
+    likelyVideo && prompt
+      ? import('@/lib/prompt-processor').then(({ processVideoPrompt }) => processVideoPrompt(prompt))
+      : null;
+  const generateSoraPromise = likelyVideo
+    ? import('@/lib/sora').then((mod) => mod.generateWithSora)
+    : null;
+  const generateImagePromise =
+    !openAiStream && !isLikelyVideoModel(model)
+      ? import('@/lib/image-generator').then((mod) => mod.generateImage)
+      : null;
+  const saveMediaPromise = !openAiStream ? import('@/lib/media-storage') : null;
+  const imagePrepPromise =
+    !openAiStream && !isLikelyVideoModel(model)
+      ? Promise.all([
+          resolveImageModelId(model),
+          loadReferenceImages(imageUrls, origin),
+        ])
+      : null;
+
+  try {
+    await assertPromise;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Prompt blocked by safety policy';
+    return buildErrorResponse(message, 400);
+  }
+
   if (openAiStream) {
-    const requestedChannelId = typeof payload?.channel_id === 'string' ? payload.channel_id : undefined;
-    const { apiKey, baseUrl } = await resolveVideoChatConfig(requestedChannelId);
+    const { apiKey, baseUrl } = await videoChatConfigPromise!;
     if (!apiKey || !baseUrl) {
       return buildErrorResponse('Sora API Key or Base URL is not configured', 500, 'server_error');
     }
@@ -417,6 +450,7 @@ export async function POST(request: NextRequest) {
       return buildErrorResponse('Upstream URL cannot point to itself', 500, 'server_error');
     }
 
+    const { fetchWithRetry } = await import('@/lib/http-retry');
     const upstreamResponse = await fetchWithRetry(fetch, upstreamUrl, () => ({
       method: 'POST',
       headers: {
@@ -501,7 +535,7 @@ export async function POST(request: NextRequest) {
                   // 对视频链接应用视频加速代理
                   if (extracted.type === 'video') {
                     try {
-                      const { applyVideoProxy } = await import('@/lib/sora-api');
+                      const { applyVideoProxy } = await import('@/lib/video-proxy');
                       extracted.url = await applyVideoProxy(extracted.url);
                     } catch (e) {
                       // 忽略代理失败，使用原始 URL
@@ -535,21 +569,20 @@ export async function POST(request: NextRequest) {
   }
 
   if (isLikelyVideoModel(model)) {
-    const referenceImage = imageUrls[0];
     const fileList: { mimeType: string; data: string }[] = [];
-    if (referenceImage) {
-      const imageSource = await loadImageSource(referenceImage, origin);
+    if (videoReferencePromise) {
+      const imageSource = await videoReferencePromise;
       fileList.push({ mimeType: imageSource.mimeType, data: imageSource.data });
     }
 
     let processedPrompt = prompt;
-    if (processedPrompt) {
-      const processed = await processVideoPrompt(processedPrompt);
-      processedPrompt = processed.processedPrompt;
+    if (videoPromptPromise) {
+      processedPrompt = (await videoPromptPromise).processedPrompt;
     }
 
     if (!streamEnabled) {
       try {
+        const generateWithSora = await generateSoraPromise!;
         const result = await generateWithSora({
           prompt: processedPrompt,
           model,
@@ -557,6 +590,7 @@ export async function POST(request: NextRequest) {
           videoConfigObject: normalizedVideoConfigObject,
           video_config: normalizedVideoConfigObject,
         });
+        const { saveMediaAsync } = await saveMediaPromise!;
         const outputUrl = await saveMediaAsync(`v1-video-${completionId}`, result.url, { publicBaseUrl: origin });
         const content = buildChatResponseContent('video', outputUrl);
         return NextResponse.json({
@@ -592,6 +626,7 @@ export async function POST(request: NextRequest) {
         };
 
         try {
+          const generateWithSora = await generateSoraPromise!;
           const result = await generateWithSora(
             {
               prompt: processedPrompt,
@@ -619,6 +654,7 @@ export async function POST(request: NextRequest) {
             }
           );
 
+          const { saveMediaAsync } = await saveMediaPromise!;
           const outputUrl = await saveMediaAsync(`v1-video-${completionId}`, result.url, { publicBaseUrl: origin });
           const content = buildChatResponseContent('video', outputUrl);
           send(
@@ -651,12 +687,10 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const imageModelId = await resolveImageModelId(model);
+  const [imageModelId, imageInputs] = await imagePrepPromise!;
   if (!imageModelId) {
     return buildErrorResponse('Unknown model', 400);
   }
-
-  const imageInputs = await loadReferenceImages(imageUrls, origin);
 
   // 提取 extra_body.google.image_config（Gemini/Banana 原生参数透传）
   let aspectRatioFromConfig: string | undefined;
@@ -697,7 +731,9 @@ export async function POST(request: NextRequest) {
 
   if (!stream) {
     try {
+      const generateImage = await generateImagePromise!;
       const result = await generateImage(imageRequest);
+      const { saveMediaAsync } = await saveMediaPromise!;
       const outputUrl = await saveMediaAsync(`v1-chat-image-${completionId}`, result.url, { publicBaseUrl: origin });
       const content = buildChatResponseContent('image', outputUrl);
       return NextResponse.json({
@@ -733,7 +769,9 @@ export async function POST(request: NextRequest) {
       };
 
       try {
+        const generateImage = await generateImagePromise!;
         const result = await generateImage(imageRequest);
+        const { saveMediaAsync } = await saveMediaPromise!;
         const outputUrl = await saveMediaAsync(`v1-chat-image-${completionId}`, result.url, { publicBaseUrl: origin });
         const content = buildChatResponseContent('image', outputUrl);
         send(

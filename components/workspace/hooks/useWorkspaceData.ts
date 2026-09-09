@@ -28,7 +28,7 @@ interface UseWorkspaceDataReturn {
   
   // External data
   characterCards: CharacterCard[];
-  chatModels: ChatModel[];
+  chatModels: Pick<ChatModel, 'id' | 'name' | 'supportsVision' | 'enabled'>[];
   promptTemplates: PromptTemplate[];
 }
 
@@ -41,7 +41,7 @@ export function useWorkspaceData({ workspaceId }: UseWorkspaceDataOptions): UseW
   const [dirty, setDirty] = useState(false);
   
   const [characterCards, setCharacterCards] = useState<CharacterCard[]>([]);
-  const [chatModels, setChatModels] = useState<ChatModel[]>([]);
+  const [chatModels, setChatModels] = useState<Pick<ChatModel, 'id' | 'name' | 'supportsVision' | 'enabled'>[]>([]);
   const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([]);
   
   const nodesRef = useRef<WorkspaceNode[]>([]);
@@ -98,52 +98,50 @@ export function useWorkspaceData({ workspaceId }: UseWorkspaceDataOptions): UseW
     }
   }, [workspaceId]);
 
-  // Load character cards
   useEffect(() => {
-    const loadCharacterCards = async () => {
+    const loadCatalogs = async () => {
+      const [cardsRes, chatRes, promptsRes] = await Promise.all([
+        fetch('/api/user/character-cards?status=completed&fields=picker'),
+        fetch('/api/chat/models?fields=picker'),
+        fetch('/api/prompts?fields=names'),
+      ]);
+
       try {
-        const res = await fetch('/api/user/character-cards');
-        if (!res.ok) return;
-        const data = await res.json();
-        const completedCards = (data.data || []).filter(
-          (card: CharacterCard) => card.status === 'completed' && card.characterName
-        );
-        setCharacterCards(completedCards);
+        if (cardsRes.ok) {
+          const data = await cardsRes.json();
+          setCharacterCards(
+            (data.data || []).filter(
+              (card: CharacterCard) => card.characterName
+            )
+          );
+        }
       } catch (error) {
         console.error('Failed to load character cards:', error);
       }
-    };
-    loadCharacterCards();
-  }, []);
 
-  // Load chat models
-  useEffect(() => {
-    const loadChatModels = async () => {
       try {
-        const res = await fetch('/api/chat/models');
-        if (!res.ok) return;
-        const data = await res.json();
-        setChatModels((data.data || []).filter((m: ChatModel) => m.enabled));
+        if (chatRes.ok) {
+          const data = await chatRes.json();
+          setChatModels(
+            (data.data || []).filter(
+              (m: Pick<ChatModel, 'id' | 'name' | 'supportsVision' | 'enabled'>) => m.enabled !== false
+            )
+          );
+        }
       } catch (error) {
         console.error('Failed to load chat models:', error);
       }
-    };
-    loadChatModels();
-  }, []);
 
-  // Load prompt templates
-  useEffect(() => {
-    const loadPromptTemplates = async () => {
       try {
-        const res = await fetch('/api/prompts');
-        if (!res.ok) return;
-        const data = await res.json();
-        setPromptTemplates(data.data || []);
+        if (promptsRes.ok) {
+          const data = await promptsRes.json();
+          setPromptTemplates(data.data || []);
+        }
       } catch (error) {
         console.error('Failed to load prompt templates:', error);
       }
     };
-    loadPromptTemplates();
+    void loadCatalogs();
   }, []);
 
   // Save handler

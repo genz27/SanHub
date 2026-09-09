@@ -2,9 +2,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { saveCharacterCard, updateCharacterCard, getUserById, getSystemConfig } from '@/lib/db';
-import { createCharacterCard } from '@/lib/sora-api';
-import { uploadToPicUI } from '@/lib/picui';
+import { saveCharacterCard, updateCharacterCard } from '@/lib/db/character-card-writes';
+import { getPublicSystemConfig } from '@/lib/db/system-config-public';
+import { getUserById } from '@/lib/db/user-session';
 import { checkRateLimit, RateLimitConfig } from '@/lib/rate-limit';
 import { assertPromptsAllowed, isPromptBlockedError } from '@/lib/prompt-blocklist';
 
@@ -29,6 +29,26 @@ interface CharacterCardRequest {
 }
 
 // 后台处理任务
+function resolveCharacterCardAvatarSource(body: CharacterCardRequest): string {
+  const isImageMode = !body.videoBase64 && body.inputImage;
+  return (isImageMode ? body.inputImage : body.firstFrameBase64) || '';
+}
+
+async function uploadCharacterCardAvatar(cardId: string, avatarSource: string): Promise<string | null> {
+  if (!avatarSource) return null;
+  try {
+    const { uploadToPicUI } = await import('@/lib/picui');
+    const picuiUrl = await uploadToPicUI(avatarSource, `avatar_${Date.now()}.jpg`);
+    if (picuiUrl) {
+      console.log(`[Task ${cardId}] Character card avatar uploaded:`, picuiUrl);
+      return picuiUrl;
+    }
+  } catch (err) {
+    console.warn(`[Task ${cardId}] Character card avatar upload failed, keeping source:`, err);
+  }
+  return null;
+}
+
 async function processCharacterCardTask(
   cardId: string,
   userId: string,
@@ -38,22 +58,27 @@ async function processCharacterCardTask(
     const isImageMode = !body.videoBase64 && body.inputImage;
     console.log(`[Task ${cardId}] 开始处理角色卡生成任务 (模式: ${isImageMode ? '图生角色卡' : '视频'})`);
 
-    // 调用非流式 API
-    const result = await createCharacterCard({
-      // 视频模式
-      video_base64: body.videoBase64,
-      // 图生角色卡模式
-      input_image: body.inputImage,
-      prompt: body.prompt,
-      style_id: body.styleId,
-      // 通用参数
-      model: 'sora-video-10s',
-      timestamps: body.timestamps || '0,3',
-      username: body.username,
-      display_name: body.displayName,
-      instruction_set: body.instructionSet,
-      safety_instruction_set: body.safetyInstructionSet,
-    });
+    const createCardPromise = import('@/lib/sora-character').then((mod) => mod.createCharacterCard);
+    const avatarUploadPromise = uploadCharacterCardAvatar(cardId, resolveCharacterCardAvatarSource(body));
+    const createCharacterCard = await createCardPromise;
+    const [result, picuiUrl] = await Promise.all([
+      createCharacterCard({
+        // 视频模式
+        video_base64: body.videoBase64,
+        // 图生角色卡模式
+        input_image: body.inputImage,
+        prompt: body.prompt,
+        style_id: body.styleId,
+        // 通用参数
+        model: 'sora-video-10s',
+        timestamps: body.timestamps || '0,3',
+        username: body.username,
+        display_name: body.displayName,
+        instruction_set: body.instructionSet,
+        safety_instruction_set: body.safetyInstructionSet,
+      }),
+      avatarUploadPromise,
+    ]);
 
     // 调试日志：打印完整返回结果
     console.log(`[Task ${cardId}] API 返回结果:`, JSON.stringify(result));
@@ -84,8 +109,9 @@ async function processCharacterCardTask(
     // 更新角色卡记录为完成状态
     await updateCharacterCard(cardId, {
       characterName,
+      ...(picuiUrl ? { avatarUrl: picuiUrl } : {}),
       status: 'completed',
-    });
+    }, userId);
 
     console.log(`[Task ${cardId}] 任务完成`);
   } catch (error) {
@@ -96,7 +122,7 @@ async function processCharacterCardTask(
     await updateCharacterCard(cardId, {
       status: 'failed',
       errorMessage,
-    });
+    }, userId);
   }
 }
 
@@ -110,27 +136,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 验证登录
-    const session = await getServerSession(authOptions);
+    const [session, config, body] = await Promise.all([
+      getServerSession(authOptions),
+      getPublicSystemConfig(),
+      request.json() as Promise<CharacterCardRequest>,
+    ]);
     if (!session?.user) {
       return NextResponse.json({ error: '请先登录' }, { status: 401 });
     }
 
-    const config = await getSystemConfig();
     if (!config.featureFlags.characterCardEnabled) {
       return NextResponse.json({ error: '角色卡生成功能已关闭' }, { status: 403 });
     }
-
-    const body: CharacterCardRequest = await request.json();
-
-    await assertPromptsAllowed([
-      body.prompt,
-      body.username,
-      body.displayName,
-      body.instructionSet,
-      body.safetyInstructionSet,
-      body.styleId,
-    ]);
 
     if (!body.videoBase64 && !body.inputImage) {
       return NextResponse.json(
@@ -139,35 +156,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const isImageMode = !body.videoBase64 && body.inputImage;
+    void import('@/lib/sora-config').then((mod) => {
+      void mod.warmupSoraConfig();
+    });
+    void import('@/lib/picui');
+    const [user] = await Promise.all([
+      getUserById(session.user.id),
+      assertPromptsAllowed([
+        body.prompt,
+        body.username,
+        body.displayName,
+        body.instructionSet,
+        body.safetyInstructionSet,
+        body.styleId,
+      ]),
+    ]);
 
-    // 获取最新用户信息
-    const user = await getUserById(session.user.id);
     if (!user) {
       return NextResponse.json({ error: '用户不存在' }, { status: 401 });
     }
 
-    // Try to upload avatar to the configured bucket
-    // 图生角色卡模式使用 inputImage，视频模式使用 firstFrameBase64
-    const avatarSource = isImageMode ? body.inputImage : body.firstFrameBase64;
-    let avatarUrl = avatarSource || '';
-    if (avatarSource) {
-      try {
-        const picuiUrl = await uploadToPicUI(avatarSource, `avatar_${Date.now()}.jpg`);
-        if (picuiUrl) {
-          avatarUrl = picuiUrl;
-          console.log('[API] Character card avatar uploaded:', picuiUrl);
-        }
-      } catch (err) {
-        console.warn('[API] Character card avatar upload failed, keeping source:', err);
-      }
-    }
-
-    // 创建角色卡记录（状态为 processing）
+    // Persist the source immediately; PicUI upload overlaps the Sora call in the background.
     const card = await saveCharacterCard({
       userId: user.id,
       characterName: '',
-      avatarUrl,
+      avatarUrl: resolveCharacterCardAvatarSource(body),
       sourceVideoUrl: undefined,
       status: 'processing',
     });

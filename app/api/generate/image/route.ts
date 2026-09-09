@@ -2,23 +2,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { generateImage, resolveImageTarget, type ImageGenerateRequest } from '@/lib/image-generator';
+import type { ImageGenerateRequest } from '@/lib/image-generator';
+import { resolveImageTarget } from '@/lib/image-target';
+import { getGenerationByClientRequestId } from '@/lib/db/generation-client-request';
 import {
-  saveGeneration,
-  updateUserBalance,
-  getUserById,
-  updateGeneration,
-  getImageModelWithChannel,
-  getSystemConfig,
   refundGenerationBalance,
-  getGenerationByClientRequestId,
-} from '@/lib/db';
-import { saveMediaAsync } from '@/lib/media-storage';
+  updateGeneration,
+  updateGenerationProgress,
+} from '@/lib/db/generation-mutations';
+import { saveGeneration } from '@/lib/db/generation-writes';
+import { getImageModelWithChannel } from '@/lib/db/image-catalog-runtime';
+import { getRateLimitConfig } from '@/lib/db/system-config-rate-limit';
+import { updateUserBalance } from '@/lib/db/user-balance';
+import { getUserById } from '@/lib/db/user-session';
 import { checkRateLimit } from '@/lib/rate-limit';
-import { fetchReferenceImage } from '@/lib/reference-image';
 import { assertPromptsAllowed, isPromptBlockedError } from '@/lib/prompt-blocklist';
-import { resolveImageSize } from '@/lib/v1-images';
-import { inferImageSizeLabel as inferNormalizedImageSizeLabel, normalizeAspectRatio } from '@/lib/image-sizing';
+import { inferImageSizeLabel as inferNormalizedImageSizeLabel, normalizeAspectRatio, resolveImageSize } from '@/lib/image-sizing';
 import type { ChannelType, Generation, GenerationType } from '@/types';
 
 export const maxDuration = 600;
@@ -26,6 +25,7 @@ export const dynamic = 'force-dynamic';
 
 const MAX_REFERENCE_IMAGE_BYTES = 10 * 1024 * 1024;
 const CLIENT_REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
+const IMAGE_CLIENT_REQUEST_HIT_MS = 15 * 60 * 1000;
 const imageTaskCreationPromises = new Map<string, Promise<Generation>>();
 const IMAGE_TYPE_BY_CHANNEL: Record<ChannelType, GenerationType> = {
   apexerapi: 'gemini-image',
@@ -44,7 +44,7 @@ class RouteResponseError extends Error {
   }
 }
 
-function buildTaskResponse(generation: Generation, message: string) {
+function buildTaskResponse(generation: Pick<Generation, 'id' | 'status' | 'type'>, message: string) {
   return NextResponse.json({
     success: true,
     data: {
@@ -99,25 +99,27 @@ async function processGenerationTask(
   try {
     console.log(`[Task ${generationId}] 开始处理图像生成任务`);
 
-    await updateGeneration(generationId, {
+    const generateImagePromise = import('@/lib/image-generator').then((mod) => mod.generateImage);
+    const saveMediaPromise = import('@/lib/media-storage');
+    void updateGeneration(generationId, {
       status: 'processing',
       params: {
         ...generationParams,
         progress: 10,
       },
+    }, userId).catch((err) => {
+      console.error(`[Task ${generationId}] 更新状态失败:`, err);
     });
 
+    const generateImage = await generateImagePromise;
     const result = await generateImage(request);
 
-    await updateGeneration(generationId, {
-      status: 'processing',
-      params: {
-        ...generationParams,
-        progress: 80,
-      },
+    void updateGenerationProgress(generationId, 80).catch((err) => {
+      console.error(`[Task ${generationId}] 更新进度失败:`, err);
     });
 
     // 保存到图床或本地
+    const { saveMediaAsync } = await saveMediaPromise;
     const savedUrl = await saveMediaAsync(generationId, result.url, { publicBaseUrl });
 
     console.log(`[Task ${generationId}] 生成成功`);
@@ -129,7 +131,7 @@ async function processGenerationTask(
         ...generationParams,
         progress: 100,
       },
-    });
+    }, userId);
 
     console.log(`[Task ${generationId}] 任务完成`);
   } catch (error) {
@@ -138,7 +140,7 @@ async function processGenerationTask(
     await updateGeneration(generationId, {
       status: 'failed',
       errorMessage: error instanceof Error ? error.message : '生成失败',
-    });
+    }, userId);
 
     try {
       await refundGenerationBalance(generationId, userId, prechargedCost);
@@ -150,9 +152,13 @@ async function processGenerationTask(
 
 export async function POST(request: NextRequest) {
   try {
-    const systemConfig = await getSystemConfig();
-    const imageMaxRequests = Math.max(1, Number(systemConfig.rateLimit?.imageMaxRequests) || 30);
-    const imageWindowSeconds = Math.max(1, Number(systemConfig.rateLimit?.imageWindowSeconds) || 60);
+    const [rateLimitConfig, session, body] = await Promise.all([
+      getRateLimitConfig(),
+      getServerSession(authOptions),
+      request.json(),
+    ]);
+    const imageMaxRequests = Math.max(1, Number(rateLimitConfig.imageMaxRequests) || 30);
+    const imageWindowSeconds = Math.max(1, Number(rateLimitConfig.imageWindowSeconds) || 60);
     const rateLimit = checkRateLimit(
       request,
       { maxRequests: imageMaxRequests, windowSeconds: imageWindowSeconds },
@@ -165,12 +171,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const session = await getServerSession(authOptions);
     if (!session?.user) {
       return NextResponse.json({ error: '请先登录' }, { status: 401 });
     }
 
-    const body = await request.json();
+    const userPromise = getUserById(session.user.id);
     const payload = body && typeof body === 'object' ? body as Record<string, unknown> : {};
     const googleImageConfig = getGoogleImageConfig(payload);
     const modelId = firstString(payload.modelId, payload.model_id);
@@ -202,14 +207,64 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid client request id' }, { status: 400 });
     }
 
-    await assertPromptsAllowed([prompt]);
+    const creationKey = clientRequestId ? `${session.user.id}:${clientRequestId}` : '';
+    const pendingCreation = creationKey ? imageTaskCreationPromises.get(creationKey) : undefined;
+    if (pendingCreation) {
+      try {
+        const generation = await pendingCreation;
+        return buildTaskResponse(generation, '任务已存在，已复用当前任务');
+      } catch (error) {
+        if (error instanceof RouteResponseError) {
+          return error.response;
+        }
+        throw error;
+      }
+    }
 
-    if (!modelId) {
+    const modelPromise = modelId ? getImageModelWithChannel(modelId) : null;
+    const existingByClientRequestIdPromise = clientRequestId
+      ? getGenerationByClientRequestId(session.user.id, clientRequestId)
+      : Promise.resolve(null);
+    const origin = new URL(request.url).origin;
+    const referenceFetchOptions = {
+      origin,
+      userId: session.user.id,
+      userRole: session.user.role,
+      maxBytes: MAX_REFERENCE_IMAGE_BYTES,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      },
+    };
+    const remoteReferenceUrls = Array.isArray(referenceImages)
+      ? referenceImages.filter(
+          (img): img is string => typeof img === 'string' && !img.startsWith('data:')
+        )
+      : [];
+    const referenceImageModPromise =
+      referenceImageUrl || remoteReferenceUrls.length > 0
+        ? import('@/lib/reference-image')
+        : null;
+    const referenceImagePromise = referenceImageUrl && referenceImageModPromise
+      ? referenceImageModPromise.then(({ fetchReferenceImage }) =>
+          fetchReferenceImage(referenceImageUrl, referenceFetchOptions)
+        )
+      : null;
+    const assertPromise = assertPromptsAllowed([prompt]);
+
+    if (!modelId || !modelPromise) {
+      await assertPromise;
       return NextResponse.json({ error: '缺少模型 ID' }, { status: 400 });
     }
 
-    // 获取模型配置
-    const modelConfig = await getImageModelWithChannel(modelId);
+    void import('@/lib/image-generator');
+    void import('@/lib/media-storage');
+
+    const [modelConfig, user, existingByClientRequestId] = await Promise.all([
+      modelPromise,
+      userPromise,
+      existingByClientRequestIdPromise,
+      assertPromise,
+    ]);
     if (!modelConfig) {
       return NextResponse.json({ error: '模型不存在' }, { status: 404 });
     }
@@ -225,8 +280,6 @@ export async function POST(request: NextRequest) {
       effectiveImageSize
     );
 
-    // 检查用户
-    const user = await getUserById(session.user.id);
     if (!user) {
       return NextResponse.json({ error: '用户不存在' }, { status: 401 });
     }
@@ -234,11 +287,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '账号已被禁用' }, { status: 403 });
     }
 
-    const creationKey = clientRequestId ? `${user.id}:${clientRequestId}` : '';
-    const pendingCreation = creationKey ? imageTaskCreationPromises.get(creationKey) : undefined;
-    if (pendingCreation) {
+    const pendingCreationAfterAuth = creationKey
+      ? imageTaskCreationPromises.get(creationKey)
+      : undefined;
+    if (pendingCreationAfterAuth) {
       try {
-        const generation = await pendingCreation;
+        const generation = await pendingCreationAfterAuth;
         return buildTaskResponse(generation, '任务已存在，已复用当前任务');
       } catch (error) {
         if (error instanceof RouteResponseError) {
@@ -248,11 +302,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (clientRequestId) {
-      const existingGeneration = await getGenerationByClientRequestId(user.id, clientRequestId);
-      if (existingGeneration) {
-        return buildTaskResponse(existingGeneration, '任务已存在，已复用当前任务');
-      }
+    if (existingByClientRequestId) {
+      return buildTaskResponse(existingByClientRequestId, '任务已存在，已复用当前任务');
     }
 
     const pendingCreationAfterLookup = creationKey
@@ -282,23 +333,14 @@ export async function POST(request: NextRequest) {
       }
 
       // 处理参考图
-      const origin = new URL(request.url).origin;
       const imageList: Array<{ mimeType: string; data: string }> = [];
 
       if (Array.isArray(images)) {
         imageList.push(...images.filter(isInlineImageInput));
       }
 
-      if (referenceImageUrl) {
-        const referenceImage = await fetchReferenceImage(referenceImageUrl, {
-          origin,
-          userId: session.user.id,
-          userRole: session.user.role,
-          maxBytes: MAX_REFERENCE_IMAGE_BYTES,
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          },
-        });
+      if (referenceImagePromise) {
+        const referenceImage = await referenceImagePromise;
         imageList.push({
           mimeType: referenceImage.mimeType,
           data: referenceImage.dataUrl,
@@ -307,22 +349,18 @@ export async function POST(request: NextRequest) {
 
       if (Array.isArray(referenceImages)) {
         for (const img of referenceImages) {
-          if (typeof img !== 'string') continue;
-          if (img.startsWith('data:')) {
-            const match = img.match(/^data:([^;]+);base64,(.+)$/);
-            if (match) {
-              imageList.push({ mimeType: match[1], data: img });
-            }
-          } else {
-            const referenceImage = await fetchReferenceImage(img, {
-              origin,
-              userId: session.user.id,
-              userRole: session.user.role,
-              maxBytes: MAX_REFERENCE_IMAGE_BYTES,
-              headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-              },
-            });
+          if (typeof img !== 'string' || !img.startsWith('data:')) continue;
+          const match = img.match(/^data:([^;]+);base64,(.+)$/);
+          if (match) {
+            imageList.push({ mimeType: match[1], data: img });
+          }
+        }
+        if (remoteReferenceUrls.length > 0) {
+          const { fetchReferenceImage } = await (referenceImageModPromise ?? import('@/lib/reference-image'));
+          const fetched = await Promise.all(
+            remoteReferenceUrls.map((img) => fetchReferenceImage(img, referenceFetchOptions))
+          );
+          for (const referenceImage of fetched) {
             imageList.push({
               mimeType: referenceImage.mimeType,
               data: referenceImage.dataUrl,
@@ -439,13 +477,21 @@ export async function POST(request: NextRequest) {
       const generation = await creationPromise;
       return buildTaskResponse(generation, '任务已创建，正在后台处理中');
     } catch (error) {
+      if (creationKey && imageTaskCreationPromises.get(creationKey) === creationPromise) {
+        imageTaskCreationPromises.delete(creationKey);
+      }
       if (error instanceof RouteResponseError) {
         return error.response;
       }
       throw error;
     } finally {
       if (creationKey && imageTaskCreationPromises.get(creationKey) === creationPromise) {
-        imageTaskCreationPromises.delete(creationKey);
+        const timeout = setTimeout(() => {
+          if (imageTaskCreationPromises.get(creationKey) === creationPromise) {
+            imageTaskCreationPromises.delete(creationKey);
+          }
+        }, IMAGE_CLIENT_REQUEST_HIT_MS);
+        timeout.unref?.();
       }
     }
   } catch (error) {

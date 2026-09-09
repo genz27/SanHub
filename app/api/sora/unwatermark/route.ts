@@ -14,7 +14,12 @@ export const revalidate = 0;
  */
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const configModPromise = import('@/lib/db/system-config-sora');
+    const channelsModPromise = import('@/lib/db/video-channel-reads');
+    const [session, body] = await Promise.all([
+      getServerSession(authOptions),
+      request.json(),
+    ]);
     if (!session?.user) {
       return NextResponse.json(
         { success: false, error: '未登录' },
@@ -22,7 +27,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { permalink } = await request.json();
+    const { permalink } = body;
 
     if (!permalink || typeof permalink !== 'string') {
       return NextResponse.json(
@@ -32,8 +37,14 @@ export async function POST(request: NextRequest) {
     }
 
     // 获取 Sora 后台配置和视频渠道配置
-    const { getSystemConfig, getVideoChannels } = await import('@/lib/db');
-    const config = await getSystemConfig();
+    const [{ getSoraBackendConfig }, { getVideoChannels }] = await Promise.all([
+      configModPromise,
+      channelsModPromise,
+    ]);
+    const [config, channels] = await Promise.all([
+      getSoraBackendConfig(),
+      getVideoChannels(true),
+    ]);
     const { soraBackendUrl } = config;
 
     if (!soraBackendUrl) {
@@ -42,9 +53,6 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
-    
-    // 从 Sora 视频渠道获取 API Key 作为 token
-    const channels = await getVideoChannels(true);
     const soraChannel = channels.find(c => c.type === 'sora');
     
     if (!soraChannel?.apiKey) {

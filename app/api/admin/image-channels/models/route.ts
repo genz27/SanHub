@@ -1,7 +1,7 @@
 ﻿import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getImageChannel } from '@/lib/db';
+import { getImageChannel } from '@/lib/db/image-channels';
 
 export const dynamic = 'force-dynamic';
 

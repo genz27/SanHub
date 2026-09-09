@@ -3,7 +3,7 @@ import {
   getRecentSoraVideoGenerations,
   getRecentSoraVideoGenerationsByUser,
   getUserIdsWithRecentSoraVideos,
-} from './db';
+} from './db/generation-sora-reads';
 import type { Generation } from '@/types';
 
 export type VideoStatusTask = {
@@ -130,9 +130,10 @@ export function startVideoStatusPoller(): void {
     console.error('[Status Poller] Initial refresh failed:', error);
   });
 
-  setInterval(() => {
+  const interval = setInterval(() => {
     void refreshAllVideoStatusSnapshots().catch((error) => {
       console.error('[Status Poller] Refresh failed:', error);
     });
   }, POLL_INTERVAL_MS);
+  interval.unref?.();
 }

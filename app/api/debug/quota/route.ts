@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getSystemConfig, updateSystemConfig } from '@/lib/db';
+import { getSystemConfig, updateSystemConfig } from '@/lib/db/system-config';
 
 // 登录 SORA 后台获取 admin token
 async function loginSoraBackend(baseUrl: string, username: string, password: string): Promise<string> {

@@ -1,57 +1,36 @@
 import type {
   ImageChannel,
   ImageModel,
-  SafeImageChannel,
-  SafeImageModel,
   ChannelType,
-  ImageModelFeatures,
 } from '@/types';
 import { getAdapter } from './connection';
-import { initializeDatabase, initializeImageChannelsTables } from './schema';
+import { ensureDatabase } from './ready';
 import { generateId } from '../utils';
+import {
+  CacheKeys,
+  CacheTTL,
+  invalidateImageCatalogCache,
+  withCache,
+} from '../cache';
+import {
+  parseImageFeatures,
+  parseImageResolutions,
+  parseImageStringArray,
+} from './image-catalog-parse';
 
 // ========================================
 // 图像渠道操作
 // ========================================
 
 // 获取所有图像渠道
-export async function getImageChannels(enabledOnly = false): Promise<ImageChannel[]> {
-  await initializeDatabase();
-  await initializeImageChannelsTables();
-  const db = getAdapter();
+const IMAGE_CHANNEL_COLUMNS =
+  'id, name, type, base_url, api_key, enabled, created_at, updated_at';
+const IMAGE_CHANNEL_AUTH_COLUMNS = 'id, type, base_url, api_key, enabled';
 
-  const sql = enabledOnly
-    ? 'SELECT * FROM image_channels WHERE enabled = 1 ORDER BY created_at ASC'
-    : 'SELECT * FROM image_channels ORDER BY created_at ASC';
-
-  const [rows] = await db.execute(sql);
-
-  return (rows as any[]).map((row) => ({
-    id: row.id,
-    name: row.name,
-    type: row.type as ChannelType,
-    baseUrl: row.base_url || '',
-    apiKey: row.api_key || '',
-    enabled: Boolean(row.enabled),
-    createdAt: Number(row.created_at),
-    updatedAt: Number(row.updated_at),
-  }));
-}
-
-// 获取单个图像渠道
-export async function getImageChannel(id: string): Promise<ImageChannel | null> {
-  await initializeDatabase();
-  await initializeImageChannelsTables();
-  const db = getAdapter();
-
-  const [rows] = await db.execute('SELECT * FROM image_channels WHERE id = ?', [id]);
-  const channels = rows as any[];
-  if (channels.length === 0) return null;
-
-  const row = channels[0];
+function mapImageChannelRow(row: any): ImageChannel {
   return {
     id: row.id,
-    name: row.name,
+    name: row.name || '',
     type: row.type as ChannelType,
     baseUrl: row.base_url || '',
     apiKey: row.api_key || '',
@@ -61,12 +40,43 @@ export async function getImageChannel(id: string): Promise<ImageChannel | null> 
   };
 }
 
+export async function getImageChannels(enabledOnly = false): Promise<ImageChannel[]> {
+  return withCache(
+    `${CacheKeys.IMAGE_CHANNELS}full:${enabledOnly ? 'enabled' : 'all'}`,
+    CacheTTL.IMAGE_MODELS,
+    async () => {
+      await ensureDatabase();
+      const db = getAdapter();
+      const sql = enabledOnly
+        ? `SELECT ${IMAGE_CHANNEL_AUTH_COLUMNS} FROM image_channels WHERE enabled = 1 ORDER BY created_at ASC`
+        : `SELECT ${IMAGE_CHANNEL_COLUMNS} FROM image_channels ORDER BY created_at ASC`;
+      const [rows] = await db.execute(sql);
+      return (rows as any[]).map(mapImageChannelRow);
+    }
+  );
+}
+
+// 获取单个图像渠道
+export async function getImageChannel(id: string): Promise<ImageChannel | null> {
+  return withCache(`${CacheKeys.IMAGE_CHANNELS}id:${id}`, CacheTTL.IMAGE_MODELS, async () => {
+    await ensureDatabase();
+    const db = getAdapter();
+
+    const [rows] = await db.execute(
+      `SELECT ${IMAGE_CHANNEL_AUTH_COLUMNS} FROM image_channels WHERE id = ?`,
+      [id]
+    );
+    const channels = rows as any[];
+    if (channels.length === 0) return null;
+    return mapImageChannelRow(channels[0]);
+  });
+}
+
 // 创建图像渠道
 export async function createImageChannel(
   channel: Omit<ImageChannel, 'id' | 'createdAt' | 'updatedAt'>
 ): Promise<ImageChannel> {
-  await initializeDatabase();
-  await initializeImageChannelsTables();
+  await ensureDatabase();
   const db = getAdapter();
 
   const id = generateId();
@@ -78,6 +88,7 @@ export async function createImageChannel(
     [id, channel.name, channel.type, channel.baseUrl, channel.apiKey, channel.enabled ? 1 : 0, now, now]
   );
 
+  invalidateImageCatalogCache();
   return { ...channel, id, createdAt: now, updatedAt: now };
 }
 
@@ -86,8 +97,7 @@ export async function updateImageChannel(
   id: string,
   updates: Partial<Omit<ImageChannel, 'id' | 'createdAt' | 'updatedAt'>>
 ): Promise<ImageChannel | null> {
-  await initializeDatabase();
-  await initializeImageChannelsTables();
+  await ensureDatabase();
   const db = getAdapter();
 
   const fields: string[] = ['updated_at = ?'];
@@ -102,171 +112,37 @@ export async function updateImageChannel(
   values.push(id);
   await db.execute(`UPDATE image_channels SET ${fields.join(', ')} WHERE id = ?`, values);
 
-  return getImageChannel(id);
+  invalidateImageCatalogCache();
+  const [rows] = await db.execute(
+    `SELECT ${IMAGE_CHANNEL_COLUMNS} FROM image_channels WHERE id = ?`,
+    [id]
+  );
+  const channels = rows as any[];
+  return channels.length > 0 ? mapImageChannelRow(channels[0]) : null;
 }
 
 // 删除图像渠道
 export async function deleteImageChannel(id: string): Promise<boolean> {
-  await initializeDatabase();
-  await initializeImageChannelsTables();
+  await ensureDatabase();
   const db = getAdapter();
 
   // 先删除该渠道下的所有模型
   await db.execute('DELETE FROM image_models WHERE channel_id = ?', [id]);
 
   const [result] = await db.execute('DELETE FROM image_channels WHERE id = ?', [id]);
+  invalidateImageCatalogCache();
   return (result as any).affectedRows > 0;
 }
 
-// 获取安全的渠道列表（不含敏感信息）
-export async function getSafeImageChannels(enabledOnly = false): Promise<SafeImageChannel[]> {
-  const channels = await getImageChannels(enabledOnly);
-  return channels.map((c) => ({
-    id: c.id,
-    name: c.name,
-    type: c.type,
-    enabled: c.enabled,
-  }));
-}
+const IMAGE_MODEL_COLUMNS = `
+  id, channel_id, name, description, api_model, base_url, api_key,
+  features, aspect_ratios, resolutions, image_sizes,
+  default_aspect_ratio, default_image_size,
+  requires_reference_image, allow_empty_prompt, highlight,
+  enabled, cost_per_generation, sort_order, created_at, updated_at
+`;
 
-// ========================================
-// 图像模型操作
-// ========================================
-
-function parseFeatures(raw: unknown): ImageModelFeatures {
-  const defaults: ImageModelFeatures = {
-    textToImage: true,
-    imageToImage: false,
-    upscale: false,
-    matting: false,
-    multipleImages: false,
-    imageSize: false,
-  };
-  if (!raw) return defaults;
-  if (typeof raw === 'string') {
-    try {
-      return { ...defaults, ...JSON.parse(raw) };
-    } catch {
-      return defaults;
-    }
-  }
-  if (typeof raw === 'object') {
-    return { ...defaults, ...(raw as ImageModelFeatures) };
-  }
-  return defaults;
-}
-
-function parseStringArray(raw: unknown): string[] {
-  if (!raw) return [];
-  if (typeof raw === 'string') {
-    try {
-      return JSON.parse(raw);
-    } catch {
-      return [];
-    }
-  }
-  if (Array.isArray(raw)) return raw;
-  return [];
-}
-
-function parseResolutions(raw: unknown): Record<string, string | Record<string, string>> {
-  if (!raw) return {};
-  if (typeof raw === 'string') {
-    try {
-      return JSON.parse(raw);
-    } catch {
-      return {};
-    }
-  }
-  if (typeof raw === 'object') return raw as Record<string, string | Record<string, string>>;
-  return {};
-}
-
-// 获取所有图像模型
-export async function getImageModels(enabledOnly = false): Promise<ImageModel[]> {
-  await initializeDatabase();
-  await initializeImageChannelsTables();
-  const db = getAdapter();
-
-  const sql = enabledOnly
-    ? 'SELECT * FROM image_models WHERE enabled = 1 ORDER BY sort_order ASC, created_at ASC'
-    : 'SELECT * FROM image_models ORDER BY sort_order ASC, created_at ASC';
-
-  const [rows] = await db.execute(sql);
-
-  return (rows as any[]).map((row) => ({
-    id: row.id,
-    channelId: row.channel_id,
-    name: row.name,
-    description: row.description || '',
-    apiModel: row.api_model,
-    baseUrl: row.base_url || undefined,
-    apiKey: row.api_key || undefined,
-    features: parseFeatures(row.features),
-    aspectRatios: parseStringArray(row.aspect_ratios),
-    resolutions: parseResolutions(row.resolutions),
-    imageSizes: row.image_sizes ? parseStringArray(row.image_sizes) : undefined,
-    defaultAspectRatio: row.default_aspect_ratio || '1:1',
-    defaultImageSize: row.default_image_size || undefined,
-    requiresReferenceImage: Boolean(row.requires_reference_image),
-    allowEmptyPrompt: Boolean(row.allow_empty_prompt),
-    highlight: Boolean(row.highlight),
-    enabled: Boolean(row.enabled),
-    costPerGeneration: row.cost_per_generation || 10,
-    sortOrder: row.sort_order || 0,
-    createdAt: Number(row.created_at),
-    updatedAt: Number(row.updated_at),
-  }));
-}
-
-// 获取渠道下的模型
-export async function getImageModelsByChannel(channelId: string, enabledOnly = false): Promise<ImageModel[]> {
-  await initializeDatabase();
-  await initializeImageChannelsTables();
-  const db = getAdapter();
-
-  const sql = enabledOnly
-    ? 'SELECT * FROM image_models WHERE channel_id = ? AND enabled = 1 ORDER BY sort_order ASC, created_at ASC'
-    : 'SELECT * FROM image_models WHERE channel_id = ? ORDER BY sort_order ASC, created_at ASC';
-
-  const [rows] = await db.execute(sql, [channelId]);
-
-  return (rows as any[]).map((row) => ({
-    id: row.id,
-    channelId: row.channel_id,
-    name: row.name,
-    description: row.description || '',
-    apiModel: row.api_model,
-    baseUrl: row.base_url || undefined,
-    apiKey: row.api_key || undefined,
-    features: parseFeatures(row.features),
-    aspectRatios: parseStringArray(row.aspect_ratios),
-    resolutions: parseResolutions(row.resolutions),
-    imageSizes: row.image_sizes ? parseStringArray(row.image_sizes) : undefined,
-    defaultAspectRatio: row.default_aspect_ratio || '1:1',
-    defaultImageSize: row.default_image_size || undefined,
-    requiresReferenceImage: Boolean(row.requires_reference_image),
-    allowEmptyPrompt: Boolean(row.allow_empty_prompt),
-    highlight: Boolean(row.highlight),
-    enabled: Boolean(row.enabled),
-    costPerGeneration: row.cost_per_generation || 10,
-    sortOrder: row.sort_order || 0,
-    createdAt: Number(row.created_at),
-    updatedAt: Number(row.updated_at),
-  }));
-}
-
-// 获取单个图像模型
-export async function getImageModel(id: string): Promise<ImageModel | null> {
-  await initializeDatabase();
-  await initializeImageChannelsTables();
-  const db = getAdapter();
-
-  const [rows] = await db.execute('SELECT * FROM image_models WHERE id = ?', [id]);
-  const models = rows as any[];
-  if (models.length === 0) return null;
-
-  const row = models[0];
+function mapImageModelRow(row: any): ImageModel {
   return {
     id: row.id,
     channelId: row.channel_id,
@@ -275,10 +151,10 @@ export async function getImageModel(id: string): Promise<ImageModel | null> {
     apiModel: row.api_model,
     baseUrl: row.base_url || undefined,
     apiKey: row.api_key || undefined,
-    features: parseFeatures(row.features),
-    aspectRatios: parseStringArray(row.aspect_ratios),
-    resolutions: parseResolutions(row.resolutions),
-    imageSizes: row.image_sizes ? parseStringArray(row.image_sizes) : undefined,
+    features: parseImageFeatures(row.features),
+    aspectRatios: parseImageStringArray(row.aspect_ratios),
+    resolutions: parseImageResolutions(row.resolutions),
+    imageSizes: row.image_sizes ? parseImageStringArray(row.image_sizes) : undefined,
     defaultAspectRatio: row.default_aspect_ratio || '1:1',
     defaultImageSize: row.default_image_size || undefined,
     requiresReferenceImage: Boolean(row.requires_reference_image),
@@ -292,12 +168,61 @@ export async function getImageModel(id: string): Promise<ImageModel | null> {
   };
 }
 
+// 获取所有图像模型
+export async function getImageModels(enabledOnly = false): Promise<ImageModel[]> {
+  return withCache(
+    `${CacheKeys.IMAGE_MODELS}list:${enabledOnly ? 'enabled' : 'all'}`,
+    CacheTTL.IMAGE_MODELS,
+    async () => {
+      await ensureDatabase();
+      const db = getAdapter();
+      const sql = enabledOnly
+        ? `SELECT ${IMAGE_MODEL_COLUMNS} FROM image_models WHERE enabled = 1 ORDER BY sort_order ASC, created_at ASC`
+        : `SELECT ${IMAGE_MODEL_COLUMNS} FROM image_models ORDER BY sort_order ASC, created_at ASC`;
+      const [rows] = await db.execute(sql);
+      return (rows as any[]).map(mapImageModelRow);
+    }
+  );
+}
+
+// 获取渠道下的模型
+export async function getImageModelsByChannel(channelId: string, enabledOnly = false): Promise<ImageModel[]> {
+  return withCache(
+    `${CacheKeys.IMAGE_MODELS}channel:${channelId}:${enabledOnly ? 'enabled' : 'all'}`,
+    CacheTTL.IMAGE_MODELS,
+    async () => {
+      await ensureDatabase();
+      const db = getAdapter();
+      const sql = enabledOnly
+        ? `SELECT ${IMAGE_MODEL_COLUMNS} FROM image_models WHERE channel_id = ? AND enabled = 1 ORDER BY sort_order ASC, created_at ASC`
+        : `SELECT ${IMAGE_MODEL_COLUMNS} FROM image_models WHERE channel_id = ? ORDER BY sort_order ASC, created_at ASC`;
+      const [rows] = await db.execute(sql, [channelId]);
+      return (rows as any[]).map(mapImageModelRow);
+    }
+  );
+}
+
+// 获取单个图像模型
+export async function getImageModel(id: string): Promise<ImageModel | null> {
+  return withCache(`${CacheKeys.IMAGE_MODELS}model:${id}`, CacheTTL.IMAGE_MODELS, async () => {
+    await ensureDatabase();
+    const db = getAdapter();
+
+    const [rows] = await db.execute(
+      `SELECT ${IMAGE_MODEL_COLUMNS} FROM image_models WHERE id = ?`,
+      [id]
+    );
+    const models = rows as any[];
+    if (models.length === 0) return null;
+    return mapImageModelRow(models[0]);
+  });
+}
+
 // 创建图像模型
 export async function createImageModel(
   model: Omit<ImageModel, 'id' | 'createdAt' | 'updatedAt'>
 ): Promise<ImageModel> {
-  await initializeDatabase();
-  await initializeImageChannelsTables();
+  await ensureDatabase();
   const db = getAdapter();
 
   const id = generateId();
@@ -336,6 +261,7 @@ export async function createImageModel(
     ]
   );
 
+  invalidateImageCatalogCache();
   return { ...model, id, createdAt: now, updatedAt: now };
 }
 
@@ -344,8 +270,7 @@ export async function updateImageModel(
   id: string,
   updates: Partial<Omit<ImageModel, 'id' | 'createdAt' | 'updatedAt'>>
 ): Promise<ImageModel | null> {
-  await initializeDatabase();
-  await initializeImageChannelsTables();
+  await ensureDatabase();
   const db = getAdapter();
 
   const fields: string[] = ['updated_at = ?'];
@@ -373,79 +298,23 @@ export async function updateImageModel(
   values.push(id);
   await db.execute(`UPDATE image_models SET ${fields.join(', ')} WHERE id = ?`, values);
 
+  invalidateImageCatalogCache();
   return getImageModel(id);
 }
 
 // 删除图像模型
 export async function deleteImageModel(id: string): Promise<boolean> {
-  await initializeDatabase();
-  await initializeImageChannelsTables();
+  await ensureDatabase();
   const db = getAdapter();
 
   const [result] = await db.execute('DELETE FROM image_models WHERE id = ?', [id]);
+  invalidateImageCatalogCache();
   return (result as any).affectedRows > 0;
-}
-
-// 获取安全的模型列表（不含敏感信息，带渠道类型）
-export async function getSafeImageModels(enabledOnly = false): Promise<SafeImageModel[]> {
-  const models = await getImageModels(enabledOnly);
-  const channels = await getImageChannels();
-  const channelMap = new Map(channels.map((c) => [c.id, c]));
-
-  return models
-    .filter((m) => {
-      const channel = channelMap.get(m.channelId);
-      return channel && (!enabledOnly || channel.enabled);
-    })
-    .map((m) => {
-      const channel = channelMap.get(m.channelId)!;
-      return {
-        id: m.id,
-        channelId: m.channelId,
-        channelType: channel.type,
-        apiModel: m.apiModel,
-        name: m.name,
-        description: m.description,
-        features: m.features,
-        aspectRatios: m.aspectRatios,
-        resolutions: m.resolutions,
-        imageSizes: m.imageSizes,
-        defaultAspectRatio: m.defaultAspectRatio,
-        defaultImageSize: m.defaultImageSize,
-        requiresReferenceImage: m.requiresReferenceImage,
-        allowEmptyPrompt: m.allowEmptyPrompt,
-        highlight: m.highlight,
-        enabled: m.enabled,
-        costPerGeneration: m.costPerGeneration,
-      };
-    });
-}
-
-// 获取模型的完整配置（包含渠道信息，用于生成时）
-export async function getImageModelWithChannel(modelId: string): Promise<{
-  model: ImageModel;
-  channel: ImageChannel;
-  effectiveBaseUrl: string;
-  effectiveApiKey: string;
-} | null> {
-  const model = await getImageModel(modelId);
-  if (!model) return null;
-
-  const channel = await getImageChannel(model.channelId);
-  if (!channel) return null;
-
-  return {
-    model,
-    channel,
-    effectiveBaseUrl: model.baseUrl || channel.baseUrl,
-    effectiveApiKey: model.apiKey || channel.apiKey,
-  };
 }
 
 // 检查是否有任何图像渠道/模型配置
 export async function hasImageChannelsConfigured(): Promise<boolean> {
-  await initializeDatabase();
-  await initializeImageChannelsTables();
+  await ensureDatabase();
   const db = getAdapter();
 
   const [rows] = await db.execute('SELECT COUNT(1) as count FROM image_channels');

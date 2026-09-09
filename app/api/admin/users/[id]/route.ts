@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getUserById, updateUser, getUserGenerations } from '@/lib/db';
+import { getUserGenerations } from '@/lib/db/generation-list-reads';
+import { getUserById } from '@/lib/db/user-session';
+import { getUserAdminRecord } from '@/lib/db/users';
+import { updateUser } from '@/lib/db/user-writes';
 
 // 检查是否有管理权限（admin 或 moderator）
 function hasAdminAccess(role: string): boolean {
@@ -19,12 +22,13 @@ export async function GET(
       return NextResponse.json({ error: '无权限' }, { status: 403 });
     }
 
-    const user = await getUserById(params.id);
+    const [user, generations] = await Promise.all([
+      getUserAdminRecord(params.id),
+      getUserGenerations(params.id, 100),
+    ]);
     if (!user) {
       return NextResponse.json({ error: '用户不存在' }, { status: 404 });
     }
-
-    const generations = await getUserGenerations(params.id, 100);
 
     return NextResponse.json({
       user: {
@@ -90,11 +94,12 @@ export async function PUT(
       updates.role = data.role;
     }
 
-    const user = await updateUser(params.id, updates);
-    if (!user) {
+    const updated = await updateUser(params.id, updates);
+    if (!updated) {
       return NextResponse.json({ error: '用户不存在' }, { status: 404 });
     }
 
+    const user = (await getUserAdminRecord(params.id)) || updated;
     return NextResponse.json({
       id: user.id,
       email: user.email,

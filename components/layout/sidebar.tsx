@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -10,7 +10,6 @@ import {
   User,
   LayoutGrid,
   Sparkles,
-  Bot,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { SafeUser } from '@/types';
@@ -20,7 +19,7 @@ interface SidebarProps {
   user: SafeUser;
 }
 
-const STATUS_POLL_MS = 5_000;
+const STATUS_POLL_MS = 15_000;
 
 function formatRelativeTime(timestamp: number | null): string {
   if (!timestamp) return '未更新';
@@ -34,7 +33,6 @@ function formatRelativeTime(timestamp: number | null): string {
 const navItems = [
   { href: '/create', icon: Sparkles, label: '创作', description: '图片 / 视频统一入口', badge: 'AI', isAI: true },
   { href: '/video/character-card', icon: User, label: '角色卡生成', description: '从视频提取角色', badge: 'NEW', isAI: true },
-  { href: '/agents', icon: Bot, label: 'Agent', description: '智能 AI 代理', badge: 'NEW', isAI: true },
   { href: '/square', icon: LayoutGrid, label: '广场', description: '探索社区创作', badge: 'HOT', isAI: false },
   { href: '/history', icon: History, label: '历史', description: '作品记录', badge: null, isAI: false },
   { href: '/settings', icon: Settings, label: '设置', description: '账号管理', badge: null, isAI: false },
@@ -49,6 +47,7 @@ export function Sidebar({ user }: SidebarProps) {
   const siteConfig = useSiteConfig();
   const [pendingCount, setPendingCount] = useState<number | null>(null);
   const [pendingUpdatedAt, setPendingUpdatedAt] = useState<number | null>(null);
+  const pendingUpdatedAtRef = useRef<number | null>(null);
   const visibleNavItems = navItems.filter(
     (item) =>
       (item.href !== '/square' || siteConfig.squareEnabled) &&
@@ -57,21 +56,41 @@ export function Sidebar({ user }: SidebarProps) {
 
   const fetchPendingTasks = useCallback(async () => {
     try {
-      const res = await fetch('/api/status/pending', { cache: 'no-store' });
+      const res = await fetch('/api/status/pending');
       if (!res.ok) return;
       const data = await res.json();
       const count = Number(data?.data?.count);
       setPendingCount(Number.isFinite(count) ? count : 0);
-      setPendingUpdatedAt(Date.now());
+      const updatedAt = Date.now();
+      pendingUpdatedAtRef.current = updatedAt;
+      setPendingUpdatedAt(updatedAt);
     } catch (error) {
       console.error('[Status Panel] Failed to fetch pending tasks:', error);
     }
   }, []);
 
   useEffect(() => {
-    void fetchPendingTasks();
-    const interval = setInterval(fetchPendingTasks, STATUS_POLL_MS);
-    return () => clearInterval(interval);
+    const poll = () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      void fetchPendingTasks();
+    };
+
+    poll();
+    const interval = setInterval(poll, STATUS_POLL_MS);
+    const onVisibility = () => {
+      if (document.hidden) return;
+      const lastUpdatedAt = pendingUpdatedAtRef.current;
+      if (lastUpdatedAt !== null && Date.now() - lastUpdatedAt < STATUS_POLL_MS) {
+        return;
+      }
+      void fetchPendingTasks();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, [fetchPendingTasks]);
 
   return (

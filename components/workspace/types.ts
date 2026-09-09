@@ -7,7 +7,7 @@ import type { CharacterCard, WorkspaceEdge, WorkspaceNode, WorkspaceNodeType, Ch
 export interface PromptTemplate {
   id: string;
   name: string;
-  content: string;
+  content?: string;
 }
 
 // Canvas constants

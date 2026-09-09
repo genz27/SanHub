@@ -1,17 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { createWorkspace, getWorkspaceSummaries } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: '请先登录' }, { status: 401 });
-    }
-
+    const sessionPromise = getServerSession(authOptions);
     const searchParams = request.nextUrl.searchParams;
     const search = searchParams.get('search') || undefined;
     const sort = (searchParams.get('sort') || 'updated') as 'updated' | 'created';
@@ -21,6 +16,12 @@ export async function GET(request: NextRequest) {
     const rawOffset = parseInt(searchParams.get('offset') || '0', 10);
     const offset = Math.max(Number.isFinite(rawOffset) ? rawOffset : 0, 0);
 
+    const session = await sessionPromise;
+    if (!session?.user) {
+      return NextResponse.json({ error: '请先登录' }, { status: 401 });
+    }
+
+    const { getWorkspaceSummaries } = await import('@/lib/db/workspaces-list');
     const workspaces = await getWorkspaceSummaries(session.user.id, {
       search,
       sort,
@@ -40,15 +41,17 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const [session, body] = await Promise.all([
+      getServerSession(authOptions),
+      request.json().catch(() => ({})),
+    ]);
     if (!session?.user) {
       return NextResponse.json({ error: '请先登录' }, { status: 401 });
     }
-
-    const body = await request.json().catch(() => ({}));
     const name = typeof body.name === 'string' && body.name.trim() ? body.name.trim() : '未命名工作空间';
     const data = body.data;
 
+    const { createWorkspace } = await import('@/lib/db/workspaces-writes');
     const workspace = await createWorkspace(session.user.id, name, data);
 
     return NextResponse.json({ success: true, data: workspace });

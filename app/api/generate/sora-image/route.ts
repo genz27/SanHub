@@ -2,13 +2,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { generateImage } from '@/lib/sora-api';
-import { saveGeneration, updateUserBalance, getUserById, updateGeneration, getSystemConfig, refundGenerationBalance } from '@/lib/db';
+import { refundGenerationBalance, updateGeneration } from '@/lib/db/generation-mutations';
+import { saveGeneration } from '@/lib/db/generation-writes';
+import { getPricingConfig } from '@/lib/db/system-config-pricing';
+import { getRateLimitConfig } from '@/lib/db/system-config-rate-limit';
+import { updateUserBalance } from '@/lib/db/user-balance';
+import { getUserById } from '@/lib/db/user-session';
 import { checkRateLimit } from '@/lib/rate-limit';
-import { fetchReferenceImage } from '@/lib/reference-image';
 import type { Generation } from '@/types';
 import { assertPromptsAllowed, isPromptBlockedError } from '@/lib/prompt-blocklist';
-import { saveMediaAsync } from '@/lib/media-storage';
 
 export const maxDuration = 120;
 export const dynamic = 'force-dynamic';
@@ -35,15 +37,19 @@ async function processGenerationTask(
   try {
     console.log(`[Task ${generationId}] 开始处理 Sora 图像生成任务`);
 
-    await updateGeneration(generationId, {
+    const generateImagePromise = import('@/lib/sora-image-api').then((mod) => mod.generateImage);
+    const saveMediaPromise = import('@/lib/media-storage');
+    void updateGeneration(generationId, {
       status: 'processing',
       params: {
         ...generationParams,
         progress: 15,
       },
+    }, userId).catch((err) => {
+      console.error(`[Task ${generationId}] 更新状态失败:`, err);
     });
 
-    // 调用非流式 API
+    const generateImage = await generateImagePromise;
     const result = await generateImage({
       prompt: body.prompt,
       model: body.model || 'sora-image',
@@ -58,19 +64,22 @@ async function processGenerationTask(
 
     const first = result.data[0];
 
-    await updateGeneration(generationId, {
+    void updateGeneration(generationId, {
       status: 'processing',
       params: {
         ...generationParams,
         revised_prompt: first.revised_prompt,
         progress: 85,
       },
+    }, userId).catch((err) => {
+      console.error(`[Task ${generationId}] 更新进度失败:`, err);
     });
 
     const firstUrl = first.url;
     if (!firstUrl) {
       throw new Error('图片生成失败：未返回有效的图片 URL');
     }
+    const { saveMediaAsync } = await saveMediaPromise;
     const savedUrl = await saveMediaAsync(generationId, firstUrl, { publicBaseUrl });
 
     console.log(`[Task ${generationId}] 生成成功:`, savedUrl);
@@ -83,7 +92,7 @@ async function processGenerationTask(
         revised_prompt: first.revised_prompt,
         progress: 100,
       },
-    });
+    }, userId);
 
     console.log(`[Task ${generationId}] 任务完成`);
   } catch (error) {
@@ -92,7 +101,7 @@ async function processGenerationTask(
     await updateGeneration(generationId, {
       status: 'failed',
       errorMessage: error instanceof Error ? error.message : '生成失败',
-    });
+    }, userId);
 
     try {
       await refundGenerationBalance(generationId, userId, prechargedCost);
@@ -104,9 +113,13 @@ async function processGenerationTask(
 
 export async function POST(request: NextRequest) {
   try {
-    const systemConfig = await getSystemConfig();
-    const imageMaxRequests = Math.max(1, Number(systemConfig.rateLimit?.imageMaxRequests) || 30);
-    const imageWindowSeconds = Math.max(1, Number(systemConfig.rateLimit?.imageWindowSeconds) || 60);
+    const [rateLimitConfig, session, body] = await Promise.all([
+      getRateLimitConfig(),
+      getServerSession(authOptions),
+      request.json() as Promise<SoraImageRequest>,
+    ]);
+    const imageMaxRequests = Math.max(1, Number(rateLimitConfig.imageMaxRequests) || 30);
+    const imageWindowSeconds = Math.max(1, Number(rateLimitConfig.imageWindowSeconds) || 60);
     const rateLimit = checkRateLimit(
       request,
       { maxRequests: imageMaxRequests, windowSeconds: imageWindowSeconds },
@@ -119,43 +132,55 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const session = await getServerSession(authOptions);
     if (!session?.user) {
       return NextResponse.json({ error: '请先登录' }, { status: 401 });
     }
 
-    const body: SoraImageRequest = await request.json();
-    const origin = new URL(request.url).origin;
-    const normalizedBody: SoraImageRequest = { ...body };
-
-    if (body.referenceImageUrl && !body.input_image) {
-      const referenceImage = await fetchReferenceImage(body.referenceImageUrl, {
-        origin,
-        userId: session.user.id,
-        userRole: session.user.role,
-        maxBytes: MAX_REFERENCE_IMAGE_BYTES,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        },
-      });
-      normalizedBody.input_image = referenceImage.base64;
-    }
-
-    if (!normalizedBody.prompt) {
+    if (!body.prompt) {
       return NextResponse.json(
         { error: '请输入提示词' },
         { status: 400 }
       );
     }
 
-    await assertPromptsAllowed([normalizedBody.prompt]);
+    void import('@/lib/sora-config').then((mod) => {
+      void mod.warmupSoraConfig();
+    });
+    void import('@/lib/media-storage');
+    const pricingPromise = getPricingConfig();
+    const userPromise = getUserById(session.user.id);
+    const assertPromise = assertPromptsAllowed([body.prompt]);
+    const origin = new URL(request.url).origin;
+    const normalizedBody: SoraImageRequest = { ...body };
+    const referenceImagePromise =
+      body.referenceImageUrl && !body.input_image
+        ? import('@/lib/reference-image').then(({ fetchReferenceImage }) =>
+            fetchReferenceImage(body.referenceImageUrl as string, {
+              origin,
+              userId: session.user.id,
+              userRole: session.user.role,
+              maxBytes: MAX_REFERENCE_IMAGE_BYTES,
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+              },
+            })
+          )
+        : null;
 
-    const user = await getUserById(session.user.id);
+    const [user, , pricing, referenceImage] = await Promise.all([
+      userPromise,
+      assertPromise,
+      pricingPromise,
+      referenceImagePromise,
+    ]);
+    if (referenceImage) {
+      normalizedBody.input_image = referenceImage.base64;
+    }
     if (!user) {
       return NextResponse.json({ error: '用户不存在' }, { status: 401 });
     }
 
-    const estimatedCost = systemConfig.pricing.soraImage || 1;
+    const estimatedCost = pricing.soraImage || 1;
 
     if (user.balance < estimatedCost) {
       return NextResponse.json(

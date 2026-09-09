@@ -7,7 +7,7 @@ import {
   createImageChannel,
   updateImageChannel,
   deleteImageChannel,
-} from '@/lib/db';
+} from '@/lib/db/image-channels';
 import type { ChannelType } from '@/types';
 
 export const dynamic = 'force-dynamic';

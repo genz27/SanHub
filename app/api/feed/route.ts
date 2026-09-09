@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getFeed } from '@/lib/sora-api';
-import { getSystemConfig } from '@/lib/db';
+import { getPublicSystemConfig } from '@/lib/db/system-config-public';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,12 +44,15 @@ function transformPostToFeedItem(item: any) {
 export async function GET(request: NextRequest) {
   try {
     // 验证登录
-    const session = await getServerSession(authOptions);
+    const soraApiPromise = import('@/lib/sora-square');
+    const [session, config] = await Promise.all([
+      getServerSession(authOptions),
+      getPublicSystemConfig(),
+    ]);
     if (!session?.user) {
       return NextResponse.json({ error: '请先登录' }, { status: 401 });
     }
 
-    const config = await getSystemConfig();
     if (!config.featureFlags.squareEnabled) {
       return NextResponse.json({ error: '广场功能未开启' }, { status: 403 });
     }
@@ -60,6 +62,7 @@ export async function GET(request: NextRequest) {
     const cut = (searchParams.get('cut') || 'nf2_latest') as 'nf2_latest' | 'nf2_top';
     const cursor = searchParams.get('cursor') || undefined;
 
+    const { getFeed } = await soraApiPromise;
     const result = await getFeed({ limit, cut, cursor });
     
     // 转换 items 格式

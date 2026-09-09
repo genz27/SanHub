@@ -6,7 +6,7 @@ import {
   createVideoChannel,
   updateVideoChannel,
   deleteVideoChannel,
-} from '@/lib/db';
+} from '@/lib/db/video-channels';
 import type { VideoChannelType } from '@/types';
 
 export const dynamic = 'force-dynamic';

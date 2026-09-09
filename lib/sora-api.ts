@@ -1,204 +1,16 @@
 /* eslint-disable no-console */
-import { getSystemConfig, getVideoChannels, getVideoChannel } from './db';
-import { fetch as undiciFetch, Agent, FormData, type RequestInit as UndiciRequestInit } from 'undici';
-import type { VideoChannel } from '@/types';
-import { fetchWithRetry } from './http-retry';
-import { GENERATION_SUBMIT_TIMEOUT_MS, isTransientError } from './polling-utils';
+import { getSoraConfig, warmupSoraConfig } from './sora-config';
+import { loadUndici } from './undici-http';
+import {
+  applyProxiedVideoUrl,
+  fetchWithRetry,
+  parseVideoUrl,
+  shouldUseApexerVideoContract,
+  soraUndiciFetch,
+} from './sora-http';
 import { logDebug, logInfo, logWarn, logError } from './sora-logger';
 
-// ========================================
-// Sora OpenAI-Style Non-Streaming API
-// ========================================
-
-// 解析视频 URL（处理字符串、JSON 字符串数组、数组等格式）
-function parseVideoUrl(url: string | string[] | unknown): string {
-  if (Array.isArray(url)) {
-    return url.length > 0 ? parseVideoUrl(url[0]) : '';
-  }
-  if (typeof url !== 'string') {
-    return String(url);
-  }
-
-  const trimmed = url.trim();
-  if (!trimmed) {
-    return trimmed;
-  }
-
-  const parsedArray = tryParseJsonArray(trimmed);
-  if (parsedArray) {
-    return normalizeUrlString(parsedArray);
-  }
-
-  const unwrapped = unwrapEncodedArray(trimmed);
-  if (unwrapped) {
-    return normalizeUrlString(unwrapped);
-  }
-
-  if (
-    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'"))
-  ) {
-    const inner = trimmed.slice(1, -1).trim();
-    const innerParsed = tryParseJsonArray(inner);
-    if (innerParsed) {
-      return normalizeUrlString(innerParsed);
-    }
-    const innerUnwrapped = unwrapEncodedArray(inner);
-    if (innerUnwrapped) {
-      return normalizeUrlString(innerUnwrapped);
-    }
-  }
-
-  return trimmed;
-}
-
-function tryParseJsonArray(value: string): string | null {
-  if (!value.startsWith('[')) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(value);
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      return String(parsed[0]);
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-
-function unwrapEncodedArray(value: string): string | null {
-  const trimmed = value.trim();
-  const lower = trimmed.toLowerCase();
-
-  const encodedOpen = '%5b%22';
-  const encodedClose = '%22%5d';
-  if (lower.startsWith(encodedOpen) && lower.endsWith(encodedClose)) {
-    return trimmed.slice(encodedOpen.length, trimmed.length - encodedClose.length);
-  }
-
-  const mixedOpen = '[%22';
-  const mixedClose = '%22]';
-  if (lower.startsWith(mixedOpen) && lower.endsWith(mixedClose)) {
-    return trimmed.slice(mixedOpen.length, trimmed.length - mixedClose.length);
-  }
-
-  return null;
-}
-
-function normalizeUrlString(value: string): string {
-  const trimmed = value.trim();
-  if (/^https?:%2f%2f/i.test(trimmed)) {
-    try {
-      return decodeURIComponent(trimmed);
-    } catch {
-      return trimmed;
-    }
-  }
-  return trimmed;
-}
-
-// 视频代理 URL 替换（将 videos.openai.com 替换为配置的加速域名）
-export async function applyVideoProxy(url: string): Promise<string> {
-  if (!url) return url;
-  
-  try {
-    const config = await getSystemConfig();
-    if (!config.videoProxyEnabled || !config.videoProxyBaseUrl) {
-      return url;
-    }
-    
-    // 检查是否是 OpenAI 视频 URL
-    const openaiVideoPattern = /^https:\/\/videos\.openai\.com\//;
-    if (openaiVideoPattern.test(url)) {
-      // 确保代理 baseUrl 以 / 结尾
-      const proxyBase = config.videoProxyBaseUrl.replace(/\/$/, '') + '/';
-      // 替换域名
-      const proxiedUrl = url.replace(openaiVideoPattern, proxyBase);
-      logDebug('[Video Proxy] URL replaced:', { original: url.substring(0, 80), proxied: proxiedUrl.substring(0, 80) });
-      return proxiedUrl;
-    }
-  } catch (e) {
-    logWarn('[Video Proxy] Failed to apply proxy:', e);
-  }
-  
-  return url;
-}
-
-const DEFAULT_SORA_BASE_URL = 'http://localhost:8000';
-const SORA_REQUEST_TIMEOUT_MS = GENERATION_SUBMIT_TIMEOUT_MS;
-
-type SoraConfig = {
-  apiKey: string;
-  baseUrl: string;
-  channelId?: string;
-  channelType?: VideoChannel['type'] | 'legacy';
-};
-
-let soraChannelCursor = 0;
-
-function isSoraCompatibleChannel(channel: VideoChannel): boolean {
-  return (channel.type === 'sora' || channel.type === 'apexerapi') && Boolean(channel.apiKey);
-}
-
-function pickRoundRobinChannel(channels: VideoChannel[]): VideoChannel {
-  const index = soraChannelCursor % channels.length;
-  soraChannelCursor = (soraChannelCursor + 1) % channels.length;
-  return channels[index];
-}
-
-// 获取 Sora 配置（优先从新渠道表读取，回退到旧 system_config）
-async function getSoraConfig(options?: {
-  channelId?: string;
-  mode?: 'default' | 'round-robin';
-}): Promise<SoraConfig> {
-  if (options?.channelId) {
-    const channel = await getVideoChannel(options.channelId);
-    if (channel && isSoraCompatibleChannel(channel)) {
-      return {
-        apiKey: channel.apiKey,
-        baseUrl: channel.baseUrl || DEFAULT_SORA_BASE_URL,
-        channelId: channel.id,
-        channelType: channel.type,
-      };
-    }
-  }
-
-  const channels = await getVideoChannels(true);
-  const soraChannels = channels.filter(isSoraCompatibleChannel);
-  if (soraChannels.length > 0) {
-    const selected =
-      options?.mode === 'round-robin'
-        ? pickRoundRobinChannel(soraChannels)
-        : soraChannels[0];
-    return {
-      apiKey: selected.apiKey,
-      baseUrl: selected.baseUrl || DEFAULT_SORA_BASE_URL,
-      channelId: selected.id,
-      channelType: selected.type,
-    };
-  }
-
-  const config = await getSystemConfig();
-  return {
-    apiKey: config.soraApiKey || '',
-    baseUrl: config.soraBaseUrl || DEFAULT_SORA_BASE_URL,
-    channelType: 'legacy',
-  };
-}
-
-// 创建自定义 Agent
-const soraAgent = new Agent({
-  bodyTimeout: 0,
-  headersTimeout: SORA_REQUEST_TIMEOUT_MS,
-  keepAliveTimeout: SORA_REQUEST_TIMEOUT_MS,
-  keepAliveMaxTimeout: SORA_REQUEST_TIMEOUT_MS,
-  pipelining: 0,
-  connections: 30,
-  connect: {
-    timeout: SORA_REQUEST_TIMEOUT_MS,
-  },
-});
+export { warmupSoraConfig };
 
 // ========================================
 // Video Generation API (New Format)
@@ -278,34 +90,6 @@ function normalizeApexerVideoRequest(request: VideoGenerationRequest): VideoGene
     seconds: normalizeApexerSeconds(request.seconds, request.model),
     orientation,
     size: request.size || apexerSizeForOrientation(orientation),
-  };
-}
-
-function shouldUseApexerVideoContract(channelType?: SoraConfig['channelType']): boolean {
-  return channelType === 'apexerapi' || channelType === 'sora' || channelType === 'legacy';
-}
-
-function normalizeApexerImageRequest(request: ImageGenerationRequest): ImageGenerationRequest {
-  const requestedModel = String(request.model || '').trim().toLowerCase();
-  const model = !requestedModel || requestedModel.startsWith('sora-image')
-    ? 'gpt-image-2'
-    : request.model;
-
-  let size = request.size;
-  if (!size || size === '1792x1024') {
-    size = requestedModel.includes('landscape') ? '1536x1024' : size;
-  }
-  if (!size || size === '1024x1792') {
-    size = requestedModel.includes('portrait') ? '1024x1536' : size;
-  }
-  if (!size) {
-    size = '1024x1024';
-  }
-
-  return {
-    ...request,
-    model,
-    size,
   };
 }
 
@@ -407,12 +191,11 @@ export async function getVideoStatus(videoId: string, channelId?: string): Promi
   
   logDebug('[Sora API v5] Query video status:', apiUrl);
   
-  const response = await fetchWithRetry(undiciFetch, apiUrl, () => ({
+  const response = await fetchWithRetry(soraUndiciFetch, apiUrl, () => ({
     method: 'GET',
     headers: {
       Authorization: `Bearer ${apiKey}`,
     },
-    dispatcher: soraAgent,
   }));
   
   const rawData = await response.json() as any;
@@ -483,73 +266,6 @@ export async function getVideoStatus(videoId: string, channelId?: string): Promi
   return data as VideoTaskResponse;
 }
 
-// 获取视频内容 URL（通过 /content 端点，跟随 302 重定向）
-export async function getVideoContentUrl(videoId: string, channelId?: string): Promise<string> {
-  const { apiKey, baseUrl } = await getSoraConfig({ channelId });
-  
-  if (!apiKey) {
-    throw new Error('Sora API Key 未配置');
-  }
-  
-  const normalizedBaseUrl = baseUrl.replace(/\/$/, '');
-  const apiUrl = `${normalizedBaseUrl}/v1/videos/${videoId}/content`;
-  
-  logDebug('[Sora API v5] Fetch video content:', apiUrl);
-  
-  // 使用 redirect: 'manual' 来捕获 302 重定向的 Location
-  const requestInit: UndiciRequestInit = {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-    },
-    redirect: 'manual',
-    dispatcher: soraAgent,
-  };
-  const response = await fetchWithRetry(undiciFetch, apiUrl, () => requestInit);
-  
-  logDebug('[Sora API v5] /content status:', response.status);
-  
-  // 如果是重定向（301, 302, 307, 308），返回 Location header 中的实际视频 URL
-  if ([301, 302, 307, 308].includes(response.status)) {
-    const location = response.headers.get('location');
-    logDebug('[Sora API v5] /content redirect location:', location?.substring(0, 100));
-    if (location) {
-      const rawUrl = parseVideoUrl(location);
-      return await applyVideoProxy(rawUrl);
-    }
-  }
-  
-  // 如果是 200，可能直接返回了视频内容或 JSON
-  if (response.status === 200) {
-    const contentType = response.headers.get('content-type') || '';
-    // 如果是 JSON，尝试解析获取 URL
-    if (contentType.includes('application/json')) {
-      const data = await response.json() as any;
-      logDebug('[Sora API v5] /content JSON response:', JSON.stringify(data).substring(0, 200));
-      if (data?.url) {
-        const rawUrl = parseVideoUrl(data.url);
-        return await applyVideoProxy(rawUrl);
-      }
-    }
-  }
-  
-  // 如果是错误响应
-  if (response.status >= 400) {
-    const data = await response.json().catch(() => ({})) as any;
-    const errorMessage = data?.error?.message || `获取视频内容失败: ${response.status}`;
-    logError('[Sora API v5] /content error response', {
-      status: response.status,
-      error: errorMessage,
-      body: JSON.stringify(data).substring(0, 200),
-    });
-    throw new Error(errorMessage);
-  }
-  
-  // 兜底：返回 content URL（不推荐，因为需要认证）
-  logError('[Sora API v5] /content missing redirect; cannot resolve public URL');
-  throw new Error('无法获取视频直链');
-}
-
 // 轮询等待视频完成
 async function pollVideoCompletion(
   videoId: string,
@@ -575,6 +291,7 @@ async function pollVideoCompletion(
       status = await getVideoStatus(videoId, channelId);
       consecutiveStatusErrors = 0;
     } catch (error) {
+      const { isTransientError } = await import('./polling-utils');
       if (!isTransientError(error)) {
         throw error;
       }
@@ -607,6 +324,7 @@ async function pollVideoCompletion(
       if (!status.url) {
         try {
           logDebug('[Sora API v5] Completed without URL, trying /content');
+          const { getVideoContentUrl } = await import('./sora-content');
           const contentUrl = await getVideoContentUrl(videoId, channelId);
           status.url = contentUrl;
         } catch (e) {
@@ -679,6 +397,7 @@ export async function generateVideo(
     hasInputImage: !!upstreamRequest.input_image,
   });
 
+  const { FormData } = await loadUndici();
   const buildFormData = () => {
     const formData = new FormData();
 
@@ -701,13 +420,12 @@ export async function generateVideo(
     return formData;
   };
 
-  const response = await fetchWithRetry(undiciFetch, apiUrl, () => ({
+  const response = await fetchWithRetry(soraUndiciFetch, apiUrl, () => ({
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
     },
     body: buildFormData(),
-    dispatcher: soraAgent,
   }));
 
   const rawData = await response.json() as any;
@@ -791,7 +509,7 @@ export async function generateVideo(
     const isCompleted = isCompletedStatus(taskResponse.status);
     if (taskResponse.url || isCompleted) {
       if (taskResponse.url) {
-        const videoUrl = await applyVideoProxy(parseVideoUrl(taskResponse.url));
+        const videoUrl = await applyProxiedVideoUrl(parseVideoUrl(taskResponse.url));
         logInfo('[Sora API v5] Video generation completed:', videoUrl?.substring(0, 80));
         return {
           id: taskResponse.id,
@@ -831,7 +549,7 @@ export async function generateVideo(
         throw new Error('视频生成完成但未返回 URL');
       }
       
-      const videoUrl = await applyVideoProxy(parseVideoUrl(finalStatus.url));
+      const videoUrl = await applyProxiedVideoUrl(parseVideoUrl(finalStatus.url));
       return {
         id: finalStatus.id,
         object: finalStatus.object || 'video',
@@ -873,6 +591,7 @@ export async function createVideoTask(request: VideoGenerationRequest): Promise<
   const normalizedBaseUrl = baseUrl.replace(/\/$/, '');
   const apiUrl = `${normalizedBaseUrl}/v1/videos`;
 
+  const { FormData } = await loadUndici();
   const buildFormData = () => {
     const formData = new FormData();
 
@@ -895,13 +614,12 @@ export async function createVideoTask(request: VideoGenerationRequest): Promise<
     return formData;
   };
 
-  const response = await fetchWithRetry(undiciFetch, apiUrl, () => ({
+  const response = await fetchWithRetry(soraUndiciFetch, apiUrl, () => ({
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
     },
     body: buildFormData(),
-    dispatcher: soraAgent,
   }));
 
   const data = await response.json() as any;
@@ -949,7 +667,7 @@ export async function remixVideo(
     model: upstreamRequest.model,
   });
 
-  const response = await fetchWithRetry(undiciFetch, apiUrl, () => ({
+  const response = await fetchWithRetry(soraUndiciFetch, apiUrl, () => ({
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -965,7 +683,6 @@ export async function remixVideo(
       remix_target_id: upstreamRequest.remix_target_id,
       async_mode: upstreamRequest.async_mode ?? true,
     }),
-    dispatcher: soraAgent,
   }));
 
   const rawData = await response.json() as any;
@@ -980,7 +697,7 @@ export async function remixVideo(
 
   // 如果已完成且有 URL
   if (isCompletedStatus(taskResponse.status) && taskResponse.url) {
-    const videoUrl = await applyVideoProxy(parseVideoUrl(taskResponse.url));
+    const videoUrl = await applyProxiedVideoUrl(parseVideoUrl(taskResponse.url));
     return {
       id: taskResponse.id,
       object: taskResponse.object || 'video',
@@ -1008,7 +725,7 @@ export async function remixVideo(
       throw new Error('Remix 完成但未返回 URL');
     }
 
-    const videoUrl = await applyVideoProxy(parseVideoUrl(finalStatus.url));
+    const videoUrl = await applyProxiedVideoUrl(parseVideoUrl(finalStatus.url));
     return {
       id: finalStatus.id,
       object: finalStatus.object || 'video',
@@ -1045,7 +762,7 @@ export async function createRemixTask(
     ? `${normalizedBaseUrl}/v1/videos`
     : `${normalizedBaseUrl}/v1/videos/${encodeURIComponent(videoId)}/remix`;
 
-  const response = await fetchWithRetry(undiciFetch, apiUrl, () => ({
+  const response = await fetchWithRetry(soraUndiciFetch, apiUrl, () => ({
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -1061,7 +778,6 @@ export async function createRemixTask(
       remix_target_id: upstreamRequest.remix_target_id,
       async_mode: true,
     }),
-    dispatcher: soraAgent,
   }));
 
   const data = await response.json() as any;
@@ -1071,513 +787,4 @@ export async function createRemixTask(
   }
 
   return data as VideoTaskResponse;
-}
-
-
-// ========================================
-// Image Generation API
-// ========================================
-
-export interface ImageGenerationRequest {
-  prompt: string;
-  model?: string;
-  n?: number;
-  size?: string;
-  quality?: 'standard' | 'hd';
-  style?: 'natural' | 'vivid';
-  response_format?: 'url' | 'b64_json';
-  input_image?: string; // Base64 encoded image
-}
-
-export interface ImageGenerationResponse {
-  created: number;
-  data: Array<{
-    url?: string;
-    b64_json?: string;
-    revised_prompt?: string;
-  }>;
-}
-
-export async function generateImage(request: ImageGenerationRequest): Promise<ImageGenerationResponse> {
-  const { apiKey, baseUrl, channelType } = await getSoraConfig();
-  const upstreamRequest = shouldUseApexerVideoContract(channelType)
-    ? normalizeApexerImageRequest(request)
-    : request;
-
-  if (!apiKey) {
-    throw new Error('Sora API Key 未配置，请在管理后台「视频渠道」中配置 Sora 渠道');
-  }
-
-  if (!baseUrl) {
-    throw new Error('Sora Base URL 未配置');
-  }
-
-  const normalizedBaseUrl = baseUrl.replace(/\/$/, '');
-  const apiUrl = `${normalizedBaseUrl}/v1/images/generations`;
-
-  logInfo('[Sora API] Image generation request:', {
-    apiUrl,
-    model: upstreamRequest.model,
-    prompt: upstreamRequest.prompt?.substring(0, 50),
-  });
-
-  const response = await fetchWithRetry(undiciFetch, apiUrl, () => ({
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(upstreamRequest),
-    dispatcher: soraAgent,
-  }));
-
-  const data = await response.json() as any;
-
-  if (!response.ok) {
-    const errorMessage = data?.error?.message || data?.message || '图片生成失败';
-    logError('[Sora API] Image generation failed:', errorMessage);
-    throw new Error(errorMessage);
-  }
-
-  logInfo('[Sora API] Image generation completed');
-  return data as ImageGenerationResponse;
-}
-
-// ========================================
-// Character Card API
-// ========================================
-
-export interface CharacterCardRequest {
-  // 视频模式（二选一）
-  video_base64?: string;
-  // 图生角色卡模式（二选一）
-  input_image?: string; // Base64 编码的参考图片
-  prompt?: string; // 图生角色卡时的提示词（可选）
-  style_id?: string; // 视频风格（仅图生角色卡时生效）
-  // 通用参数
-  model?: string;
-  timestamps?: string;
-  username?: string;
-  display_name?: string;
-  instruction_set?: string;
-  safety_instruction_set?: string;
-}
-
-export interface CharacterCardResponse {
-  id: string;
-  object: string;
-  created: number;
-  model: string;
-  data: {
-    cameo_id: string;
-    username: string;
-    display_name?: string;
-    message: string;
-    generation_id?: string; // 图生角色卡时返回的生成 ID
-  };
-}
-
-export async function createCharacterCard(request: CharacterCardRequest): Promise<CharacterCardResponse> {
-  const { apiKey, baseUrl } = await getSoraConfig();
-
-  if (!apiKey) {
-    throw new Error('Sora API Key 未配置，请在管理后台「视频渠道」中配置 Sora 渠道');
-  }
-
-  if (!baseUrl) {
-    throw new Error('Sora Base URL 未配置');
-  }
-
-  // 检查是视频模式还是图生角色卡模式
-  const isImageMode = !request.video_base64 && request.input_image;
-  if (!request.video_base64 && !request.input_image) {
-    throw new Error('请提供视频或参考图片');
-  }
-
-  const normalizedBaseUrl = baseUrl.replace(/\/$/, '');
-  const apiUrl = `${normalizedBaseUrl}/v1/characters`;
-
-  logInfo('[Sora API] Character card request', { mode: isImageMode ? 'image' : 'video' });
-
-  const buildFormData = () => {
-    const formData = new FormData();
-    formData.append('model', request.model || 'sora-video-10s');
-    if (request.timestamps) formData.append('timestamps', request.timestamps);
-    if (request.username) formData.append('username', request.username);
-    if (request.display_name) formData.append('display_name', request.display_name);
-    if (request.instruction_set) formData.append('instruction_set', request.instruction_set);
-    if (request.safety_instruction_set) formData.append('safety_instruction_set', request.safety_instruction_set);
-
-    if (isImageMode) {
-      // 图生角色卡模式
-      if (request.prompt) formData.append('prompt', request.prompt);
-      if (request.style_id) formData.append('style_id', request.style_id);
-      const imageBuffer = Buffer.from(request.input_image!, 'base64');
-      const imageBlob = new Blob([imageBuffer], { type: 'image/jpeg' });
-      formData.append('input_reference', imageBlob, 'reference.jpg');
-    } else {
-      // 视频模式
-      formData.append('timestamps', request.timestamps || '0,3');
-      const videoBuffer = Buffer.from(request.video_base64!, 'base64');
-      const videoBlob = new Blob([videoBuffer], { type: 'video/mp4' });
-      formData.append('video', videoBlob, 'video.mp4');
-    }
-
-    return formData;
-  };
-
-  const response = await fetchWithRetry(undiciFetch, apiUrl, () => ({
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: buildFormData(),
-    dispatcher: soraAgent,
-  }));
-
-  const data = await response.json() as any;
-
-  if (!response.ok) {
-    const errorMessage = data?.error?.message || data?.message || '角色卡创建失败';
-    logError('[Sora API] Character card failed:', errorMessage);
-    throw new Error(errorMessage);
-  }
-
-  logInfo('[Sora API] Character card completed:', JSON.stringify(data, null, 2));
-  return data as CharacterCardResponse;
-}
-
-// ========================================
-// Feed API (Public Feed)
-// ========================================
-
-export interface FeedRequest {
-  limit?: number;
-  cut?: 'nf2_latest' | 'nf2_top';
-  cursor?: string;
-}
-
-export interface FeedItem {
-  id: string;
-  text: string;
-  permalink: string;
-  preview_image_url: string;
-  posted_at: string;
-  like_count: number;
-  view_count: number;
-  remix_count: number;
-  attachment: {
-    kind: string;
-    url: string;
-    downloadable_url: string;
-    width: number;
-    height: number;
-    n_frames?: number;
-    duration_seconds?: number;
-  };
-  author: {
-    user_id: string;
-    username: string;
-    display_name: string;
-    profile_picture_url: string;
-  };
-}
-
-export interface FeedResponse {
-  success: boolean;
-  cut: string;
-  count: number;
-  cursor: string;
-  items: FeedItem[];
-}
-
-export async function getFeed(request: FeedRequest = {}): Promise<FeedResponse> {
-  const { apiKey, baseUrl } = await getSoraConfig();
-
-  if (!apiKey) {
-    throw new Error('Sora API Key 未配置');
-  }
-
-  if (!baseUrl) {
-    throw new Error('Sora Base URL 未配置');
-  }
-
-  const normalizedBaseUrl = baseUrl.replace(/\/$/, '');
-  const params = new URLSearchParams();
-  if (request.limit) params.append('limit', String(request.limit));
-  if (request.cut) params.append('cut', request.cut);
-  if (request.cursor) params.append('cursor', request.cursor);
-
-  const apiUrl = `${normalizedBaseUrl}/v1/feed?${params.toString()}`;
-
-  const response = await fetchWithRetry(undiciFetch, apiUrl, () => ({
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-    },
-    dispatcher: soraAgent,
-  }));
-
-  const data = await response.json() as any;
-
-  if (!response.ok) {
-    throw new Error(data?.error?.message || 'Feed 获取失败');
-  }
-
-  return data as FeedResponse;
-}
-
-// ========================================
-// User Profile API
-// ========================================
-
-export interface ProfileResponse {
-  success: boolean;
-  profile: {
-    user_id: string;
-    username: string;
-    display_name: string;
-    profile_picture_url: string;
-    follower_count: number;
-  };
-}
-
-export async function getProfile(username: string): Promise<ProfileResponse> {
-  const { apiKey, baseUrl } = await getSoraConfig();
-
-  if (!apiKey) {
-    throw new Error('Sora API Key 未配置');
-  }
-
-  if (!baseUrl) {
-    throw new Error('Sora Base URL 未配置');
-  }
-
-  const normalizedBaseUrl = baseUrl.replace(/\/$/, '');
-  const apiUrl = `${normalizedBaseUrl}/v1/profiles/${encodeURIComponent(username)}`;
-
-  const response = await fetchWithRetry(undiciFetch, apiUrl, () => ({
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-    },
-    dispatcher: soraAgent,
-  }));
-
-  const data = await response.json() as any;
-
-  if (!response.ok) {
-    throw new Error(data?.error?.message || '用户资料获取失败');
-  }
-
-  return data as ProfileResponse;
-}
-
-// ========================================
-// User Feed API
-// ========================================
-
-export interface UserFeedRequest {
-  user_id: string;
-  limit?: number;
-  cursor?: string;
-}
-
-export async function getUserFeed(request: UserFeedRequest): Promise<FeedResponse> {
-  const { apiKey, baseUrl } = await getSoraConfig();
-
-  if (!apiKey) {
-    throw new Error('Sora API Key 未配置');
-  }
-
-  if (!baseUrl) {
-    throw new Error('Sora Base URL 未配置');
-  }
-
-  const normalizedBaseUrl = baseUrl.replace(/\/$/, '');
-  const params = new URLSearchParams();
-  if (request.limit) params.append('limit', String(request.limit));
-  if (request.cursor) params.append('cursor', request.cursor);
-
-  const apiUrl = `${normalizedBaseUrl}/v1/users/${encodeURIComponent(request.user_id)}/feed?${params.toString()}`;
-
-  const response = await fetchWithRetry(undiciFetch, apiUrl, () => ({
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-    },
-    dispatcher: soraAgent,
-  }));
-
-  const data = await response.json() as any;
-
-  if (!response.ok) {
-    throw new Error(data?.error?.message || '用户内容获取失败');
-  }
-
-  return data as FeedResponse;
-}
-
-// ========================================
-// Character Search API
-// ========================================
-
-export interface CharacterSearchRequest {
-  username: string;
-  intent?: 'users' | 'cameo';
-  limit?: number;
-}
-
-export interface CharacterSearchResponse {
-  success: boolean;
-  query: string;
-  count: number;
-  results: Array<{
-    user_id: string;
-    username: string;
-    display_name: string;
-    profile_picture_url: string;
-    can_cameo: boolean;
-    token: string;
-  }>;
-}
-
-export async function searchCharacters(request: CharacterSearchRequest): Promise<CharacterSearchResponse> {
-  const { apiKey, baseUrl } = await getSoraConfig();
-
-  if (!apiKey) {
-    throw new Error('Sora API Key 未配置');
-  }
-
-  if (!baseUrl) {
-    throw new Error('Sora Base URL 未配置');
-  }
-
-  const normalizedBaseUrl = baseUrl.replace(/\/$/, '');
-  const params = new URLSearchParams();
-  params.append('username', request.username);
-  if (request.intent) params.append('intent', request.intent);
-  if (request.limit) params.append('limit', String(request.limit));
-
-  const apiUrl = `${normalizedBaseUrl}/v1/characters/search?${params.toString()}`;
-
-  const response = await fetchWithRetry(undiciFetch, apiUrl, () => ({
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-    },
-    dispatcher: soraAgent,
-  }));
-
-  const data = await response.json() as any;
-
-  if (!response.ok) {
-    throw new Error(data?.error?.message || '角色搜索失败');
-  }
-
-  return data as CharacterSearchResponse;
-}
-
-// ========================================
-// Invite Code API
-// ========================================
-
-export interface InviteCodeResponse {
-  success: boolean;
-  invite_code: string;
-  remaining_count: number;
-  total_count: number;
-  email: string;
-}
-
-export async function getInviteCode(): Promise<InviteCodeResponse> {
-  const { apiKey, baseUrl } = await getSoraConfig();
-
-  if (!apiKey) {
-    throw new Error('Sora API Key 未配置');
-  }
-
-  if (!baseUrl) {
-    throw new Error('Sora Base URL 未配置');
-  }
-
-  const normalizedBaseUrl = baseUrl.replace(/\/$/, '');
-  const apiUrl = `${normalizedBaseUrl}/v1/invite-codes`;
-
-  const response = await fetchWithRetry(undiciFetch, apiUrl, () => ({
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-    },
-    dispatcher: soraAgent,
-  }));
-
-  const data = await response.json() as any;
-
-  if (!response.ok) {
-    throw new Error(data?.error?.message || '邀请码获取失败');
-  }
-
-  return data as InviteCodeResponse;
-}
-
-
-// ========================================
-// Prompt Enhancement API
-// ========================================
-
-export interface EnhancePromptRequest {
-  prompt: string;
-  expansion_level?: 'short' | 'medium' | 'long';
-  duration_s?: 10 | 15;
-}
-
-export interface EnhancePromptResponse {
-  enhanced_prompt: string;
-}
-
-export async function enhancePrompt(request: EnhancePromptRequest): Promise<EnhancePromptResponse> {
-  const { apiKey, baseUrl } = await getSoraConfig();
-
-  if (!apiKey) {
-    throw new Error('Sora API Key 未配置');
-  }
-
-  if (!baseUrl) {
-    throw new Error('Sora Base URL 未配置');
-  }
-
-  const normalizedBaseUrl = baseUrl.replace(/\/$/, '');
-  const apiUrl = `${normalizedBaseUrl}/v1/enhance_prompt`;
-
-  logInfo('[Sora API] Prompt enhance request:', {
-    prompt: request.prompt?.substring(0, 50),
-    expansion_level: request.expansion_level,
-    duration_s: request.duration_s,
-  });
-
-  const response = await fetchWithRetry(undiciFetch, apiUrl, () => ({
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      prompt: request.prompt,
-      expansion_level: request.expansion_level || 'medium',
-      duration_s: request.duration_s,
-    }),
-    dispatcher: soraAgent,
-  }));
-
-  const data = await response.json() as any;
-
-  if (!response.ok) {
-    const errorMessage = data?.error?.message || data?.message || '提示词增强失败';
-    logError('[Sora API] Prompt enhance failed:', errorMessage);
-    throw new Error(errorMessage);
-  }
-
-  logInfo('[Sora API] Prompt enhance completed');
-  return data as EnhancePromptResponse;
 }

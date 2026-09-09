@@ -8,7 +8,7 @@ import {
   createImageModel,
   updateImageModel,
   deleteImageModel,
-} from '@/lib/db';
+} from '@/lib/db/image-channels';
 
 export const dynamic = 'force-dynamic';
 

@@ -1,27 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { initializeDatabase } from '@/lib/db';
-import { createDatabaseAdapter } from '@/lib/db-adapter';
+import { deleteAllUserCharacterCards } from '@/lib/db/character-card-writes';
 
-export async function POST(request: NextRequest) {
+export async function POST(_request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    
+
     if (!session?.user) {
       return NextResponse.json({ error: '请先登录' }, { status: 401 });
     }
 
-    await initializeDatabase();
-    const db = createDatabaseAdapter();
-
-    // 删除用户所有角色卡
-    const [result] = await db.execute(
-      'DELETE FROM character_cards WHERE user_id = ?',
-      [session.user.id]
-    );
-
-    const deletedCount = (result as any).affectedRows || 0;
+    const deletedCount = await deleteAllUserCharacterCards(session.user.id);
 
     return NextResponse.json({
       success: true,

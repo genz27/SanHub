@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getPendingGenerations } from '@/lib/db';
+import { getPendingGenerations, type UserGenerationKindFilter } from '@/lib/db/generation-list-reads';
 import type { Generation } from '@/types';
+
+const TASK_KINDS = new Set<UserGenerationKindFilter>(['all', 'video', 'image']);
+
+function parseTaskKind(value: string | null): UserGenerationKindFilter {
+  return value && TASK_KINDS.has(value as UserGenerationKindFilter)
+    ? (value as UserGenerationKindFilter)
+    : 'all';
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -18,7 +26,8 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const rawLimit = parseInt(searchParams.get('limit') || '50');
     const limit = Math.min(Math.max(Number.isFinite(rawLimit) ? rawLimit : 50, 1), 200);
-    const tasks = await getPendingGenerations(session.user.id, limit);
+    const kind = parseTaskKind(searchParams.get('kind'));
+    const tasks = await getPendingGenerations(session.user.id, limit, { kind });
 
     return NextResponse.json({
       data: tasks.map((t: Generation) => ({
