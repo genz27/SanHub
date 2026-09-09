@@ -35,6 +35,7 @@ import {
   replaceActiveTasks,
   shouldResyncGenerationFeed,
 } from '@/lib/generation-state';
+import { useClearFailedTasks } from '@/components/generator/use-clear-failed-tasks';
 
 const ResultGallery = dynamic(
   () => import('@/components/generator/result-gallery').then((mod) => mod.ResultGallery),
@@ -149,11 +150,19 @@ export function ImageGenerationPage({
   const [images, setImages] = useState<Array<{ file: File; preview: string }>>([]);
   const [generations, setGenerations] = useState<Generation[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const {
+    clearingFailedTasks,
+    clearFailedTasks,
+    dismissFailedTaskIds,
+    isClearingFailedTasks,
+    rejectDismissedFailedTasks,
+  } = useClearFailedTasks(setTasks);
+  const tasksRef = useRef(tasks);
+  tasksRef.current = tasks;
   const [submitting, setSubmitting] = useState(false);
   const [compressing, setCompressing] = useState(false);
   const [compressedCache, setCompressedCache] = useState<Map<File, string>>(new Map());
   const [busyGenerationId, setBusyGenerationId] = useState<string | null>(null);
-  const [clearingFailedTasks, setClearingFailedTasks] = useState(false);
   const [error, setError] = useState('');
   const [keepPrompt, setKeepPrompt] = useState(false);
 
@@ -330,21 +339,23 @@ export function ImageGenerationPage({
         generation.status === 'completed' &&
         isTerminalGenerationStatus(generation.status)
     );
-    const failedImageTasks = imageGenerations
-      .filter((generation) => isFailedGenerationStatus(generation.status))
-      .map(
-        (generation) =>
-          ({
-            ...buildTaskFromGeneration(generation),
-            persisted: true,
-          }) satisfies Task
-      );
+    const failedImageTasks = rejectDismissedFailedTasks(
+      imageGenerations
+        .filter((generation) => isFailedGenerationStatus(generation.status))
+        .map(
+          (generation) =>
+            ({
+              ...buildTaskFromGeneration(generation),
+              persisted: true,
+            }) satisfies Task
+        )
+    );
 
     setGenerations((prev) => mergeGenerationsById(prev, completedImageGenerations));
     if (failedImageTasks.length > 0) {
       setTasks((prev) => mergeTasksById(prev, failedImageTasks));
     }
-  }, []);
+  }, [rejectDismissedFailedTasks]);
 
   const markTaskAsFailed = useCallback((taskId: string, errorMessage: string, persisted = true) => {
     setTasks((prev) =>
@@ -361,47 +372,9 @@ export function ImageGenerationPage({
     );
   }, []);
 
-  const handleClearFailedTasks = useCallback(async () => {
-    if (clearingFailedTasks) return;
-
-    const failedTasks = tasks.filter((task) => isFailedGenerationStatus(task.status));
-    if (failedTasks.length === 0) return;
-
-    const confirmed = window.confirm('确认清理当前生成页的错误记录吗？');
-    if (!confirmed) return;
-
-    const failedTaskIds = failedTasks
-      .filter((task) => task.persisted !== false)
-      .map((task) => task.id);
-    const localOnlyCount = failedTasks.length - failedTaskIds.length;
-    setClearingFailedTasks(true);
-    setTasks((prev) => prev.filter((task) => !isFailedGenerationStatus(task.status)));
-
-    try {
-      const { deleteGenerationRecords } = await import('@/lib/generation-delete');
-      const deletedCount = await deleteGenerationRecords(failedTaskIds);
-      const description = [
-        deletedCount > 0 ? `已删除 ${deletedCount} 条历史错误记录` : '',
-        localOnlyCount > 0 ? `已移除 ${localOnlyCount} 条本地查询错误` : '',
-      ]
-        .filter(Boolean)
-        .join('，') || '没有需要删除的历史错误记录';
-
-      toast({
-        title: '错误任务已清理',
-        description,
-      });
-    } catch (err) {
-      setTasks((prev) => mergeTasksById(prev, failedTasks));
-      toast({
-        title: '清理失败',
-        description: err instanceof Error ? err.message : '清理错误任务失败',
-        variant: 'destructive',
-      });
-    } finally {
-      setClearingFailedTasks(false);
-    }
-  }, [clearingFailedTasks, tasks]);
+  const handleClearFailedTasks = useCallback(() => {
+    void clearFailedTasks(tasksRef.current);
+  }, [clearFailedTasks]);
 
   const pollTaskStatus = useCallback(
     async (taskId: string, taskPrompt: string): Promise<void> => {
@@ -514,6 +487,7 @@ export function ImageGenerationPage({
     }
 
     const resyncGenerationFeed = (force = false, includeUsage = false) => {
+      if (isClearingFailedTasks()) return;
       if (!force && !shouldResyncGenerationFeed(lastFeedResyncAtRef.current)) {
         return;
       }
@@ -539,7 +513,7 @@ export function ImageGenerationPage({
       abortControllers.forEach((controller) => controller.abort());
       abortControllers.clear();
     };
-  }, [isActive, refreshGenerationFeed]);
+  }, [isActive, isClearingFailedTasks, refreshGenerationFeed]);
 
   const handleRemoveTask = useCallback(async (taskId: string) => {
     const controller = abortControllersRef.current.get(taskId);
@@ -548,6 +522,8 @@ export function ImageGenerationPage({
       abortControllersRef.current.delete(taskId);
     }
 
+    dismissFailedTaskIds([taskId]);
+
     try {
       await fetch(`/api/user/tasks/${taskId}`, { method: 'DELETE' });
     } catch (err) {
@@ -555,7 +531,7 @@ export function ImageGenerationPage({
     }
 
     setTasks((prev) => prev.filter((task) => task.id !== taskId));
-  }, []);
+  }, [dismissFailedTaskIds]);
 
   const handleRemoveGeneration = useCallback(
     async (generation: Generation) => {
