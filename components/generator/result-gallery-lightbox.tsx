@@ -7,6 +7,7 @@ import {
   ExternalLink,
   Image as ImageIcon,
   Loader2,
+  Pencil,
   Trash2,
   Video,
   X,
@@ -54,6 +55,7 @@ export function ResultGalleryLightbox({
   onCloseSelected,
   onCloseFailed,
   onReuseGeneration,
+  onEditGeneration,
   onRemoveGeneration,
 }: {
   selected: Generation | null;
@@ -63,6 +65,7 @@ export function ResultGalleryLightbox({
   onCloseSelected: () => void;
   onCloseFailed: () => void;
   onReuseGeneration?: (generation: Generation, target: 'image' | 'video') => void;
+  onEditGeneration?: (generation: Generation) => void;
   onRemoveGeneration?: (generation: Generation) => void;
 }) {
   if (!selected && !selectedFailedTask) return null;
@@ -126,6 +129,23 @@ export function ResultGalleryLightbox({
             <aside className="flex w-full shrink-0 flex-col border-t border-border/70 md:max-w-[380px] md:border-l md:border-t-0">
               <div className="flex-1 min-h-0 space-y-4 overflow-y-auto p-4 md:p-5">
                 <div className="space-y-3">
+                  {onEditGeneration && !isVideoGeneration(selected) && (
+                    <button
+                      type="button"
+                      onClick={() => onEditGeneration(selected)}
+                      className="flex w-full items-center gap-2.5 rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2.5 text-left transition-colors hover:bg-sky-500/16"
+                    >
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sky-500/20 text-sky-300">
+                        <Pencil className="h-4 w-4" />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-sm font-medium text-foreground">区域编辑</span>
+                        <span className="block text-[11px] text-muted-foreground">
+                          框选、画圈或选中后局部修改
+                        </span>
+                      </span>
+                    </button>
+                  )}
                   {canReuse && onReuseGeneration && (
                     <div className="space-y-2">
                       <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/35">
