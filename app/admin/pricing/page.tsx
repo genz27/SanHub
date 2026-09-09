@@ -82,6 +82,9 @@ export default function PricingPage() {
         <div>
           <h1 className="text-2xl sm:text-3xl font-extralight text-foreground">积分定价</h1>
           <p className="text-foreground/50 mt-1 font-light text-sm sm:text-base">配置各项服务消耗的积分数量</p>
+          <p className="mt-2 text-xs text-muted-foreground">
+            渠道模型上的价格优先用于实际计费，本页只作为没有模型价时的兜底。
+          </p>
         </div>
         <button
           onClick={saveConfig}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from '@/components/ui/toaster';
-import type { CharacterCard, WorkspaceData, WorkspaceEdge, WorkspaceNode, ChatModel } from '@/types';
+import type { WorkspaceData, WorkspaceEdge, WorkspaceNode, ChatModel } from '@/types';
 import type { PromptTemplate } from '../types';
 
 interface UseWorkspaceDataOptions {
@@ -27,7 +27,6 @@ interface UseWorkspaceDataReturn {
   handleSave: () => Promise<void>;
   
   // External data
-  characterCards: CharacterCard[];
   chatModels: Pick<ChatModel, 'id' | 'name' | 'supportsVision' | 'enabled'>[];
   promptTemplates: PromptTemplate[];
 }
@@ -40,7 +39,6 @@ export function useWorkspaceData({ workspaceId }: UseWorkspaceDataOptions): UseW
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   
-  const [characterCards, setCharacterCards] = useState<CharacterCard[]>([]);
   const [chatModels, setChatModels] = useState<Pick<ChatModel, 'id' | 'name' | 'supportsVision' | 'enabled'>[]>([]);
   const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([]);
   
@@ -100,24 +98,10 @@ export function useWorkspaceData({ workspaceId }: UseWorkspaceDataOptions): UseW
 
   useEffect(() => {
     const loadCatalogs = async () => {
-      const [cardsRes, chatRes, promptsRes] = await Promise.all([
-        fetch('/api/user/character-cards?status=completed&fields=picker'),
+      const [chatRes, promptsRes] = await Promise.all([
         fetch('/api/chat/models?fields=picker'),
         fetch('/api/prompts?fields=names'),
       ]);
-
-      try {
-        if (cardsRes.ok) {
-          const data = await cardsRes.json();
-          setCharacterCards(
-            (data.data || []).filter(
-              (card: CharacterCard) => card.characterName
-            )
-          );
-        }
-      } catch (error) {
-        console.error('Failed to load character cards:', error);
-      }
 
       try {
         if (chatRes.ok) {
@@ -188,7 +172,6 @@ export function useWorkspaceData({ workspaceId }: UseWorkspaceDataOptions): UseW
     setNodesDirty,
     setEdgesDirty,
     handleSave,
-    characterCards,
     chatModels,
     promptTemplates,
   };

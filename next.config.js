@@ -51,6 +51,7 @@ const nextConfig = {
     return [
       { source: '/agents', destination: '/create', permanent: true },
       { source: '/agents/:path*', destination: '/create', permanent: true },
+      { source: '/video/character-card', destination: '/create', permanent: true },
     ];
   },
   

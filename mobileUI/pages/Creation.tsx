@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Surface, Button, SectionTitle } from '../components/ui/Theme';
-import { Wand2, Image as ImageIcon, Video as VideoIcon, Sparkles, Settings2, Download, Users, Layers, Film, Scissors, UserSquare2 } from 'lucide-react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Wand2, Image as ImageIcon, Video as VideoIcon, Sparkles, Settings2, Download, Users, Layers, Film, Scissors } from 'lucide-react';
 
 // --- Image Generation Component ---
 
@@ -137,54 +136,11 @@ export const ImageGeneration: React.FC = () => {
   );
 };
 
-// --- Character Card Component ---
-
-export const CharacterCard: React.FC = () => {
-  return (
-    <div className="max-w-2xl mx-auto space-y-6">
-       <div className="mb-6">
-        <h2 className="text-2xl font-light text-white tracking-tight">角色卡提取</h2>
-        <p className="text-white/40 text-sm mt-1">从视频或图像中提取一致性角色特征</p>
-      </div>
-      
-      <Surface className="p-8 border-dashed border-2 border-white/10 bg-transparent hover:bg-white/5 transition-colors cursor-pointer text-center space-y-4">
-         <div className="w-16 h-16 rounded-full bg-amber-500/10 flex items-center justify-center mx-auto">
-            <UserSquare2 className="w-8 h-8 text-amber-500" />
-         </div>
-         <div>
-            <h3 className="text-white font-medium">上传素材</h3>
-            <p className="text-xs text-white/40 mt-1">支持 MP4, PNG, JPG (Max 50MB)</p>
-         </div>
-      </Surface>
-
-      <div className="grid grid-cols-2 gap-4">
-         <Surface className="aspect-[3/4] flex items-center justify-center bg-black/20">
-            <span className="text-xs text-white/20">原始素材</span>
-         </Surface>
-         <Surface className="aspect-[3/4] flex items-center justify-center bg-black/20 border-amber-500/20">
-            <span className="text-xs text-amber-500/50">提取结果预览</span>
-         </Surface>
-      </div>
-
-      <Button className="w-full bg-amber-600 hover:bg-amber-700 text-white border-none py-4 h-auto">
-        开始提取 (消耗 20 积分)
-      </Button>
-    </div>
-  )
-}
-
 // --- Video Generation Component ---
 
 export const VideoGeneration: React.FC = () => {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const isCharacterCard = location.pathname.includes('character-card');
   const [activeTab, setActiveTab] = useState<'sora' | 'remix' | 'storyboard'>('sora');
 
-  if (isCharacterCard) {
-    return <CharacterCard />;
-  }
-  
   return (
     <div className="max-w-4xl mx-auto h-full flex flex-col">
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6 gap-4">
@@ -215,14 +171,6 @@ export const VideoGeneration: React.FC = () => {
            ))}
         </div>
         
-        <Button 
-          variant="outline" 
-          size="sm" 
-          onClick={() => navigate('/video/character-card')}
-          className="hidden md:flex items-center gap-2 text-amber-400 border-amber-400/20 hover:bg-amber-400/10"
-        >
-          <UserSquare2 className="w-4 h-4" /> 角色提取
-        </Button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1">
@@ -271,16 +219,6 @@ export const VideoGeneration: React.FC = () => {
                  生成视频
                </Button>
            </Surface>
-           
-           {/* Mobile Only Character Card Button */}
-           <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => navigate('/video/character-card')}
-            className="md:hidden w-full flex items-center justify-center gap-2 text-amber-400 border-amber-400/20 hover:bg-amber-400/10"
-          >
-            <UserSquare2 className="w-4 h-4" /> 去提取角色卡
-          </Button>
         </div>
 
         <div className="flex flex-col gap-4">

@@ -16,14 +16,13 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type {
-  CharacterCard,
   ChatModel,
   SafeImageModel,
   SafeVideoModel,
   WorkspaceEdge,
   WorkspaceNode,
 } from '@/types';
-import { CHAT_MAX_LENGTH, type HoveredCardState, type PromptTemplate } from './types';
+import { CHAT_MAX_LENGTH, type PromptTemplate } from './types';
 
 export interface WorkspaceNodeCardProps {
   node: WorkspaceNode;
@@ -36,8 +35,6 @@ export interface WorkspaceNodeCardProps {
   videoModels: SafeVideoModel[];
   chatModels: Array<Pick<ChatModel, 'id' | 'name' | 'supportsVision' | 'enabled'>>;
   promptTemplates: PromptTemplate[];
-  characterCards: CharacterCard[];
-  hoveredCard: HoveredCardState | null;
   onStartDrag: (event: React.PointerEvent, node: WorkspaceNode) => void;
   onUpdateNode: (id: string, partial: Partial<WorkspaceNode>) => void;
   onUpdateNodeData: (id: string, partial: Partial<WorkspaceNode['data']>) => void;
@@ -47,10 +44,6 @@ export interface WorkspaceNodeCardProps {
   onGenerate: (node: WorkspaceNode) => void;
   onStartConnect: (nodeId: string) => void;
   onFinishConnect: (nodeId: string) => void;
-  onInsertCharacterMention: (nodeId: string, mention: string) => void;
-  onLoadCharacterCards: () => void;
-  onHoverCard: (state: HoveredCardState) => void;
-  onLeaveCard: (cardId: string) => void;
   onPromptTemplateLoaded: (templateId: string, content: string) => void;
 }
 
@@ -65,8 +58,6 @@ export function WorkspaceNodeCard({
   videoModels,
   chatModels,
   promptTemplates,
-  characterCards,
-  hoveredCard,
   onStartDrag,
   onUpdateNode,
   onUpdateNodeData,
@@ -76,10 +67,6 @@ export function WorkspaceNodeCard({
   onGenerate,
   onStartConnect,
   onFinishConnect,
-  onInsertCharacterMention,
-  onLoadCharacterCards,
-  onHoverCard,
-  onLeaveCard,
   onPromptTemplateLoaded,
 }: WorkspaceNodeCardProps) {
   const supportsReferenceInput =
@@ -430,80 +417,6 @@ export function WorkspaceNodeCard({
                 </div>
               )}
             </div>
-
-            {node.type === 'video' && (
-              <div
-                className="space-y-2"
-                onPointerEnter={() => {
-                  void onLoadCharacterCards();
-                }}
-              >
-                <div className="flex items-center justify-between">
-                  <label className="text-[10px] uppercase tracking-wider text-foreground/40">角色卡</label>
-                  <span className="text-[10px] text-foreground/30">{characterCards.length} 个</span>
-                </div>
-                {characterCards.length === 0 ? (
-                  <div className="text-[10px] text-foreground/30">暂无角色卡</div>
-                ) : (
-                  <>
-                    <div className="flex flex-wrap gap-1.5 max-h-20 overflow-auto pr-1">
-                      {characterCards.map((card) => {
-                        const mention = `@${card.characterName}`;
-                        return (
-                          <button
-                            key={card.id}
-                            type="button"
-                            onClick={() => onInsertCharacterMention(node.id, mention)}
-                            onMouseEnter={(event) => {
-                              const target = event.currentTarget as HTMLElement;
-                              const nodeEl = target.closest('[data-workspace-node]') as HTMLElement | null;
-                              if (!nodeEl) return;
-                              const nodeRect = nodeEl.getBoundingClientRect();
-                              const targetRect = target.getBoundingClientRect();
-                              onHoverCard({
-                                nodeId: node.id,
-                                card,
-                                x: targetRect.left - nodeRect.left,
-                                y: targetRect.top - nodeRect.top,
-                              });
-                            }}
-                            onMouseLeave={() => onLeaveCard(card.id)}
-                            className="px-2 py-1 rounded-full border border-border/70 text-[10px] text-foreground/70 hover:text-foreground hover:border-border transition"
-                            title="点击插入到提示词"
-                          >
-                            {mention}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    {hoveredCard && hoveredCard.nodeId === node.id && (
-                      <div
-                        className="pointer-events-none absolute z-30 rounded-lg border border-border/70 bg-background/80 p-1 shadow-xl"
-                        style={{
-                          left: hoveredCard.x,
-                          top: hoveredCard.y,
-                          transform: 'translate(-8px, calc(-100% - 8px))',
-                        }}
-                      >
-                        {hoveredCard.card.avatarUrl ? (
-                          <img
-                            src={hoveredCard.card.avatarUrl}
-                            alt={hoveredCard.card.characterName}
-                            className="h-20 w-20 rounded-md object-cover"
-                          />
-                        ) : (
-                          <div className="h-20 w-20 rounded-md bg-card/70" />
-                        )}
-                        <div className="mt-1 text-[10px] text-foreground/50 truncate w-20">
-                          @{hoveredCard.card.characterName}
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-                <div className="text-[10px] text-foreground/30">点击名称插入到提示词</div>
-              </div>
-            )}
 
             {node.type === 'video' && !hasConnectedImage && (
               <div className="space-y-1">

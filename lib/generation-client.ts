@@ -29,8 +29,6 @@ export {
   type PollGenerationTaskOptions,
 } from './generation-poll';
 
-export { fetchCharacterCardLists } from './generation-character-cards';
-
 export { fetchGenerationSubmit } from './generation-submit';
 
 export { fetchDailyUsage } from './generation-usage';

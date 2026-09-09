@@ -1140,10 +1140,10 @@ export default function ImageChannelsPage() {
           <h1 className="text-3xl font-light text-foreground">图像渠道管理</h1>
           <p className="text-foreground/50 mt-1">管理图像生成渠道和模型</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col items-end gap-2">
           <button
             onClick={openAddChannel}
-            className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-500 to-cyan-500 text-foreground rounded-xl font-medium hover:opacity-90"
+            className="flex items-center gap-2 rounded-md bg-foreground px-4 py-2.5 font-medium text-background hover:opacity-90"
           >
             <Plus className="w-4 h-4" />
             添加渠道
@@ -1151,9 +1151,9 @@ export default function ImageChannelsPage() {
           <button
             onClick={migrateFromLegacy}
             disabled={migrating}
-            className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-foreground rounded-xl font-medium hover:opacity-90 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
           >
-            {migrating ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            {migrating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
             从旧配置迁移
           </button>
         </div>
@@ -1196,7 +1196,7 @@ export default function ImageChannelsPage() {
             nameError={channelFieldErrors.name}
             type={channelForm.type}
             onTypeChange={(v) => handleChannelTypeChange(v as ImageAdminChannelType)}
-            typeOptions={CHANNEL_TYPES.map(t => ({value: t.value, label: t.label, description: t.description}))}
+            typeOptions={(editingChannel ? CHANNEL_TYPES : CHANNEL_TYPES.filter((item) => item.value !== 'sora')).map((t) => ({value: t.value, label: t.label, description: t.description}))}
             baseUrl={channelForm.baseUrl}
             onBaseUrlChange={(v) => setChannelForm({ ...channelForm, baseUrl: v })}
             apiKey={channelForm.apiKey}

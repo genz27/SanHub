@@ -2,7 +2,7 @@
 // Workspace Component Types
 // ========================================
 
-import type { CharacterCard, WorkspaceEdge, WorkspaceNode, WorkspaceNodeType, ChatModel } from '@/types';
+import type { WorkspaceEdge, WorkspaceNode, WorkspaceNodeType, ChatModel } from '@/types';
 
 export interface PromptTemplate {
   id: string;
@@ -31,14 +31,6 @@ export type DragState = {
 export interface EdgePath {
   id: string;
   d: string;
-}
-
-// Hovered card state
-export interface HoveredCardState {
-  nodeId: string;
-  card: CharacterCard;
-  x: number;
-  y: number;
 }
 
 // Workspace context menu position
@@ -110,7 +102,6 @@ export interface ZoomHandlers {
 
 // External data
 export interface ExternalData {
-  characterCards: CharacterCard[];
   chatModels: ChatModel[];
   promptTemplates: PromptTemplate[];
 }

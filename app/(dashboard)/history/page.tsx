@@ -16,8 +16,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { toast } from '@/components/ui/toaster';
-import type { Generation, CharacterCard, ChannelType, VideoChannelType } from '@/types';
-import { formatDate } from '@/lib/utils';
+import type { Generation, ChannelType, VideoChannelType } from '@/types';
 import {
   isTerminalGenerationStatus,
   mergeGenerationsById,
@@ -33,11 +32,6 @@ const ConfirmDialog = dynamic(
 
 const FullscreenViewer = dynamic(
   () => import('@/components/history/fullscreen-viewer').then((mod) => mod.FullscreenViewer),
-  { ssr: false }
-);
-
-const CharacterCardHistoryItem = dynamic(
-  () => import('@/components/history/character-card-item').then((mod) => mod.CharacterCardHistoryItem),
   { ssr: false }
 );
 
@@ -91,7 +85,7 @@ const HISTORY_PAGE_SIZE = 24;
 const HISTORY_RESYNC_INTERVAL_MS = 30_000;
 const HISTORY_STATUS_FILTER = 'completed';
 
-type HistoryFilter = 'all' | 'video' | 'image' | 'character';
+type HistoryFilter = 'all' | 'video' | 'image';
 type HistoryMediaKind = 'all' | 'video' | 'image';
 
 const getHistoryMediaKind = (filter: HistoryFilter): HistoryMediaKind => {
@@ -166,7 +160,6 @@ export default function HistoryPage() {
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Generation | null>(null);
   const [filter, setFilter] = useState<HistoryFilter>('all');
-  const [characterCards, setCharacterCards] = useState<CharacterCard[]>([]);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
@@ -367,21 +360,6 @@ export default function HistoryPage() {
     }
   }, []);
 
-  // 加载角色卡
-  const loadCharacterCards = useCallback(async () => {
-    try {
-      const { fetchCharacterCardLists } = await import('@/lib/generation-character-cards');
-      const { completed: completedCards, pending: pendingCards } = await fetchCharacterCardLists();
-      const pendingIds = new Set(pendingCards.map((card) => card.id));
-      setCharacterCards([
-        ...pendingCards,
-        ...completedCards.filter((card) => !pendingIds.has(card.id)),
-      ]);
-    } catch (err) {
-      console.error('Failed to load character cards:', err);
-    }
-  }, []);
-
   const pollTaskStatus = useCallback(async (task: Task) => {
     // 防止重复轮询
     if (abortControllersRef.current.has(task.id)) return;
@@ -472,12 +450,7 @@ export default function HistoryPage() {
   }, [session?.user?.id, loadHistory]);
 
   useEffect(() => {
-    if (!session?.user?.id || filter !== 'character') return;
-    void loadCharacterCards();
-  }, [filter, loadCharacterCards, session?.user?.id]);
-
-  useEffect(() => {
-    if (!session?.user?.id || !initialLoadRef.current || filter === 'character') return;
+    if (!session?.user?.id || !initialLoadRef.current) return;
     if (lastLoadedHistoryKindRef.current === historyMediaKind) return;
 
     lastLoadedHistoryKindRef.current = historyMediaKind;
@@ -614,66 +587,6 @@ export default function HistoryPage() {
     }
   };
 
-  // 删除角色卡
-  const handleDeleteCharacters = async () => {
-    setDeleting(true);
-    try {
-      const res = await fetch('/api/user/character-cards/delete-all', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-
-      toast({
-        title: '删除成功',
-        description: `已删除 ${data.deletedCount} 个角色卡`,
-      });
-
-      // 刷新角色卡列表
-      loadCharacterCards();
-    } catch (error) {
-      toast({
-        title: '删除失败',
-        description: error instanceof Error ? error.message : '删除失败',
-        variant: 'destructive',
-      });
-    } finally {
-      setDeleting(false);
-      setShowDeleteConfirm(null);
-    }
-  };
-
-  // 删除单个角色卡
-  const handleDeleteSingleCharacter = async (cardId: string) => {
-    setDeleting(true);
-    try {
-      const res = await fetch('/api/user/character-cards', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cardId }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-
-      toast({
-        title: '删除成功',
-        description: '已删除该角色卡',
-      });
-      
-      loadCharacterCards();
-    } catch (error) {
-      toast({
-        title: '删除失败',
-        description: error instanceof Error ? error.message : '删除失败',
-        variant: 'destructive',
-      });
-    } finally {
-      setDeleting(false);
-    }
-  };
-
   // 切换选择
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds(prev => {
@@ -719,23 +632,9 @@ export default function HistoryPage() {
   const filteredGenerations = useMemo(() => {
     if (filter === 'all') return completedGenerations;
     if (filter === 'video') return completedGenerations.filter(g => isVideoType(g));
-    if (filter === 'character') return []; // 角色卡单独显示
     return completedGenerations.filter(g => !isVideoType(g));
   }, [completedGenerations, filter]);
 
-  
-  // 缓存已完成的角色卡
-  const completedCharacterCards = useMemo(() => 
-    characterCards.filter(c => c.status === 'completed'),
-    [characterCards]
-  );
-  
-  // 缓存进行中的角色卡任务（processing 状态）
-  const processingCharacterCards = useMemo(() => 
-    characterCards.filter(c => c.status === 'processing' || c.status === 'pending'),
-    [characterCards]
-  );
-  
   // 缓存过滤后的 pending 任务
   const filteredTasks = useMemo(() => {
     if (filter === 'all') return pendingTasks;
@@ -767,35 +666,14 @@ export default function HistoryPage() {
     return result;
   }, [filteredGenerations, searchQuery, sortOrder]);
 
-  // Live search and sort on completed character cards
-  const searchedCharacterCards = useMemo(() => {
-    let result = [...completedCharacterCards];
-    
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter((c) =>
-        (c.characterName || '').toLowerCase().includes(q)
-      );
-    }
-    
-    result.sort((a, b) => {
-      const timeA = a.createdAt || 0;
-      const timeB = b.createdAt || 0;
-      return sortOrder === 'latest' ? timeB - timeA : timeA - timeB;
-    });
-    
-    return result;
-  }, [completedCharacterCards, searchQuery, sortOrder]);
-
   // 缓存统计数据
   const stats = useMemo(() => ({
     total: completedGenerations.length,
     pending: pendingTasks.length,
     videos: completedGenerations.filter(g => isVideoType(g)).length,
     images: completedGenerations.filter(g => !isVideoType(g)).length,
-    characters: completedCharacterCards.length,
     failed: failedGenerations.length,
-  }), [completedGenerations, pendingTasks.length, completedCharacterCards.length, failedGenerations.length]);
+  }), [completedGenerations, pendingTasks.length, failedGenerations.length]);
 
   return (
     <>
@@ -829,17 +707,12 @@ export default function HistoryPage() {
             <p className="text-xl sm:text-2xl font-light text-foreground">{stats.images}</p>
             <p className="text-[10px] sm:text-xs text-foreground/45 mt-1 font-light">图像</p>
           </div>
-          <div className="w-px h-6 bg-border/40 shrink-0" />
-          <div className="flex-1 min-w-0">
-            <p className="text-xl sm:text-2xl font-light text-emerald-400">{stats.characters}</p>
-            <p className="text-[10px] sm:text-xs text-foreground/45 mt-1 font-light">角色卡</p>
-          </div>
         </div>
 
         {/* Filter Tabs & Actions */}
         <div className="shrink-0 flex flex-row items-center justify-between gap-3 lg:gap-4 mb-4 select-none">
           <div className="flex items-center gap-1.5 lg:gap-2 overflow-x-auto no-scrollbar -mx-2 px-2">
-            {(['all', 'video', 'image', 'character'] as const).map((f) => (
+            {(['all', 'video', 'image'] as const).map((f) => (
               <button
                 key={f}
                 onClick={() => setFilter(f)}
@@ -849,7 +722,7 @@ export default function HistoryPage() {
                     : 'bg-card/60 text-foreground/60 hover:bg-card/75 hover:text-foreground'
                 }`}
               >
-                {f === 'all' ? '全部' : f === 'video' ? '视频' : f === 'image' ? '图像' : '角色卡'}
+                {f === 'all' ? '全部' : f === 'video' ? '视频' : '图像'}
               </button>
             ))}
           </div>
@@ -892,7 +765,7 @@ export default function HistoryPage() {
               <>
                 <button
                   onClick={() => setSelectMode(true)}
-                  disabled={searchedGenerations.length === 0 && filter !== 'character'}
+                  disabled={searchedGenerations.length === 0}
                   className="flex items-center gap-1.5 px-4 py-1.5 bg-card/65 text-foreground/75 border border-border/80 hover:border-border rounded-full text-xs hover:text-foreground hover:bg-card transition-all font-medium"
                 >
                   <CheckSquare className="w-3.5 h-3.5" />
@@ -962,59 +835,6 @@ export default function HistoryPage() {
                   </div>
                 ))}
               </div>
-            ) : filter === 'character' ? (
-              // Character card listing row tile
-              searchedCharacterCards.length === 0 && processingCharacterCards.length === 0 ? (
-                <EmptyState icon={<User className="w-16 h-16" />} title="暂无角色卡" description="去视频页面生成你的第一个角色卡" />
-              ) : (
-                <div className="space-y-3">
-                  {/* Processing Character Card items */}
-                  {processingCharacterCards.map((card) => (
-                    <div
-                      key={card.id}
-                      className="w-full flex gap-4 p-4 bg-card/25 border border-sky-500/20 rounded-2xl relative"
-                    >
-                      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl bg-card/50 border border-border/60 flex items-center justify-center shrink-0 relative overflow-hidden select-none">
-                        <span className="absolute top-1 left-1 z-10 px-2 py-0.5 rounded bg-sky-500/20 text-sky-400 text-[9px] font-medium border border-sky-500/20">
-                          生成中
-                        </span>
-                        {card.avatarUrl ? (
-                          <img
-                            src={card.avatarUrl}
-                            alt=""
-                            className="w-full h-full object-cover"
-                            loading="lazy"
-                          />
-                        ) : (
-                          <User className="w-10 h-10 text-emerald-300/40" />
-                        )}
-                        <div className="absolute inset-0 bg-background/60 flex items-center justify-center">
-                          <Loader2 className="w-6 h-6 text-foreground animate-spin" />
-                        </div>
-                      </div>
-                      <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
-                        <div>
-                          <div className="flex items-start justify-between gap-3 mb-1.5">
-                            <h3 className="text-sm font-medium text-foreground truncate">生成中...</h3>
-                            <span className="px-2 py-0.5 text-[10px] rounded-md bg-sky-500/15 text-sky-300 whitespace-nowrap">
-                              {card.status === 'processing' ? '生成中' : '等待中'}
-                            </span>
-                          </div>
-                          <p className="text-[10px] text-foreground/40">{formatDate(card.createdAt)}</p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  {/* Completed Character Card items */}
-                  {searchedCharacterCards.map((card) => (
-                    <CharacterCardHistoryItem 
-                      key={card.id} 
-                      card={card} 
-                      onDelete={handleDeleteSingleCharacter}
-                    />
-                  ))}
-                </div>
-              )
             ) : searchedGenerations.length === 0 && filteredTasks.length === 0 ? (
               <EmptyState icon={<History className="w-16 h-16" />} title="暂无历史记录" description="创作的作品会显示在这里" />
             ) : (
@@ -1074,7 +894,6 @@ export default function HistoryPage() {
 
       {/* 删除确认弹窗 */}
       {showDeleteConfirm && (() => {
-        const isCharacters = showDeleteConfirm.id === 'characters';
         const isErrors = showDeleteConfirm.id === 'errors';
 
         let title: string;
@@ -1082,12 +901,7 @@ export default function HistoryPage() {
         let confirmLabel: string;
         let variant: 'danger' | 'warning' | 'default';
 
-        if (isCharacters) {
-          title = '确认清空角色卡';
-          message = '确定要清空所有角色卡吗？';
-          confirmLabel = '确认清空';
-          variant = 'danger';
-        } else if (isErrors) {
+        if (isErrors) {
           title = '确认清空失败记录';
           message = `确定要清空所有 ${failedGenerations.length} 条失败记录吗？`;
           confirmLabel = '确认清空';
@@ -1110,9 +924,7 @@ export default function HistoryPage() {
         }
 
         const handleConfirm = () => {
-          if (isCharacters) {
-            handleDeleteCharacters();
-          } else if (isErrors) {
+          if (isErrors) {
             handleDeleteFailed();
           } else if (showDeleteConfirm.type === 'single' && showDeleteConfirm.id) {
             handleDeleteMedia('single', showDeleteConfirm.id);

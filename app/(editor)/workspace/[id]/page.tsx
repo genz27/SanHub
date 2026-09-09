@@ -23,9 +23,8 @@ import { toast } from '@/components/ui/toaster';
 import { cn } from '@/lib/utils';
 
 const GENERATION_POLL_TIMEOUT_MS = 30 * 60 * 1000;
-import type { CharacterCard, WorkspaceData, WorkspaceEdge, WorkspaceNode, WorkspaceNodeType, ChatModel, SafeImageModel, SafeVideoModel } from '@/types';
+import type { WorkspaceData, WorkspaceEdge, WorkspaceNode, WorkspaceNodeType, ChatModel, SafeImageModel, SafeVideoModel } from '@/types';
 import { WorkspaceEdges } from '@/components/workspace/WorkspaceEdges';
-import type { HoveredCardState } from '@/components/workspace/types';
 
 const WorkspaceNodeCard = dynamic(
   () => import('@/components/workspace/WorkspaceNodeCard').then((mod) => mod.WorkspaceNodeCard),
@@ -72,7 +71,6 @@ export default function WorkspaceEditorPage() {
   const { update } = useSession();
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
-  const characterCardsLoadedRef = useRef(false);
   const promptTemplatesLoadedRef = useRef(false);
   const imageModelsLoadedRef = useRef(false);
   const videoModelsLoadedRef = useRef(false);
@@ -81,7 +79,6 @@ export default function WorkspaceEditorPage() {
   const [workspaceName, setWorkspaceName] = useState('');
   const [nodes, setNodes] = useState<WorkspaceNode[]>([]);
   const [edges, setEdges] = useState<WorkspaceEdge[]>([]);
-  const [characterCards, setCharacterCards] = useState<CharacterCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -91,7 +88,6 @@ export default function WorkspaceEditorPage() {
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [mobileAddOpen, setMobileAddOpen] = useState(false);
-  const [hoveredCard, setHoveredCard] = useState<HoveredCardState | null>(null);
   const [chatModels, setChatModels] = useState<Pick<ChatModel, 'id' | 'name' | 'supportsVision' | 'enabled'>[]>([]);
   const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([]);
   const [imageModels, setImageModels] = useState<SafeImageModel[]>([]);
@@ -199,23 +195,6 @@ export default function WorkspaceEditorPage() {
       loadWorkspace();
     }
   }, [workspaceId]);
-
-  const loadCharacterCards = useCallback(async () => {
-    if (characterCardsLoadedRef.current) return;
-    characterCardsLoadedRef.current = true;
-    try {
-      const res = await fetch('/api/user/character-cards?status=completed&fields=picker');
-      if (res.ok) {
-        const data = await res.json();
-        setCharacterCards(
-          (data.data || []).filter((card: CharacterCard) => card.characterName)
-        );
-      }
-    } catch (error) {
-      characterCardsLoadedRef.current = false;
-      console.error('Failed to load character cards:', error);
-    }
-  }, []);
 
   const loadPromptTemplates = useCallback(async () => {
     if (promptTemplatesLoadedRef.current) return;
@@ -752,29 +731,6 @@ export default function WorkspaceEditorPage() {
     setEdgesDirty((prev) => prev.filter((edge) => edge.id !== edgeId));
   };
 
-  const insertCharacterMention = useCallback(
-    (nodeId: string, mention: string) => {
-      setNodesDirty((prev) =>
-        prev.map((node) => {
-          if (node.id !== nodeId) return node;
-          const currentPrompt = node.data.prompt || '';
-          if (currentPrompt.includes(mention)) return node;
-          const nextPrompt = currentPrompt.trim()
-            ? `${currentPrompt.trim()} ${mention}`
-            : mention;
-          return {
-            ...node,
-            data: {
-              ...node.data,
-              prompt: nextPrompt,
-            },
-          };
-        })
-      );
-    },
-    [setNodesDirty]
-  );
-
   const pollTaskStatus = useCallback(
     async (nodeId: string, taskId: string) => {
       if (abortControllersRef.current.has(nodeId)) return;
@@ -1123,8 +1079,6 @@ export default function WorkspaceEditorPage() {
                       videoModels={videoModels}
                       chatModels={chatModels}
                       promptTemplates={promptTemplates}
-                      characterCards={characterCards}
-                      hoveredCard={hoveredCard}
                       onStartDrag={startDrag}
                       onUpdateNode={updateNode}
                       onUpdateNodeData={updateNodeData}
@@ -1141,12 +1095,6 @@ export default function WorkspaceEditorPage() {
                       }}
                       onStartConnect={handleStartConnect}
                       onFinishConnect={handleFinishConnect}
-                      onInsertCharacterMention={insertCharacterMention}
-                      onLoadCharacterCards={loadCharacterCards}
-                      onHoverCard={setHoveredCard}
-                      onLeaveCard={(cardId) => {
-                        setHoveredCard((prev) => (prev?.card.id === cardId ? null : prev));
-                      }}
                       onPromptTemplateLoaded={(templateId, content) => {
                         setPromptTemplates((prev) =>
                           prev.map((item) => (item.id === templateId ? { ...item, content } : item))

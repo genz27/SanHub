@@ -9,16 +9,17 @@ import {
   Loader2,
   AlertCircle,
   Dices,
-  User,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/toaster';
 import { CustomSelect } from '@/components/ui/select-custom';
+import { GenerationAdvancedPanel } from '@/components/generator/generation-advanced-panel';
 import { InlineToggle } from '@/components/generator/inline-toggle';
+import { OptionChipGroup } from '@/components/generator/option-chip-group';
 import { ReferenceImageInput } from '@/components/generator/reference-image-input';
 import type { Task } from '@/components/generator/result-gallery';
 import { useSiteConfig } from '@/components/providers/site-config-provider';
-import type { Generation, CharacterCard, SafeVideoModel, DailyLimitConfig } from '@/types';
+import type { Generation, SafeVideoModel, DailyLimitConfig } from '@/types';
 import type { ReusableImageReference } from '@/lib/generation-reference';
 import { fetchGenerationFeed } from '@/lib/generation-feed';
 import {
@@ -103,14 +104,7 @@ export function VideoGenerationView({
   const [clearingFailedTasks, setClearingFailedTasks] = useState(false);
   const [error, setError] = useState('');
   const [keepPrompt, setKeepPrompt] = useState(false);
-
-
-  // 角色卡选择
-  const [characterCards, setCharacterCards] = useState<CharacterCard[]>([]);
-  const characterCardsLoadedRef = useRef(false);
   const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
-
-  const [showCharacterMenu, setShowCharacterMenu] = useState(false);
 
   const activeExternalReference =
     controlledExternalReference !== undefined
@@ -149,27 +143,7 @@ export function VideoGenerationView({
   const currentModel = useMemo(() => {
     return availableModels.find(m => m.id === selectedModelId) || availableModels[0];
   }, [availableModels, selectedModelId]);
-  const isSoraChannel = currentModel?.channelType === 'sora';
-  const ensureCharacterCards = useCallback(async () => {
-    if (characterCardsLoadedRef.current) return;
-    characterCardsLoadedRef.current = true;
-    try {
-      const res = await fetch('/api/user/character-cards?status=completed&fields=picker');
-      if (res.ok) {
-        const data = await res.json();
-        const completedCards = (data.data || []).filter(
-          (c: CharacterCard) => c.characterName
-        );
-        setCharacterCards(completedCards);
-      } else {
-        characterCardsLoadedRef.current = false;
-      }
-    } catch (err) {
-      characterCardsLoadedRef.current = false;
-      console.error('Failed to load character cards:', err);
-    }
-  }, []);
-
+  const selectedDuration = currentModel?.durations.find((item) => item.value === duration);
   const modelsCacheRef = useRef<SafeVideoModel[] | null>(null);
 
   // 加载模型列表
@@ -230,12 +204,6 @@ export function VideoGenerationView({
   }, [selectedModelId, availableModels, activeExternalReference, clearFiles, files.length, setActiveExternalReference]);
 
   useEffect(() => {
-    if (!isSoraChannel) {
-      setShowCharacterMenu(false);
-    }
-  }, [isSoraChannel]);
-
-  useEffect(() => {
     if (!activeExternalReference) return;
     if (files.length > 0) {
       clearFiles();
@@ -257,14 +225,6 @@ export function VideoGenerationView({
     setter: (value: string) => void
   ) => {
     setter(e.target.value);
-  };
-
-  const handleAddCharacter = (characterName: string) => {
-    if (!isSoraChannel) return;
-    const mention = `@${characterName}`;
-    setPrompt((prev) => (prev ? `${prev} ${mention}` : mention));
-    promptTextareaRef.current?.focus();
-    setShowCharacterMenu(false);
   };
 
   const handleAddReferenceFiles = useCallback(
@@ -315,24 +275,6 @@ export function VideoGenerationView({
     });
   }, []);
 
-
-  const handlePromptKeyUp = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (!isSoraChannel) {
-      if (showCharacterMenu) {
-        setShowCharacterMenu(false);
-      }
-      return;
-    }
-
-    const value = (e.target as HTMLTextAreaElement).value;
-    const lastChar = value.slice(-1);
-    if (lastChar === '@') {
-      void ensureCharacterCards();
-      setShowCharacterMenu(true);
-    } else if (e.key === 'Escape') {
-      setShowCharacterMenu(false);
-    }
-  };
 
   const applyRecentGenerations = useCallback((recentGenerations: Generation[]) => {
     const videoGenerations = filterGenerationsByKind(recentGenerations, 'video');
@@ -930,24 +872,26 @@ export function VideoGenerationView({
         embedded && "min-h-[15rem]",
         (availableModels.length === 0 || isVideoLimitReached) && "opacity-50 pointer-events-none"
       )}>
-        <div className="flex flex-col gap-3 border-b border-border/70 px-3 py-3 xl:flex-row xl:items-center xl:justify-between">
-          {createModeSwitcher && (
-            <div className="w-full xl:w-auto xl:shrink-0">
-              {createModeSwitcher}
-            </div>
-          )}
-          <div className="flex min-w-0 flex-1 items-center justify-end">
-            <div className="inline-flex items-center gap-2 rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-sm font-medium text-foreground">
-              <Sparkles className="w-4 h-4 text-sky-300" />
-              <span>生成</span>
-            </div>
+        {createModeSwitcher && (
+          <div className="border-b border-border/70 px-3 py-3">
+            {createModeSwitcher}
           </div>
-        </div>
+        )}
 
-        <div className="p-4">
-          {/* 输入区域：图片上传 + 文本输入 */}
-          <div className="flex flex-col sm:flex-row gap-4 mb-4">
-            {/* 图片上传区 */}
+        <div className="space-y-4 p-4">
+          <CustomSelect
+            value={selectedModelId}
+            onValueChange={setSelectedModelId}
+            options={availableModels.map((model) => ({
+              value: model.id,
+              label: model.name,
+              description: model.description,
+              highlight: model.highlight,
+            }))}
+            placeholder="选择模型"
+          />
+
+          <div className="flex flex-col gap-4 sm:flex-row">
             {(currentModel?.features.imageToVideo || activeExternalReference) && (
               <div className="flex justify-start">
                 <ReferenceImageInput
@@ -962,125 +906,68 @@ export function VideoGenerationView({
               </div>
             )}
 
-            {/* 文本输入区 */}
-            <div className="flex-1 relative">
+            <div className="relative flex-1">
               <textarea
                 ref={promptTextareaRef}
                 value={prompt}
                 onChange={(e) => handlePromptChange(e, setPrompt)}
-                onKeyUp={isSoraChannel ? handlePromptKeyUp : undefined}
-                placeholder={isSoraChannel ? '描述视频动态，或拖入图片生成图生视频... 输入 @ 引用角色卡' : '描述视频动态，或拖入图片生成图生视频...'}
-                className="w-full px-3 py-2 bg-input/70 border border-border/70 text-foreground rounded-lg resize-none text-sm min-h-[80px] max-h-[200px] focus:outline-none focus:border-border focus:ring-2 focus:ring-ring/30 overflow-y-auto"
+                placeholder="描述视频动态，或拖入图片生成图生视频..."
+                className="w-full min-h-[80px] max-h-[200px] resize-none overflow-y-auto rounded-lg border border-border/70 bg-input/70 px-3 py-2 text-sm text-foreground focus:border-border focus:outline-none focus:ring-2 focus:ring-ring/30"
               />
-
-              {/* Character count */}
-              <div className="flex justify-end mt-1">
+              <div className="mt-1 flex justify-end">
                 <span className="text-xs text-foreground/50">{prompt.length} / 20000</span>
               </div>
-
-              {/* @ 触发的角色卡弹出菜单，仅 sora 渠道显示 */}
-              {isSoraChannel && showCharacterMenu && characterCards.length > 0 && (
-                <div className="absolute bottom-full left-0 mb-2 w-64 max-h-48 overflow-auto bg-card border border-border/70 rounded-lg shadow-lg z-20">
-                  <div className="p-2 border-b border-border/70 text-xs text-foreground/50">选择角色卡</div>
-                  {characterCards.map((card) => (
-                    <button
-                      key={card.id}
-                      onClick={() => handleAddCharacter(card.characterName)}
-                      className="w-full flex items-center gap-2 px-3 py-2 hover:bg-card/80 transition-colors text-left"
-                    >
-                      <div className="w-6 h-6 rounded-full overflow-hidden bg-gradient-to-br from-emerald-500/20 to-sky-500/20 shrink-0">
-                        {card.avatarUrl ? (
-                          <img
-                            src={card.avatarUrl}
-                            alt=""
-                            className="w-full h-full object-cover"
-                            loading="lazy"
-                            decoding="async"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <User className="w-3 h-3 text-emerald-300/60" />
-                          </div>
-                        )}
-                      </div>
-                      <span className="text-sm text-foreground">@{card.characterName}</span>
-                    </button>
-                  ))}
-                  <button onClick={() => setShowCharacterMenu(false)} className="w-full px-3 py-2 text-xs text-foreground/50 hover:bg-card/80 border-t border-border/70">关闭</button>
-                </div>
-              )}
-
             </div>
           </div>
 
-          {/* 参数行：选择器 + 按钮 */}
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between w-full">
-            {/* Left Parameter Group */}
-            <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-0">
-              {/* 模型选择 */}
-              <div className="w-full sm:w-[220px] flex-shrink-0">
-                <CustomSelect
-                  value={selectedModelId}
-                  onValueChange={setSelectedModelId}
-                  options={availableModels.map((m) => ({
-                    value: m.id,
-                    label: m.name,
-                    description: m.description,
-                    highlight: m.highlight,
-                  }))}
-                  placeholder="选择模型"
-                />
-              </div>
-
-              {/* 时长选择 */}
-              {currentModel && (
-                <div className="w-[calc(50%-0.32rem)] sm:w-[100px] flex-initial">
-                  <CustomSelect
-                    value={duration}
-                    onValueChange={setDuration}
-                    options={currentModel.durations.map((d) => ({
-                      value: d.value,
-                      label: d.label,
-                    }))}
-                    placeholder="时长"
-                  />
-                </div>
-              )}
-
-              {/* 比例选择 */}
-              {currentModel && (
-                <div className="w-[calc(50%-0.32rem)] sm:w-[120px] flex-initial">
-                  <CustomSelect
-                    value={aspectRatio}
-                    onValueChange={setAspectRatio}
-                    options={currentModel.aspectRatios.map((r) => ({
-                      value: r.value,
-                      label: r.label,
-                    }))}
-                    placeholder="比例"
-                  />
-                </div>
-              )}
-
-              {/* 保留提示词 */}
-              <InlineToggle
-                checked={keepPrompt}
-                onCheckedChange={setKeepPrompt}
-                label="保留输入"
+          <div className="space-y-3">
+            {currentModel && (
+              <OptionChipGroup
+                label="比例"
+                value={aspectRatio}
+                onChange={setAspectRatio}
+                options={currentModel.aspectRatios.map((ratio) => ({
+                  value: ratio.value,
+                  label: ratio.label,
+                }))}
               />
+            )}
+            {currentModel && (
+              <OptionChipGroup
+                label="时长"
+                value={duration}
+                onChange={setDuration}
+                options={currentModel.durations.map((item) => ({
+                  value: item.value,
+                  label: item.label,
+                }))}
+              />
+            )}
+          </div>
 
-              {/* 错误提示 */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div className="min-w-0 space-y-2">
+              {typeof selectedDuration?.cost === 'number' && selectedDuration.cost > 0 && (
+                <div className="inline-flex h-7 items-center rounded-md border border-border/60 bg-card/40 px-2 text-[11px] text-muted-foreground">
+                  {selectedDuration.cost} 积分
+                </div>
+              )}
+              <GenerationAdvancedPanel>
+                <InlineToggle
+                  checked={keepPrompt}
+                  onCheckedChange={setKeepPrompt}
+                  label="保留输入"
+                />
+              </GenerationAdvancedPanel>
               {error && (
                 <div className="flex items-center gap-1.5 text-xs text-red-400">
-                  <AlertCircle className="w-3 h-3" />
+                  <AlertCircle className="h-3 w-3" />
                   <span>{error}</span>
                 </div>
               )}
             </div>
 
-            {/* Right Action Group */}
-            <div className="flex items-center gap-2 shrink-0 justify-end w-full lg:w-auto">
-              {/* 抽卡按钮 */}
+            <div className="flex w-full shrink-0 items-center justify-end gap-2 sm:w-auto">
               {siteConfig.gachaEnabled && (
                 <button
                   onClick={handleGachaMode}
@@ -1093,30 +980,29 @@ export function VideoGenerationView({
                   )}
                   title="一次性提交 3 个相同参数的视频任务"
                 >
-                  <Dices className="w-4 h-4" />
+                  <Dices className="h-4 w-4" />
                   <span>抽卡 x3</span>
                 </button>
               )}
 
-              {/* 生成按钮 */}
               <button
                 onClick={handleGenerate}
                 disabled={submitting || compressing || hasChinese}
                 className={cn(
-                  'inline-flex h-9 items-center justify-center gap-2 px-5 rounded-lg font-medium text-sm transition-all',
+                  'inline-flex h-9 items-center justify-center gap-2 rounded-lg px-5 text-sm font-medium transition-all',
                   submitting || compressing || hasChinese
-                    ? 'bg-card/60 text-foreground/40 cursor-not-allowed'
+                    ? 'cursor-not-allowed bg-card/60 text-foreground/40'
                     : 'bg-foreground text-background hover:opacity-90'
                 )}
               >
                 {submitting || compressing ? (
                   <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <Loader2 className="h-4 w-4 animate-spin" />
                     <span>{compressing ? '处理图片中...' : '提交中...'}</span>
                   </>
                 ) : (
                   <>
-                    <Sparkles className="w-4 h-4" />
+                    <Sparkles className="h-4 w-4" />
                     <span>立即生成</span>
                   </>
                 )}

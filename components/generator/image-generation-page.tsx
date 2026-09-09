@@ -16,7 +16,9 @@ import { cn } from '@/lib/utils';
 import type { Generation, SafeImageModel, DailyLimitConfig } from '@/types';
 import { toast } from '@/components/ui/toaster';
 import type { Task } from '@/components/generator/result-gallery';
+import { GenerationAdvancedPanel } from '@/components/generator/generation-advanced-panel';
 import { InlineToggle } from '@/components/generator/inline-toggle';
+import { OptionChipGroup } from '@/components/generator/option-chip-group';
 import { ReferenceImageInput } from '@/components/generator/reference-image-input';
 import { useSiteConfig } from '@/components/providers/site-config-provider';
 import { CustomSelect } from '@/components/ui/select-custom';
@@ -58,6 +60,30 @@ export interface ImageGenerationPageProps {
   onReuseGeneration?: (generation: Generation, target: 'image' | 'video') => void;
   onGenerationDeleted?: (generationId: string) => void;
   isActive?: boolean;
+}
+
+const GPT_IMAGE_QUALITY_OPTIONS = [
+  { value: 'low', label: '低' },
+  { value: 'medium', label: '中' },
+  { value: 'high', label: '高' },
+];
+
+function getGptImageQualityOptions(model?: SafeImageModel) {
+  if (!model) return [];
+  if (
+    model.channelType !== 'apexerapi' &&
+    model.channelType !== 'openai-compatible' &&
+    model.channelType !== 'openai-chat'
+  ) {
+    return [];
+  }
+  if (!model.apiModel.toLowerCase().includes('gpt-image-2')) return [];
+
+  const allowed = model.features.qualityOptions;
+  if (allowed && allowed.length > 0) {
+    return GPT_IMAGE_QUALITY_OPTIONS.filter((option) => allowed.includes(option.value));
+  }
+  return GPT_IMAGE_QUALITY_OPTIONS;
 }
 
 function getImageResolution(
@@ -142,8 +168,16 @@ export function ImageGenerationPage({
   const currentModel = useMemo(() => {
     return availableModels.find((model) => model.id === selectedModelId) || availableModels[0];
   }, [availableModels, selectedModelId]);
+  const qualityOptions = useMemo(() => getGptImageQualityOptions(currentModel), [currentModel]);
 
   const hasReferenceInput = images.length > 0 || Boolean(externalReference);
+
+  useEffect(() => {
+    if (qualityOptions.length === 0) return;
+    if (!qualityOptions.some((option) => option.value === quality)) {
+      setQuality(qualityOptions[0].value);
+    }
+  }, [quality, qualityOptions]);
 
   useEffect(() => {
     imagesRef.current = images;
@@ -856,8 +890,20 @@ export function ImageGenerationPage({
             )}
           </div>
         )}
-        <div className="p-4">
-          <div className="flex flex-col sm:flex-row gap-4 mb-4">
+        <div className="space-y-4 p-4">
+          <CustomSelect
+            value={selectedModelId}
+            onValueChange={setSelectedModelId}
+            options={availableModels.map((model) => ({
+              value: model.id,
+              label: model.name,
+              description: model.description,
+              highlight: model.highlight,
+            }))}
+            placeholder="选择模型"
+          />
+
+          <div className="flex flex-col gap-4 sm:flex-row">
             {currentModel?.features.imageToImage && (
               <div className="flex justify-start">
                 <ReferenceImageInput
@@ -872,122 +918,76 @@ export function ImageGenerationPage({
               </div>
             )}
 
-            <div className="flex-1 relative">
+            <div className="relative flex-1">
               <textarea
                 ref={promptTextareaRef}
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 placeholder="描述你想要生成的图像..."
-                className="w-full min-h-[80px] max-h-[200px] px-3 py-2 bg-input/70 border border-border/70 text-foreground rounded-lg resize-none text-sm focus:outline-none focus:border-border focus:ring-2 focus:ring-ring/30 overflow-y-auto"
+                className="w-full min-h-[80px] max-h-[200px] resize-none overflow-y-auto rounded-lg border border-border/70 bg-input/70 px-3 py-2 text-sm text-foreground focus:border-border focus:outline-none focus:ring-2 focus:ring-ring/30"
               />
-              <div className="absolute bottom-1.5 right-2 text-xs text-foreground/40 pointer-events-none select-none">
+              <div className="pointer-events-none absolute bottom-1.5 right-2 select-none text-xs text-foreground/40">
                 {prompt.length}
               </div>
             </div>
           </div>
 
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between w-full">
-            {/* Left Parameter Group */}
-            <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-0">
-              <div className="w-full sm:w-[220px] flex-shrink-0">
-                <CustomSelect
-                  value={selectedModelId}
-                  onValueChange={setSelectedModelId}
-                  options={availableModels.map((model) => ({
-                    value: model.id,
-                    label: model.name,
-                    description: model.description,
-                    highlight: model.highlight,
-                  }))}
-                  placeholder="选择模型"
-                />
-              </div>
+          <div className="space-y-3">
+            {currentModel && (
+              <OptionChipGroup
+                label="比例"
+                value={aspectRatio}
+                onChange={setAspectRatio}
+                options={currentModel.aspectRatios.map((ratio) => ({
+                  value: ratio,
+                  label: ratio,
+                }))}
+              />
+            )}
+            {currentModel?.features.imageSize && currentModel.imageSizes && (
+              <OptionChipGroup
+                label="尺寸"
+                value={imageSize}
+                onChange={setImageSize}
+                options={currentModel.imageSizes.map((size) => ({
+                  value: size,
+                  label: size,
+                }))}
+              />
+            )}
+          </div>
 
-              {currentModel?.features.imageSize && currentModel.imageSizes && (
-                <div className="w-[calc(50%-0.32rem)] sm:w-[100px] flex-initial">
-                  <CustomSelect
-                    value={imageSize}
-                    onValueChange={setImageSize}
-                    options={currentModel.imageSizes.map((size) => ({
-                      value: size,
-                      label: size,
-                    }))}
-                    placeholder="分辨率"
-                  />
-                </div>
-              )}
-
-              {currentModel && (
-                <div className="w-[calc(50%-0.32rem)] sm:w-[100px] flex-initial">
-                  <CustomSelect
-                    value={aspectRatio}
-                    onValueChange={setAspectRatio}
-                    options={currentModel.aspectRatios.map((ratio) => ({
-                      value: ratio,
-                      label: ratio,
-                    }))}
-                    placeholder="比例"
-                  />
-                </div>
-              )}
-
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div className="min-w-0 space-y-2">
               {currentModel && getCurrentResolutionDisplay() && (
-                <div className="inline-flex h-9 items-center justify-center px-2.5 rounded-lg border border-border/40 bg-card/30 text-foreground/50 text-[11px] font-mono whitespace-nowrap shadow-sm backdrop-blur-sm">
+                <div className="inline-flex h-7 items-center rounded-md border border-border/60 bg-card/40 px-2 font-mono text-[11px] text-muted-foreground">
                   {getCurrentResolutionDisplay()}
                 </div>
               )}
-
-              <div className="hidden sm:block h-4 w-px bg-border/40" />
-
-              {(() => {
-                if (!currentModel) return null;
-                if (currentModel.channelType !== 'apexerapi' && currentModel.channelType !== 'openai-compatible' && currentModel.channelType !== 'openai-chat') return null;
-                if (!currentModel.apiModel.toLowerCase().includes('gpt-image-2')) return null;
-                const qOpts = currentModel.features.qualityOptions;
-                const allQualities = [
-                  { value: 'low', label: '低' },
-                  { value: 'medium', label: '中' },
-                  { value: 'high', label: '高' },
-                ];
-                const available = qOpts && qOpts.length > 0
-                  ? allQualities.filter(q => qOpts.includes(q.value))
-                  : allQualities;
-                if (available.length === 0) return null;
-                const safeValue = available.some(q => q.value === quality) ? quality : available[0].value;
-                if (safeValue !== quality) {
-                  queueMicrotask(() => setQuality(safeValue));
-                }
-                return (
-                  <div className="flex items-center gap-1.5 h-9">
-                    <span className="text-xs text-foreground/50 whitespace-nowrap">质量</span>
-                    <div className="w-[68px]">
-                      <CustomSelect
-                        value={safeValue}
-                        onValueChange={setQuality}
-                        options={available}
-                        placeholder="画质"
-                      />
-                    </div>
-                  </div>
-                );
-              })()}
-
-              <InlineToggle
-                checked={keepPrompt}
-                onCheckedChange={setKeepPrompt}
-                label="保留输入"
-              />
-
+              <GenerationAdvancedPanel>
+                {qualityOptions.length > 0 && (
+                  <OptionChipGroup
+                    label="质量"
+                    value={quality}
+                    onChange={setQuality}
+                    options={qualityOptions}
+                  />
+                )}
+                <InlineToggle
+                  checked={keepPrompt}
+                  onCheckedChange={setKeepPrompt}
+                  label="保留输入"
+                />
+              </GenerationAdvancedPanel>
               {error && (
                 <div className="flex items-center gap-1.5 text-xs text-red-400">
-                  <AlertCircle className="w-3 h-3" />
+                  <AlertCircle className="h-3 w-3" />
                   <span>{error}</span>
                 </div>
               )}
             </div>
 
-            {/* Right Action Group */}
-            <div className="flex items-center gap-2 shrink-0 justify-end w-full lg:w-auto">
+            <div className="flex w-full shrink-0 items-center justify-end gap-2 sm:w-auto">
               {siteConfig.gachaEnabled && (
                 <button
                   onClick={handleGachaMode}
@@ -1001,9 +1001,9 @@ export function ImageGenerationPage({
                   title="一次性提交 3 个相同参数的任务"
                 >
                   {compressing || submitting ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
-                    <Dices className="w-4 h-4" />
+                    <Dices className="h-4 w-4" />
                   )}
                   <span>抽卡 x3</span>
                 </button>
@@ -1013,20 +1013,20 @@ export function ImageGenerationPage({
                 onClick={handleGenerate}
                 disabled={submitting || compressing}
                 className={cn(
-                  'inline-flex h-9 items-center justify-center gap-2 px-5 rounded-lg font-medium text-sm transition-all',
+                  'inline-flex h-9 items-center justify-center gap-2 rounded-lg px-5 text-sm font-medium transition-all',
                   submitting || compressing
-                    ? 'bg-card/60 text-foreground/40 cursor-not-allowed'
+                    ? 'cursor-not-allowed bg-card/60 text-foreground/40'
                     : 'bg-foreground text-background hover:opacity-90'
                 )}
               >
                 {submitting || compressing ? (
                   <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <Loader2 className="h-4 w-4 animate-spin" />
                     <span>{compressing ? '处理图片中...' : '提交中...'}</span>
                   </>
                 ) : (
                   <>
-                    <Sparkles className="w-4 h-4" />
+                    <Sparkles className="h-4 w-4" />
                     <span>立即生成</span>
                   </>
                 )}

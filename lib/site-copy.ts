@@ -2,7 +2,7 @@ export const DEFAULT_SITE_NAME = 'SANHUB';
 export const DEFAULT_SITE_TAGLINE = 'Let Imagination Come Alive';
 export const DEFAULT_SITE_DESCRIPTION = '「SANHUB」是专为 AI 创作打造的一站式平台';
 export const DEFAULT_SITE_SUB_DESCRIPTION =
-  '图像、视频、角色卡与工作流一体的 AI 创作平台。默认深色界面，按渠道接入模型。';
+  '图像、视频与工作流一体的 AI 创作平台。默认深色界面，按渠道接入模型。';
 export const DEFAULT_CONTACT_EMAIL = 'support@sanhub.com';
 export const DEFAULT_COPYRIGHT = 'Copyright © 2026 SANHUB';
 export const DEFAULT_POWERED_BY = 'Powered by SanHub';

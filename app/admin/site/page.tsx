@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Suspense, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Coins,
   Database,
@@ -88,7 +89,38 @@ function Switch({
   );
 }
 
+const SITE_TABS = [
+  { id: 'general', label: '基本信息' },
+  { id: 'features', label: '功能' },
+  { id: 'storage', label: '图床' },
+  { id: 'moderation', label: '内容审核' },
+  { id: 'runtime', label: '运行参数' },
+] as const;
+
+type SiteTab = (typeof SITE_TABS)[number]['id'];
+
+function parseSiteTab(value: string | null): SiteTab {
+  return SITE_TABS.some((tab) => tab.id === value) ? (value as SiteTab) : 'general';
+}
+
 export default function SiteConfigPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-64 items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-foreground/30" />
+        </div>
+      }
+    >
+      <SiteConfigPageInner />
+    </Suspense>
+  );
+}
+
+function SiteConfigPageInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const tab = parseSiteTab(searchParams.get('tab'));
   const [config, setConfig] = useState<SystemConfig | null>(null);
   const [chatModels, setChatModels] = useState<ChatModel[]>([]);
   const [loading, setLoading] = useState(true);
@@ -204,6 +236,28 @@ export default function SiteConfigPage() {
         </button>
       </div>
 
+      <div className="flex flex-wrap gap-1 border-b border-border/70 pb-px">
+        {SITE_TABS.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => {
+              const params = new URLSearchParams(searchParams.toString());
+              params.set('tab', item.id);
+              router.replace(`/admin/site?${params.toString()}`, { scroll: false });
+            }}
+            className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
+              tab === item.id
+                ? 'bg-accent text-foreground'
+                : 'text-muted-foreground hover:bg-accent/70 hover:text-foreground'
+            }`}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'general' && (
       <Card icon={Globe} title="基本信息">
         <div className="grid gap-4 sm:grid-cols-2">
           <input
@@ -286,7 +340,9 @@ export default function SiteConfigPage() {
           className="w-full rounded-lg border border-border/70 bg-card/60 px-4 py-3 text-foreground focus:outline-none"
         />
       </Card>
+      )}
 
+      {tab === 'features' && (
       <Card icon={LayoutGrid} title="功能与邀请码">
         <div className="flex items-center justify-between rounded-xl border border-border/70 bg-card/50 p-4">
           <div>
@@ -325,26 +381,6 @@ export default function SiteConfigPage() {
               }))
             }
             color="bg-amber-500"
-          />
-        </div>
-
-        <div className="flex items-center justify-between rounded-xl border border-border/70 bg-card/50 p-4">
-          <div>
-            <p className="text-sm text-foreground">角色卡生成</p>
-            <p className="mt-1 text-xs text-foreground/30">关闭后隐藏导航入口，并拒绝新的角色卡生成请求。</p>
-          </div>
-          <Switch
-            checked={config.featureFlags.characterCardEnabled}
-            onClick={() =>
-              patch((prev) => ({
-                ...prev,
-                featureFlags: {
-                  ...prev.featureFlags,
-                  characterCardEnabled: !prev.featureFlags.characterCardEnabled,
-                },
-              }))
-            }
-            color="bg-indigo-500"
           />
         </div>
 
@@ -437,6 +473,9 @@ export default function SiteConfigPage() {
           </div>
         </div>
       </Card>
+      )}
+
+      {tab === 'storage' && (
       <Card icon={Database} title="图床桶">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <select
@@ -645,7 +684,9 @@ export default function SiteConfigPage() {
           </div>
         ))}
       </Card>
+      )}
 
+      {tab === 'moderation' && (
       <Card icon={Shield} title="提示词处理">
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="flex items-center justify-between rounded-xl border border-border/70 bg-card/50 p-4">
@@ -791,6 +832,9 @@ export default function SiteConfigPage() {
             : '黑名单当前未启用'}
         </p>
       </Card>
+      )}
+
+      {tab === 'runtime' && (
       <Card icon={Zap} title="运行参数">
         <div className="flex items-center justify-between rounded-xl border border-border/70 bg-card/50 p-4">
           <div>
@@ -924,6 +968,7 @@ export default function SiteConfigPage() {
           <span className="text-sm text-foreground/50">注册送积分</span>
         </div>
       </Card>
+      )}
     </div>
   );
 }

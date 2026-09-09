@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
-import { Users, Coins, ChevronRight, TrendingUp, Activity, BarChart3, Ticket, History, MessageSquare, Image, Video, Megaphone, Globe, UserPlus } from 'lucide-react';
+import { Users, Coins, TrendingUp, Activity, BarChart3 } from 'lucide-react';
 import type { SafeUser, StatsOverview } from '@/types';
 import { formatBalance } from '@/lib/utils';
 import { toast } from '@/components/ui/toaster';
@@ -170,24 +170,6 @@ export default function AdminPage() {
     },
   ];
 
-  // Moderator 只能看到有限的快捷入口
-  const allQuickLinks = [
-    { href: '/admin/users', label: '用户管理', desc: '管理用户账号和权限', icon: Users, color: 'from-blue-500/20 to-cyan-500/20', roles: ['admin', 'moderator'] },
-    { href: '/admin/stats', label: '数据统计', desc: '查看生成量和用户增长', icon: BarChart3, color: 'from-sky-500/20 to-sky-500/20', roles: ['admin', 'moderator'] },
-    { href: '/admin/redemption', label: '卡密管理', desc: '生成和管理积分卡密', icon: Ticket, color: 'from-green-500/20 to-emerald-500/20', roles: ['admin', 'moderator'] },
-    { href: '/admin/generations', label: '生成记录', desc: '管理所有生成历史', icon: History, color: 'from-orange-500/20 to-amber-500/20', roles: ['admin'] },
-    { href: '/admin/models', label: '聊天模型', desc: '管理 AI 对话模型', icon: MessageSquare, color: 'from-violet-500/20 to-purple-500/20', roles: ['admin'] },
-    { href: '/admin/image-channels', label: '图像渠道', desc: '管理图像生成渠道和模型', icon: Image, color: 'from-cyan-500/20 to-teal-500/20', roles: ['admin'] },
-    { href: '/admin/video-channels', label: '视频渠道', desc: '管理视频生成渠道和模型', icon: Video, color: 'from-pink-500/20 to-rose-500/20', roles: ['admin'] },
-    { href: '/admin/pricing', label: '积分定价', desc: '配置各服务消耗积分', icon: Coins, color: 'from-emerald-500/20 to-amber-500/20', roles: ['admin'] },
-    { href: '/admin/announcement', label: '公告管理', desc: '管理系统公告', icon: Megaphone, color: 'from-red-500/20 to-pink-500/20', roles: ['admin'] },
-    { href: '/admin/site', label: '网站配置', desc: '配置网站基本信息', icon: Globe, color: 'from-indigo-500/20 to-blue-500/20', roles: ['admin'] },
-    { href: '/admin/invites', label: '邀请码', desc: '管理邀请码', icon: UserPlus, color: 'from-teal-500/20 to-cyan-500/20', roles: ['admin'] },
-  ];
-
-  const userRole = session?.user?.role || 'user';
-  const quickLinks = allQuickLinks.filter(item => item.roles.includes(userRole));
-
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -241,32 +223,6 @@ export default function AdminPage() {
             </div>
           );
         })}
-      </div>
-
-      {/* Quick Links */}
-      <div>
-        <h2 className="text-lg font-semibold text-foreground mb-4">快捷入口</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {quickLinks.map((item) => (
-            <Link key={item.href} href={item.href}>
-              <div className="bg-card/60 backdrop-blur-sm border border-border/70 rounded-2xl p-5 hover:border-border/70 hover:bg-card/70 transition-all duration-300 group h-full">
-                <div className="flex flex-col h-full">
-                  <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${item.color} flex items-center justify-center mb-4`}>
-                    <item.icon className="w-6 h-6 text-foreground" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-semibold text-foreground mb-1">{item.label}</p>
-                    <p className="text-sm text-foreground/50">{item.desc}</p>
-                  </div>
-                  <div className="flex items-center gap-1 mt-4 text-foreground/40 group-hover:text-foreground/70 transition-colors">
-                    <span className="text-sm">进入</span>
-                    <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                  </div>
-                </div>
-              </div>
-            </Link>
-          ))}
-        </div>
       </div>
 
       {/* Recent Users - 仅管理员可见 */}

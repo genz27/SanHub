@@ -18,7 +18,6 @@ interface UseNodeOperationsReturn {
   updateNode: (id: string, partial: Partial<WorkspaceNode>) => void;
   removeNode: (id: string) => void;
   removeEdge: (edgeId: string) => void;
-  insertCharacterMention: (nodeId: string, mention: string) => void;
   handleStartConnect: (nodeId: string, connectingFrom: string | null, setConnectingFrom: (id: string | null) => void, setCursorPos: (pos: null) => void) => void;
   handleFinishConnect: (nodeId: string, connectingFrom: string | null, setConnectingFrom: (id: string | null) => void) => void;
 }
@@ -147,26 +146,6 @@ export function useNodeOperations({
     [setEdgesDirty]
   );
 
-  const insertCharacterMention = useCallback(
-    (nodeId: string, mention: string) => {
-      setNodesDirty((prev) =>
-        prev.map((node) => {
-          if (node.id !== nodeId) return node;
-          const currentPrompt = node.data.prompt || '';
-          if (currentPrompt.includes(mention)) return node;
-          const nextPrompt = currentPrompt.trim()
-            ? `${currentPrompt.trim()} ${mention}`
-            : mention;
-          return {
-            ...node,
-            data: { ...node.data, prompt: nextPrompt },
-          };
-        })
-      );
-    },
-    [setNodesDirty]
-  );
-
   const handleStartConnect = useCallback(
     (
       nodeId: string,
@@ -282,7 +261,6 @@ export function useNodeOperations({
     updateNode,
     removeNode,
     removeEdge,
-    insertCharacterMention,
     handleStartConnect,
     handleFinishConnect,
   };

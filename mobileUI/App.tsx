@@ -3,7 +3,7 @@ import { HashRouter as Router, Routes, Route, Navigate, Link } from 'react-route
 import { Layout } from './components/Layout';
 import { Landing } from './pages/Landing';
 import { Square } from './pages/Dashboard';
-import { ImageGeneration, VideoGeneration, CharacterCard } from './pages/Creation';
+import { ImageGeneration, VideoGeneration } from './pages/Creation';
 import { AdminDashboard } from './pages/Admin';
 import { UserRole } from './types';
 import { Input, Button, Surface } from './components/ui/Theme';
@@ -107,7 +107,6 @@ const App: React.FC = () => {
                 <Route path="/square" element={<Square />} />
                 <Route path="/image" element={<ImageGeneration />} />
                 <Route path="/video" element={<VideoGeneration />} />
-                <Route path="/video/character-card" element={<CharacterCard />} />
                 <Route path="/history" element={<HistoryPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 

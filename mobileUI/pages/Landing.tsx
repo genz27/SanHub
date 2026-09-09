@@ -47,7 +47,7 @@ export const Landing: React.FC = () => {
             { title: 'Gemini 图像', desc: 'AI 图像创作', iconColor: 'text-emerald-300', icon: (
                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
             )},
-            { title: '角色卡', desc: '视频角色提取', iconColor: 'text-amber-300', icon: (
+            { title: '工作流', desc: '节点式创作编排', iconColor: 'text-amber-300', icon: (
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
             )}
           ].map((item, idx) => (

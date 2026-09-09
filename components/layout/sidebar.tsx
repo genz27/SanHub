@@ -7,7 +7,6 @@ import {
   History,
   Settings,
   Shield,
-  User,
   LayoutGrid,
   Sparkles,
 } from 'lucide-react';
@@ -32,7 +31,6 @@ function formatRelativeTime(timestamp: number | null): string {
 
 const navItems = [
   { href: '/create', icon: Sparkles, label: '创作' },
-  { href: '/video/character-card', icon: User, label: '角色卡' },
   { href: '/square', icon: LayoutGrid, label: '广场' },
   { href: '/history', icon: History, label: '历史' },
   { href: '/settings', icon: Settings, label: '设置' },
@@ -49,9 +47,7 @@ export function Sidebar({ user }: SidebarProps) {
   const [pendingUpdatedAt, setPendingUpdatedAt] = useState<number | null>(null);
   const pendingUpdatedAtRef = useRef<number | null>(null);
   const visibleNavItems = navItems.filter(
-    (item) =>
-      (item.href !== '/square' || siteConfig.squareEnabled) &&
-      (item.href !== '/video/character-card' || siteConfig.characterCardEnabled)
+    (item) => item.href !== '/square' || siteConfig.squareEnabled
   );
 
   const fetchPendingTasks = useCallback(async () => {
