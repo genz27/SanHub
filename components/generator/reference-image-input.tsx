@@ -7,6 +7,7 @@ import {
   ChevronUp,
   Clipboard,
   ImagePlus,
+  PenLine,
   Plus,
   X,
 } from 'lucide-react';
@@ -28,6 +29,7 @@ type ReferenceImageInputProps = {
   onAddFiles: (files: File[]) => void;
   onRemoveImage: (index: number) => void;
   onClearExternalReference?: () => void;
+  onOpenSketch?: () => void;
 };
 
 function getImageFilesFromList(files: FileList | File[]): File[] {
@@ -90,6 +92,7 @@ export function ReferenceImageInput({
   onAddFiles,
   onRemoveImage,
   onClearExternalReference,
+  onOpenSketch,
 }: ReferenceImageInputProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -304,6 +307,21 @@ export function ReferenceImageInput({
         <Clipboard className="h-3 w-3" />
       </button>
 
+      {onOpenSketch && (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onOpenSketch();
+          }}
+          className="mt-2 inline-flex w-full items-center justify-center gap-1 rounded-md border border-sky-500/30 bg-sky-500/10 px-1.5 py-1 text-[10px] text-sky-300 transition-colors hover:bg-sky-500/20"
+        >
+          <PenLine className="h-3 w-3" />
+          草图
+        </button>
+      )}
+
       {previewUrl && (
         <>
           <button
@@ -355,6 +373,15 @@ export function ReferenceImageInput({
               >
                 读剪切板
               </button>
+              {onOpenSketch && (
+                <button
+                  type="button"
+                  onClick={onOpenSketch}
+                  className="rounded-md border border-sky-500/40 bg-sky-500/10 px-2 py-1 text-[10px] text-sky-300 transition-colors hover:bg-sky-500/20"
+                >
+                  草图
+                </button>
+              )}
             </div>
           </div>
 

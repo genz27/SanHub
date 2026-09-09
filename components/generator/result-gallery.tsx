@@ -12,6 +12,7 @@ import {
   Loader2,
   AlertCircle,
   ExternalLink,
+  Pencil,
   Trash2,
 } from 'lucide-react';
 import type { Generation } from '@/types';
@@ -44,6 +45,7 @@ interface ResultGalleryProps {
   onClearFailedTasks?: () => void;
   onRemoveGeneration?: (generation: Generation) => void;
   onReuseGeneration?: (generation: Generation, target: 'image' | 'video') => void;
+  onEditGeneration?: (generation: Generation) => void;
   busyGenerationId?: string | null;
   clearingFailedTasks?: boolean;
 }
@@ -87,6 +89,7 @@ interface GenerationResultCardProps {
   deferMedia: boolean;
   onSelect: (generation: Generation) => void;
   onRemoveGeneration?: (generation: Generation) => void;
+  onEditGeneration?: (generation: Generation) => void;
 }
 
 const GenerationResultCard = memo(function GenerationResultCard({
@@ -96,6 +99,7 @@ const GenerationResultCard = memo(function GenerationResultCard({
   deferMedia,
   onSelect,
   onRemoveGeneration,
+  onEditGeneration,
 }: GenerationResultCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -224,6 +228,20 @@ const GenerationResultCard = memo(function GenerationResultCard({
           >
             <ExternalLink className="w-3.5 h-3.5" />
           </button>
+          {onEditGeneration && !isVideo && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEditGeneration(generation);
+              }}
+              className="w-8 h-8 bg-card/85 border border-border/80 rounded-lg flex items-center justify-center text-foreground/80 hover:text-sky-400 hover:bg-sky-500/10 hover:border-sky-500/30 backdrop-blur-sm transition-all duration-200 shadow-md"
+              title="区域编辑"
+              aria-label="区域编辑"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+            </button>
+          )}
           {onRemoveGeneration && (
             <button
               type="button"
@@ -258,6 +276,7 @@ export function ResultGallery({
   onClearFailedTasks,
   onRemoveGeneration,
   onReuseGeneration,
+  onEditGeneration,
   busyGenerationId = null,
   clearingFailedTasks = false,
 }: ResultGalleryProps) {
@@ -277,6 +296,11 @@ export function ResultGallery({
     setSelected(null);
     void onReuseGeneration(generation, target);
   }, [onReuseGeneration]);
+  const handleEditGeneration = useCallback((generation: Generation) => {
+    if (!onEditGeneration) return;
+    setSelected(null);
+    onEditGeneration(generation);
+  }, [onEditGeneration]);
 
   // 过滤出正在进行的任务（不包括已完成的，已完成的会在 generations 中显示）
   // 同时排除已经存在于 generations 中的任务（通过 id 匹配）
@@ -472,6 +496,7 @@ export function ResultGallery({
                   deferMedia={deferCompletedMedia}
                   onSelect={handleSelectGeneration}
                   onRemoveGeneration={onRemoveGeneration ? handleRemoveGeneration : undefined}
+                  onEditGeneration={onEditGeneration ? handleEditGeneration : undefined}
                 />
               ))}
             </div>
@@ -488,6 +513,7 @@ export function ResultGallery({
           onCloseSelected={() => setSelected(null)}
           onCloseFailed={() => setSelectedFailedTask(null)}
           onReuseGeneration={onReuseGeneration ? handleReuseGeneration : undefined}
+          onEditGeneration={onEditGeneration ? handleEditGeneration : undefined}
           onRemoveGeneration={onRemoveGeneration ? handleRemoveGeneration : undefined}
         />
       )}

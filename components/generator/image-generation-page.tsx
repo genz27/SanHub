@@ -47,6 +47,16 @@ const ResultGallery = dynamic(
   }
 );
 
+const SketchPad = dynamic(
+  () => import('@/components/generator/sketch-pad').then((mod) => mod.SketchPad),
+  { ssr: false }
+);
+
+const ImageRegionEditor = dynamic(
+  () => import('@/components/generator/image-region-editor').then((mod) => mod.ImageRegionEditor),
+  { ssr: false }
+);
+
 interface DailyUsage {
   imageCount: number;
   videoCount: number;
@@ -165,6 +175,8 @@ export function ImageGenerationPage({
   const [busyGenerationId, setBusyGenerationId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [keepPrompt, setKeepPrompt] = useState(false);
+  const [sketchOpen, setSketchOpen] = useState(false);
+  const [editingGeneration, setEditingGeneration] = useState<Generation | null>(null);
 
   const clearImages = useCallback(() => {
     setImages((prev) => {
@@ -311,8 +323,40 @@ export function ImageGenerationPage({
         onClearExternalReference?.();
         setImages((prev) => [...prev, ...nextImages]);
       }
+
+      return nextImages.length;
     },
     [onClearExternalReference]
+  );
+
+  const handleSketchConfirm = useCallback(
+    (file: File) => {
+      handleAddReferenceFiles([file]);
+      setSketchOpen(false);
+    },
+    [handleAddReferenceFiles]
+  );
+
+  const applyRegionEditToComposer = useCallback(
+    (result: { files: File[]; prompt: string; aspectRatio?: string }) => {
+      if (currentModel && !currentModel.features.imageToImage) {
+        toast({
+          title: '当前模型不支持图生图',
+          description: '请先切换到支持参考图的模型，再做区域编辑',
+          variant: 'destructive',
+        });
+        return false;
+      }
+
+      handleAddReferenceFiles(result.files);
+      setPrompt(result.prompt);
+      if (result.aspectRatio) {
+        setAspectRatio(result.aspectRatio);
+      }
+      setEditingGeneration(null);
+      return true;
+    },
+    [currentModel, handleAddReferenceFiles]
   );
 
   const handleRemoveReferenceImage = useCallback((index: number) => {
@@ -633,10 +677,35 @@ export function ImageGenerationPage({
     }
   };
 
+  const compressFileList = async (
+    files: File[]
+  ): Promise<Array<{ mimeType: string; data: string }>> => {
+    if (files.length === 0) return [];
+
+    setCompressing(true);
+    setError('');
+    try {
+      const compressedImages = [];
+      for (const file of files) {
+        const { compressImageToWebP, fileToBase64 } = await import('@/lib/image-compression');
+        const compressedFile = await compressImageToWebP(file);
+        const base64 = await fileToBase64(compressedFile);
+        compressedImages.push({
+          mimeType: 'image/jpeg',
+          data: `data:image/jpeg;base64,${base64}`,
+        });
+      }
+      return compressedImages;
+    } finally {
+      setCompressing(false);
+    }
+  };
+
   const submitSingleTask = async (
     taskPrompt: string,
     compressedImages: Array<{ mimeType: string; data: string }> | undefined,
-    clientRequestId: string
+    clientRequestId: string,
+    options?: { aspectRatio?: string }
   ) => {
     if (!currentModel) throw new Error('请选择模型');
 
@@ -647,7 +716,7 @@ export function ImageGenerationPage({
       body: JSON.stringify({
         modelId: currentModel.id,
         prompt: taskPrompt,
-        aspectRatio,
+        aspectRatio: options?.aspectRatio || aspectRatio,
         imageSize: currentModel.features.imageSize ? imageSize : undefined,
         quality: (currentModel.channelType === 'apexerapi' || currentModel.channelType === 'openai-compatible' || currentModel.channelType === 'openai-chat') && currentModel.apiModel.toLowerCase().includes('gpt-image-2') && (!currentModel.features.qualityOptions || currentModel.features.qualityOptions.length === 0 || currentModel.features.qualityOptions.includes(quality)) ? quality : undefined,
         images: compressedImages || [],
@@ -727,6 +796,69 @@ export function ImageGenerationPage({
       setSubmitting(false);
     }
   };
+
+  const handleApplyRegionEdit = useCallback(
+    (result: { files: File[]; prompt: string; aspectRatio?: string }) => {
+      if (!applyRegionEditToComposer(result)) return;
+      toast({
+        title: '已应用到输入',
+        description: '选区和修改说明已填入，确认后可立即生成',
+      });
+    },
+    [applyRegionEditToComposer]
+  );
+
+  const handleApplyRegionEditAndGenerate = useCallback(
+    async (result: { files: File[]; prompt: string; aspectRatio?: string }) => {
+      if (!applyRegionEditToComposer(result)) return;
+      if (submissionLockRef.current) return;
+
+      const validationError = isImageLimitReached
+        ? `今日图像生成次数已达上限 (${dailyLimits.imageLimit} 次)`
+        : currentModel
+          ? null
+          : '请选择模型';
+      if (validationError) {
+        setError(validationError);
+        return;
+      }
+
+      submissionLockRef.current = true;
+      setError('');
+      setSubmitting(true);
+
+      try {
+        const compressedImages = await compressFileList(result.files);
+        await submitSingleTask(result.prompt, compressedImages, createClientRequestId(), {
+          aspectRatio: result.aspectRatio,
+        });
+        toast({
+          title: '区域编辑已提交',
+          description: '已按标注范围提交局部修改任务',
+        });
+        setDailyUsage((prev) => ({ ...prev, imageCount: prev.imageCount + 1 }));
+        if (!keepPrompt) {
+          setPrompt('');
+          clearImages();
+          onClearExternalReference?.();
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : '生成失败');
+      } finally {
+        submissionLockRef.current = false;
+        setSubmitting(false);
+      }
+    },
+    [
+      applyRegionEditToComposer,
+      clearImages,
+      currentModel,
+      dailyLimits.imageLimit,
+      isImageLimitReached,
+      keepPrompt,
+      onClearExternalReference,
+    ]
+  );
 
   const handleGachaMode = async () => {
     if (submissionLockRef.current) return;
@@ -894,6 +1026,8 @@ export function ImageGenerationPage({
                   onAddFiles={handleAddReferenceFiles}
                   onRemoveImage={handleRemoveReferenceImage}
                   onClearExternalReference={onClearExternalReference}
+                  onOpenSketch={() => setSketchOpen(true)}
+                  listenForPaste={!sketchOpen && !editingGeneration}
                 />
               </div>
             )}
@@ -1019,10 +1153,32 @@ export function ImageGenerationPage({
           onClearFailedTasks={handleClearFailedTasks}
           onRemoveGeneration={handleRemoveGeneration}
           onReuseGeneration={handleReuseCompletedGeneration}
+          onEditGeneration={
+            currentModel?.features.imageToImage ? setEditingGeneration : undefined
+          }
           busyGenerationId={busyGenerationId}
           clearingFailedTasks={clearingFailedTasks}
         />
       </div>
+
+      {sketchOpen && (
+        <SketchPad
+          open
+          onClose={() => setSketchOpen(false)}
+          onConfirm={handleSketchConfirm}
+        />
+      )}
+      {editingGeneration && (
+        <ImageRegionEditor
+          generation={editingGeneration}
+          allowMultipleReferences={currentModel?.features.multipleImages !== false}
+          onClose={() => setEditingGeneration(null)}
+          onApply={handleApplyRegionEdit}
+          onApplyAndGenerate={(result) => {
+            void handleApplyRegionEditAndGenerate(result);
+          }}
+        />
+      )}
     </div>
   );
 }
