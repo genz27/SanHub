@@ -39,7 +39,15 @@ import {
   shouldResyncGenerationFeed,
 } from '@/lib/generation-state';
 import { useClearFailedTasks } from '@/components/generator/use-clear-failed-tasks';
+import type { RegionEditResult } from '@/components/generator/image-region-editor';
 import type { SketchElement } from '@/lib/sketch-document';
+import {
+  cloneRegionEditDraft,
+  hasRegionDraft,
+  readStoredRegionDrafts,
+  writeStoredRegionDrafts,
+  type RegionEditDraft,
+} from '@/lib/region-edit-document';
 
 const ResultGallery = dynamic(
   () => import('@/components/generator/result-gallery').then((mod) => mod.ResultGallery),
@@ -183,6 +191,34 @@ export function ImageGenerationPage({
   const [sketchElements, setSketchElements] = useState<SketchElement[]>([]);
   const [sketchPreview, setSketchPreview] = useState<string | null>(null);
   const [editingGeneration, setEditingGeneration] = useState<Generation | null>(null);
+  const [regionDrafts, setRegionDrafts] = useState<Record<string, RegionEditDraft>>({});
+
+  useEffect(() => {
+    setRegionDrafts(readStoredRegionDrafts());
+  }, []);
+
+  const saveRegionDraftToIds = useCallback((generationIds: string[], draft: RegionEditDraft) => {
+    setRegionDrafts((current) => {
+      const next = { ...current };
+      const cloned = hasRegionDraft(draft) ? cloneRegionEditDraft(draft) : null;
+      for (const generationId of generationIds) {
+        if (cloned) {
+          next[generationId] = cloned;
+        } else {
+          delete next[generationId];
+        }
+      }
+      writeStoredRegionDrafts(next);
+      return next;
+    });
+  }, []);
+
+  const saveRegionDraft = useCallback(
+    (generationId: string, draft: RegionEditDraft) => {
+      saveRegionDraftToIds([generationId], draft);
+    },
+    [saveRegionDraftToIds]
+  );
 
   const clearImages = useCallback(() => {
     setImages((prev) => {
@@ -876,18 +912,21 @@ export function ImageGenerationPage({
   };
 
   const handleApplyRegionEdit = useCallback(
-    (result: { files: File[]; prompt: string; aspectRatio?: string }) => {
+    (result: RegionEditResult) => {
+      if (editingGeneration) {
+        saveRegionDraft(editingGeneration.id, result.draft);
+      }
       if (!applyRegionEditToComposer(result)) return;
       toast({
         title: '已填入输入栏',
         description: '可以改提示词后再点立即生成，或直接在编辑器里提交',
       });
     },
-    [applyRegionEditToComposer]
+    [applyRegionEditToComposer, editingGeneration, saveRegionDraft]
   );
 
   const handleApplyRegionEditAndGenerate = useCallback(
-    async (result: { files: File[]; prompt: string; aspectRatio?: string }) => {
+    async (result: RegionEditResult) => {
       if (currentModel && !currentModel.features.imageToImage) {
         toast({
           title: '当前模型不支持图生图',
@@ -919,13 +958,17 @@ export function ImageGenerationPage({
 
       try {
         const compressedImages = await compressFileList(result.files);
-        await submitSingleTask(result.prompt, compressedImages, createClientRequestId(), {
+        const sourceId = editingGeneration?.id;
+        const taskId = await submitSingleTask(result.prompt, compressedImages, createClientRequestId(), {
           aspectRatio: result.aspectRatio,
         });
+        if (sourceId) {
+          saveRegionDraftToIds([sourceId, taskId], result.draft);
+        }
         setEditingGeneration(null);
         toast({
           title: '区域编辑已提交',
-          description: '已直接提交生成任务，不用再点输入栏',
+          description: '已直接提交生成任务，再改时会带回这些框',
         });
         setDailyUsage((prev) => ({ ...prev, imageCount: prev.imageCount + 1 }));
         if (keepPrompt) {
@@ -948,8 +991,10 @@ export function ImageGenerationPage({
       applyRegionEditToComposer,
       currentModel,
       dailyLimits.imageLimit,
+      editingGeneration,
       isImageLimitReached,
       keepPrompt,
+      saveRegionDraftToIds,
     ]
   );
 
@@ -1251,6 +1296,7 @@ export function ImageGenerationPage({
           onEditGeneration={
             currentModel?.features.imageToImage ? setEditingGeneration : undefined
           }
+          hasRegionDraft={(generationId) => hasRegionDraft(regionDrafts[generationId])}
           busyGenerationId={busyGenerationId}
           clearingFailedTasks={clearingFailedTasks}
         />
@@ -1268,9 +1314,12 @@ export function ImageGenerationPage({
       )}
       {editingGeneration && (
         <ImageRegionEditor
+          key={editingGeneration.id}
           generation={editingGeneration}
+          draft={regionDrafts[editingGeneration.id] ?? null}
           submitting={submitting || compressing}
           onClose={() => setEditingGeneration(null)}
+          onDraftChange={(draft) => saveRegionDraft(editingGeneration.id, draft)}
           onApply={handleApplyRegionEdit}
           onApplyAndGenerate={handleApplyRegionEditAndGenerate}
         />
