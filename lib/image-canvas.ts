@@ -35,18 +35,30 @@ export function getContainedRect(
   imageWidth: number,
   imageHeight: number
 ): ContainedRect {
-  if (containerWidth <= 0 || containerHeight <= 0 || imageWidth <= 0 || imageHeight <= 0) {
-    return { x: 0, y: 0, w: 0, h: 0, scale: 1 };
+  const fitted = fitContainSize(containerWidth, containerHeight, imageWidth, imageHeight);
+  return {
+    x: (containerWidth - fitted.width) / 2,
+    y: (containerHeight - fitted.height) / 2,
+    w: fitted.width,
+    h: fitted.height,
+    scale: fitted.scale,
+  };
+}
+
+export function fitContainSize(
+  viewportWidth: number,
+  viewportHeight: number,
+  imageWidth: number,
+  imageHeight: number
+): { width: number; height: number; scale: number } {
+  if (viewportWidth <= 0 || viewportHeight <= 0 || imageWidth <= 0 || imageHeight <= 0) {
+    return { width: 0, height: 0, scale: 1 };
   }
 
-  const scale = Math.min(containerWidth / imageWidth, containerHeight / imageHeight);
-  const w = imageWidth * scale;
-  const h = imageHeight * scale;
+  const scale = Math.min(viewportWidth / imageWidth, viewportHeight / imageHeight);
   return {
-    x: (containerWidth - w) / 2,
-    y: (containerHeight - h) / 2,
-    w,
-    h,
+    width: imageWidth * scale,
+    height: imageHeight * scale,
     scale,
   };
 }
@@ -70,6 +82,24 @@ export function pointerToNormalized(
   if (frame.w <= 0 || frame.h <= 0) return null;
   const x = (point.x - frame.x) / frame.w;
   const y = (point.y - frame.y) / frame.h;
+  if (x < 0 || y < 0 || x > 1 || y > 1) return null;
+  return { x, y };
+}
+
+export function clientPointToNormalized(
+  element: HTMLElement,
+  clientX: number,
+  clientY: number,
+  options?: { clamp?: boolean }
+): CanvasPoint | null {
+  const rect = element.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return null;
+
+  let x = (clientX - rect.left) / rect.width;
+  let y = (clientY - rect.top) / rect.height;
+  if (options?.clamp) {
+    return { x: clamp(x, 0, 1), y: clamp(y, 0, 1) };
+  }
   if (x < 0 || y < 0 || x > 1 || y > 1) return null;
   return { x, y };
 }

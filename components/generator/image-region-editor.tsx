@@ -13,19 +13,18 @@ import {
 } from 'lucide-react';
 import type { Generation } from '@/types';
 import { toast } from '@/components/ui/toaster';
+import { toProxiedMediaUrl } from '@/lib/client-media-url';
 import {
   canvasToFile,
   clampNormalizedRect,
-  clientPointOnElement,
+  clientPointToNormalized,
   fetchImageAsFile,
-  getContainedRect,
+  fitContainSize,
   hitTestEllipse,
   hitTestRect,
   loadImage,
   normalizeRect,
-  pointerToNormalized,
   type CanvasPoint,
-  type ContainedRect,
   type NormalizedRect,
 } from '@/lib/image-canvas';
 import { cn } from '@/lib/utils';
@@ -194,13 +193,14 @@ export function ImageRegionEditor({
   onApply: (result: RegionEditResult) => void;
   onApplyAndGenerate: (result: RegionEditResult) => void;
 }) {
+  const viewportRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
   const [tool, setTool] = useState<EditorTool>('box');
   const [regions, setRegions] = useState<EditRegion[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [globalNote, setGlobalNote] = useState('');
-  const [frame, setFrame] = useState<ContainedRect>({ x: 0, y: 0, w: 0, h: 0, scale: 1 });
+  const [fitted, setFitted] = useState({ width: 0, height: 0 });
   const [busy, setBusy] = useState(false);
   const dragRef = useRef<{
     mode: 'create' | 'move' | 'resize';
@@ -211,32 +211,35 @@ export function ImageRegionEditor({
   } | null>(null);
 
   const selected = regions.find((region) => region.id === selectedId) || null;
-  const previewUrl = generation.resultUrl || `/api/media/${generation.id}`;
-  const sourceUrl = `/api/media/${generation.id}`;
+  const sourceUrl = toProxiedMediaUrl(`/api/media/${generation.id}`);
 
-  const updateFrame = useCallback(() => {
-    const stage = stageRef.current;
+  const updateFitted = useCallback(() => {
+    const viewport = viewportRef.current;
     const image = imageRef.current;
-    if (!stage || !image) return;
-    setFrame(
-      getContainedRect(
-        stage.clientWidth,
-        stage.clientHeight,
-        image.naturalWidth || image.width,
-        image.naturalHeight || image.height
-      )
+    if (!viewport || !image) return;
+    const rect = viewport.getBoundingClientRect();
+    const next = fitContainSize(
+      rect.width,
+      rect.height,
+      image.naturalWidth || image.width,
+      image.naturalHeight || image.height
     );
+    setFitted({ width: next.width, height: next.height });
   }, []);
 
   useEffect(() => {
     const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    window.addEventListener('resize', updateFrame);
+    const viewport = viewportRef.current;
+    const observer = viewport ? new ResizeObserver(() => updateFitted()) : null;
+    if (viewport && observer) observer.observe(viewport);
+    window.addEventListener('resize', updateFitted);
     return () => {
       document.body.style.overflow = previous;
-      window.removeEventListener('resize', updateFrame);
+      observer?.disconnect();
+      window.removeEventListener('resize', updateFitted);
     };
-  }, [updateFrame]);
+  }, [updateFitted]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -256,12 +259,13 @@ export function ImageRegionEditor({
   }, [onClose, selectedId]);
 
   const toNormalized = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>): CanvasPoint | null => {
+    (event: React.PointerEvent<HTMLElement>, clampToImage = false): CanvasPoint | null => {
       const stage = stageRef.current;
-      if (!stage) return null;
-      return pointerToNormalized(clientPointOnElement(stage, event.clientX, event.clientY), frame);
+      const image = imageRef.current;
+      if (!stage || !image?.naturalWidth || fitted.width <= 0) return null;
+      return clientPointToNormalized(stage, event.clientX, event.clientY, { clamp: clampToImage });
     },
-    [frame]
+    [fitted.width]
   );
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -270,11 +274,11 @@ export function ImageRegionEditor({
     event.currentTarget.setPointerCapture(event.pointerId);
 
     if (tool === 'select' && selected) {
+      const stageRect = event.currentTarget.getBoundingClientRect();
       const handle = handlePositions(selected).find((item) => {
-        const hx = frame.x + item.x * frame.w;
-        const hy = frame.y + item.y * frame.h;
-        const local = clientPointOnElement(event.currentTarget, event.clientX, event.clientY);
-        return Math.abs(local.x - hx) <= HANDLE_SIZE && Math.abs(local.y - hy) <= HANDLE_SIZE;
+        const hx = stageRect.left + item.x * stageRect.width;
+        const hy = stageRect.top + item.y * stageRect.height;
+        return Math.abs(event.clientX - hx) <= HANDLE_SIZE && Math.abs(event.clientY - hy) <= HANDLE_SIZE;
       });
       if (handle) {
         dragRef.current = {
@@ -307,7 +311,7 @@ export function ImageRegionEditor({
 
   const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current;
-    const point = toNormalized(event);
+    const point = toNormalized(event, true);
     if (!drag || !point) return;
 
     setRegions((current) =>
@@ -435,56 +439,66 @@ export function ImageRegionEditor({
           </div>
 
           <div
-            ref={stageRef}
-            className="absolute inset-0 touch-none"
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onPointerCancel={handlePointerUp}
+            ref={viewportRef}
+            className="absolute inset-0 flex items-center justify-center overflow-hidden"
           >
-            <img
-              ref={imageRef}
-              src={previewUrl}
-              alt={generation.prompt || 'Region editor source'}
-              className="h-full w-full object-contain"
-              draggable={false}
-              onLoad={updateFrame}
-            />
-            {regions.map((region, index) => {
-              const isSelected = region.id === selectedId;
-              return (
-                <div
-                  key={region.id}
-                  className={cn(
-                    'pointer-events-none absolute border-2',
-                    region.shape === 'ellipse' ? 'rounded-full' : 'rounded-sm',
-                    isSelected ? 'border-sky-400 bg-sky-400/10' : 'border-sky-300/80 bg-sky-400/5'
-                  )}
-                  style={{
-                    left: frame.x + region.x * frame.w,
-                    top: frame.y + region.y * frame.h,
-                    width: region.w * frame.w,
-                    height: region.h * frame.h,
-                  }}
-                >
-                  <span className="absolute -left-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-sky-500 px-1 text-[10px] font-semibold text-white">
-                    {index + 1}
-                  </span>
-                  {isSelected &&
-                    tool === 'select' &&
-                    handlePositions(region).map((handle) => (
-                      <span
-                        key={handle.id}
-                        className="absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-sm border border-white bg-sky-400"
-                        style={{
-                          left: (handle.x - region.x) * frame.w,
-                          top: (handle.y - region.y) * frame.h,
-                        }}
-                      />
-                    ))}
-                </div>
-              );
-            })}
+            <div
+              ref={stageRef}
+              className="relative touch-none"
+              style={
+                fitted.width > 0 && fitted.height > 0
+                  ? { width: fitted.width, height: fitted.height }
+                  : { width: '100%', height: '100%' }
+              }
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerCancel={handlePointerUp}
+            >
+              <img
+                ref={imageRef}
+                src={sourceUrl}
+                alt={generation.prompt || 'Region editor source'}
+                className="block h-full w-full"
+                draggable={false}
+                onLoad={updateFitted}
+              />
+              {regions.map((region, index) => {
+                const isSelected = region.id === selectedId;
+                return (
+                  <div
+                    key={region.id}
+                    className={cn(
+                      'pointer-events-none absolute border-2',
+                      region.shape === 'ellipse' ? 'rounded-full' : 'rounded-sm',
+                      isSelected ? 'border-sky-400 bg-sky-400/10' : 'border-sky-300/80 bg-sky-400/5'
+                    )}
+                    style={{
+                      left: `${region.x * 100}%`,
+                      top: `${region.y * 100}%`,
+                      width: `${region.w * 100}%`,
+                      height: `${region.h * 100}%`,
+                    }}
+                  >
+                    <span className="absolute -left-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-sky-500 px-1 text-[10px] font-semibold text-white">
+                      {index + 1}
+                    </span>
+                    {isSelected &&
+                      tool === 'select' &&
+                      handlePositions(region).map((handle) => (
+                        <span
+                          key={handle.id}
+                          className="absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-sm border border-white bg-sky-400"
+                          style={{
+                            left: `${((handle.x - region.x) / Math.max(region.w, 0.001)) * 100}%`,
+                            top: `${((handle.y - region.y) / Math.max(region.h, 0.001)) * 100}%`,
+                          }}
+                        />
+                      ))}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
 
