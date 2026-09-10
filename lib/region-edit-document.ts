@@ -42,32 +42,74 @@ export function describeRegionPlace(region: EditRegion): string {
   return `${vertical}${horizontal}`;
 }
 
-const REGION_EDIT_PROMPT_MARKERS = ['局部改字', '改字稿'] as const;
+export type RegionEditIntent = 'replace-text' | 'edit-content';
+
+const TEXT_REPLACE_MAX_CHARS = 12;
+const VISUAL_EDIT_RE = /(让|穿|帮我|不要|怎么|COS|cosplay|衣服|服装|裙子|发型|脸|背景|姿势|改一下)/i;
+const INSTRUCTION_PUNCT_RE = /[。！？!?，,；;：:\n]/;
+
+export function isTextReplacement(text: string): boolean {
+  const value = text.trim().replace(/^(改成|换成|改为)\s*/, '');
+  if (!value) return false;
+  if (value.length > TEXT_REPLACE_MAX_CHARS) return false;
+  if (INSTRUCTION_PUNCT_RE.test(value)) return false;
+  if (VISUAL_EDIT_RE.test(value)) return false;
+  return true;
+}
+
+export function inferRegionEditIntent(regions: EditRegion[], globalNote: string): RegionEditIntent {
+  if (regions.length === 0) return 'edit-content';
+  const instructions = regions.map((region) => regionInstruction(region, globalNote));
+  return instructions.every(isTextReplacement) ? 'replace-text' : 'edit-content';
+}
+
+function leftoverGlobalNote(regions: EditRegion[], globalNote: string): string {
+  const overall = globalNote.trim();
+  if (!overall) return '';
+  if (regions.every((region) => !region.note.trim())) return '';
+  const notes = regions.map((region) => region.note.trim()).filter(Boolean);
+  if (notes.includes(overall)) return '';
+  if (notes.length === 1 && (overall.includes(notes[0]) || notes[0].includes(overall))) return '';
+  return overall;
+}
+
 const REGION_EDIT_TARGET_RE = /改成「([^」]+)」/g;
+const REGION_EDIT_CONTENT_RE = /按说明改：([^\n]+)/g;
 
 export function isRegionEditPrompt(prompt?: string | null): prompt is string {
   if (!prompt) return false;
-  return REGION_EDIT_PROMPT_MARKERS.every((marker) => prompt.includes(marker));
+  return (
+    (prompt.includes('局部改字') && prompt.includes('改字稿')) ||
+    prompt.includes('局部改图')
+  );
 }
 
-function extractRegionEditTargets(prompt: string): string[] {
-  const targets: string[] = [];
-  const matcher = new RegExp(REGION_EDIT_TARGET_RE.source, 'g');
+function extractPromptParts(prompt: string, pattern: RegExp): string[] {
+  const parts: string[] = [];
+  const matcher = new RegExp(pattern.source, 'g');
   let match = matcher.exec(prompt);
   while (match) {
-    const target = match[1]?.trim();
-    if (target) targets.push(target);
+    const value = match[1]?.trim();
+    if (value) parts.push(value);
     match = matcher.exec(prompt);
   }
-  return targets;
+  return parts;
+}
+
+function shortenTitle(text: string): string {
+  return text.length <= 18 ? text : `${text.slice(0, 16)}…`;
 }
 
 export function regionEditDisplayTitle(prompt?: string | null): string | null {
   if (!isRegionEditPrompt(prompt)) return null;
-  const targets = extractRegionEditTargets(prompt);
+  const targets = prompt.includes('局部改图')
+    ? extractPromptParts(prompt, REGION_EDIT_CONTENT_RE)
+    : extractPromptParts(prompt, REGION_EDIT_TARGET_RE);
   if (targets.length === 0) return '区域编辑';
-  if (targets.length === 1) return `改成${targets[0]}`;
-  const preview = targets.slice(0, 2).join('、');
+  if (targets.length === 1) {
+    return prompt.includes('局部改图') ? shortenTitle(targets[0]) : `改成${targets[0]}`;
+  }
+  const preview = targets.slice(0, 2).map((item) => item.slice(0, 8)).join('、');
   const suffix = targets.length > 2 ? '…' : '';
   return `${preview}${suffix} · ${targets.length} 处`;
 }
@@ -78,19 +120,39 @@ export function displayPromptTitle(prompt?: string | null): string {
 
 export function buildRegionPrompt(regions: EditRegion[], globalNote: string): string {
   const count = regions.length;
-  const items = regions.map(
-    (region, index) =>
-      `${index + 1}. 把${describeRegionPlace(region)}第 ${index + 1} 处改成「${regionTarget(region, globalNote)}」`
-  );
-  const overall = globalNote.trim();
+  const intent = inferRegionEditIntent(regions, globalNote);
+  const supplement = leftoverGlobalNote(regions, globalNote);
+
+  if (intent === 'replace-text') {
+    const items = regions.map(
+      (region, index) =>
+        `${index + 1}. 把${describeRegionPlace(region)}第 ${index + 1} 处改成「${regionTarget(region, globalNote)}」`
+    );
+    return [
+      '局部改字，不要重画整张图。',
+      '第一张是改字稿，框内已经是目标新字；第二张是原图，用来对齐构图和书法。',
+      ...items,
+      count > 1 ? `以上 ${count} 处都要改掉，不能只改一处，也不能留旧字。` : '框内必须是新字，不能留旧字。',
+      supplement ? `补充：${supplement}` : '',
+      '未框选的部分与原图一致。新字用原图手写风格。不要留下框、编号、白底或清单。',
+    ]
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  const items = regions.map((region, index) => {
+    const mark = region.shape === 'ellipse' ? '圈' : '框';
+    return `${index + 1}. 把${describeRegionPlace(region)}${mark}出的区域按说明改：${regionTarget(region, globalNote)}`;
+  });
 
   return [
-    '局部改字，不要重画整张图。',
-    '第一张是改字稿，框内已经是目标新字；第二张是原图，用来对齐构图和书法。',
+    '局部改图，不要重画整张图，也不要在画面上写任何字或说明。',
+    '第一张只标位置，彩色框里仍是原图，不是要抄的字。',
+    '第二张是干净原图，用来对齐构图、光影和没框到的部分。',
     ...items,
-    count > 1 ? `以上 ${count} 处都要改掉，不能只改一处，也不能留旧字。` : '框内必须是新字，不能留旧字。',
-    overall ? `补充：${overall}` : '',
-    '未框选的部分与原图一致。新字用原图手写风格。不要留下框、编号、白底或清单。',
+    count > 1 ? `以上 ${count} 处都要改掉，不能只改一处。` : '框住的区域必须按说明改完。',
+    supplement ? `补充：${supplement}` : '',
+    '未框选部分与原图一致。不要留下框、编号、色块或提示文字。',
   ]
     .filter(Boolean)
     .join('\n');
@@ -163,6 +225,30 @@ function fitLabelSize(
   return 14;
 }
 
+function hexAlpha(hex: string, alpha: number): string {
+  const value = hex.replace('#', '');
+  const r = parseInt(value.slice(0, 2), 16);
+  const g = parseInt(value.slice(2, 4), 16);
+  const b = parseInt(value.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function clipRegionPath(
+  ctx: CanvasRenderingContext2D,
+  region: EditRegion,
+  x: number,
+  y: number,
+  w: number,
+  h: number
+) {
+  ctx.beginPath();
+  if (region.shape === 'ellipse') {
+    ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+  } else {
+    ctx.rect(x, y, w, h);
+  }
+}
+
 function drawReplacementInRegion(
   ctx: CanvasRenderingContext2D,
   region: EditRegion,
@@ -173,12 +259,7 @@ function drawReplacementInRegion(
   text: string
 ) {
   ctx.save();
-  ctx.beginPath();
-  if (region.shape === 'ellipse') {
-    ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
-  } else {
-    ctx.rect(x, y, w, h);
-  }
+  clipRegionPath(ctx, region, x, y, w, h);
   ctx.fillStyle = 'rgba(250, 248, 242, 0.94)';
   ctx.fill();
 
@@ -189,6 +270,22 @@ function drawReplacementInRegion(
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(label, x + w / 2, y + h / 2, w * 0.9);
+  ctx.restore();
+}
+
+function drawRegionHighlight(
+  ctx: CanvasRenderingContext2D,
+  region: EditRegion,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  color: string
+) {
+  ctx.save();
+  clipRegionPath(ctx, region, x, y, w, h);
+  ctx.fillStyle = hexAlpha(color, 0.28);
+  ctx.fill();
   ctx.restore();
 }
 
@@ -239,7 +336,10 @@ export function paintRegionAnnotation(
 
   const stroke = Math.max(4, Math.round(width * 0.0045));
   const badgeSize = Math.max(28, Math.round(width * 0.028));
-  drawAnnotationLegend(ctx, width, height, regions, globalNote);
+  const intent = inferRegionEditIntent(regions, globalNote);
+  if (intent === 'replace-text' && regions.length > 1) {
+    drawAnnotationLegend(ctx, width, height, regions, globalNote);
+  }
 
   regions.forEach((region, index) => {
     const x = region.x * width;
@@ -247,8 +347,13 @@ export function paintRegionAnnotation(
     const w = region.w * width;
     const h = region.h * height;
     const color = regionColor(index);
+    const instruction = regionInstruction(region, globalNote);
 
-    drawReplacementInRegion(ctx, region, x, y, w, h, regionInstruction(region, globalNote));
+    if (isTextReplacement(instruction)) {
+      drawReplacementInRegion(ctx, region, x, y, w, h, instruction);
+    } else {
+      drawRegionHighlight(ctx, region, x, y, w, h, color);
+    }
 
     ctx.save();
     ctx.strokeStyle = color;
@@ -263,15 +368,17 @@ export function paintRegionAnnotation(
     }
 
     ctx.setLineDash([]);
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.arc(x + 8 + badgeSize / 2, y + 8 + badgeSize / 2, badgeSize / 2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#ffffff';
-    ctx.font = `700 ${Math.round(badgeSize * 0.55)}px ui-sans-serif, system-ui, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(String(index + 1), x + 8 + badgeSize / 2, y + 8 + badgeSize / 2);
+    if (!(intent === 'edit-content' && regions.length === 1)) {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(x + 8 + badgeSize / 2, y + 8 + badgeSize / 2, badgeSize / 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `700 ${Math.round(badgeSize * 0.55)}px ui-sans-serif, system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(index + 1), x + 8 + badgeSize / 2, y + 8 + badgeSize / 2);
+    }
     ctx.restore();
   });
 }

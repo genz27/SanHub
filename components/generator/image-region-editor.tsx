@@ -29,6 +29,7 @@ import {
   buildRegionPrompt,
   createRegionId,
   exportRegionEditImages,
+  inferRegionEditIntent,
   paintRegionAnnotation,
   regionColor,
   type EditRegion,
@@ -121,6 +122,7 @@ export function ImageRegionEditor({
   } | null>(null);
 
   const selected = regions.find((region) => region.id === selectedId) || null;
+  const editIntent = useMemo(() => inferRegionEditIntent(regions, globalNote), [globalNote, regions]);
   const sourceUrl = toProxiedMediaUrl(`/api/media/${generation.id}`);
 
   const onDraftChangeRef = useRef(onDraftChange);
@@ -356,7 +358,9 @@ export function ImageRegionEditor({
           <div>
             <p className="text-sm font-medium text-foreground">区域编辑</p>
             <p className="text-xs text-foreground/45">
-              选区会记住。提交前可预览标注稿，再改时会带回上次的框
+              {editIntent === 'replace-text'
+                ? '短文本会画进标注稿当新字。提交前可预览'
+                : '说明只发给模型，不会写到图上'}
             </p>
           </div>
           <button
@@ -466,7 +470,9 @@ export function ImageRegionEditor({
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-[11px] text-foreground/45">
-                  将修改 {regions.length} 处，关闭后再打开会带回这些框
+                  {editIntent === 'replace-text'
+                    ? `将换字 ${regions.length} 处`
+                    : `将改图 ${regions.length} 处，说明不会画进画面`}
                 </p>
                 <button
                   type="button"
@@ -498,7 +504,7 @@ export function ImageRegionEditor({
                       setSelectedId(region.id);
                     }}
                     onFocus={() => setSelectedId(region.id)}
-                    placeholder={`第 ${index + 1} 处怎么改，例如改成哈气咪`}
+                    placeholder={`第 ${index + 1} 处：短词换字，长句改图`}
                     className="h-9 min-w-0 flex-1 rounded-lg border border-border/70 bg-input/70 px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring/30"
                   />
                   <button
@@ -520,7 +526,7 @@ export function ImageRegionEditor({
           <textarea
             value={globalNote}
             onChange={(event) => setGlobalNote(event.target.value)}
-            placeholder="描述编辑：可写总说明，或先框选/画圈再给每个选区单独写"
+            placeholder="改图说明或短词换字。长说明只会发给模型，不会写到图上"
             className="min-h-[72px] w-full resize-none rounded-lg border border-border/70 bg-input/70 px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring/30"
           />
 
@@ -576,7 +582,9 @@ export function ImageRegionEditor({
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mb-2 flex items-center justify-between gap-3">
-              <p className="text-sm text-foreground">模型将看到的标注稿</p>
+              <p className="text-sm text-foreground">
+                {editIntent === 'replace-text' ? '模型将看到的改字稿' : '只标位置，说明不会画进框里'}
+              </p>
               <button
                 type="button"
                 onClick={() => setPreviewOpen(false)}
