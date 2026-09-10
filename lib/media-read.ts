@@ -40,6 +40,18 @@ export async function readMediaFile(
   }
 }
 
+export async function readConventionReferenceFile(
+  generationId: string,
+  index: number
+): Promise<{ buffer: Buffer; mimeType: string } | null> {
+  const extensions = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+  for (const ext of extensions) {
+    const file = await readMediaFile(`file:${generationId}-ref-${index}.${ext}`);
+    if (file) return file;
+  }
+  return null;
+}
+
 export function deleteMediaFile(identifier: string): boolean {
   try {
     if (!identifier.startsWith('file:')) {

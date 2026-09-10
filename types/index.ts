@@ -9,7 +9,7 @@
 export type UserRole = 'user' | 'admin' | 'moderator';
 
 // 生成类型
-export type GenerationType = 'sora-video' | 'sora-image' | 'gemini-image' | 'zimage-image' | 'gitee-image' | 'chat' | 'character-card';
+export type GenerationType = 'sora-video' | 'sora-image' | 'gemini-image' | 'zimage-image' | 'gitee-image' | 'extract-prompt' | 'chat' | 'character-card';
 
 // 聊天模型配置
 export interface ChatModel {
@@ -91,6 +91,9 @@ export interface Generation {
 export interface GenerationParams {
   model?: string;
   modelId?: string;
+  modelName?: string;
+  kind?: 'region-edit' | 'extract-prompt';
+  sourceGenerationId?: string;
   aspectRatio?: string;
   duration?: string;
   videoConfigObject?: VideoConfigObject;

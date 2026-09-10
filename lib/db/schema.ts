@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS generations (
   id VARCHAR(36) PRIMARY KEY,
   user_id VARCHAR(36) NOT NULL,
-  type ENUM('sora-video', 'sora-image', 'gemini-image', 'zimage-image', 'gitee-image') NOT NULL,
+  type ENUM('sora-video', 'sora-image', 'gemini-image', 'zimage-image', 'gitee-image', 'extract-prompt') NOT NULL,
   prompt TEXT,
   params TEXT,
   result_url LONGTEXT,
@@ -294,6 +294,18 @@ async function ensureSystemConfigRow(db: DatabaseAdapter): Promise<void> {
   }
 }
 
+const GENERATION_TYPE_ENUM =
+  "ENUM('sora-video', 'sora-image', 'gemini-image', 'zimage-image', 'gitee-image', 'extract-prompt') NOT NULL";
+
+async function ensureGenerationTypeEnum(db: DatabaseAdapter): Promise<void> {
+  if ((process.env.DB_TYPE || 'sqlite') !== 'mysql') return;
+  try {
+    await db.execute(`ALTER TABLE generations MODIFY COLUMN type ${GENERATION_TYPE_ENUM}`);
+  } catch {
+    // Column already migrated or table missing during first boot
+  }
+}
+
 async function ensurePerformanceIndexes(db: DatabaseAdapter): Promise<void> {
   for (const statement of PERFORMANCE_INDEXES) {
     try {
@@ -320,6 +332,7 @@ async function doInitializeDatabase(): Promise<void> {
   const db = getAdapter();
   if (await hasLegacyMigrationsApplied(db)) {
     await ensureSystemConfigRow(db);
+    await ensureGenerationTypeEnum(db);
     initialized = true;
     console.log('Database initialized successfully');
     return;
@@ -738,7 +751,7 @@ async function doInitializeDatabase(): Promise<void> {
   // 更新 generations 表的 type 字段以支持 gitee-image（MySQL 需要修改 ENUM）
   if (dbType === 'mysql') {
     try {
-      await db.execute("ALTER TABLE generations MODIFY COLUMN type ENUM('sora-video', 'sora-image', 'gemini-image', 'zimage-image', 'gitee-image') NOT NULL");
+      await db.execute(`ALTER TABLE generations MODIFY COLUMN type ${GENERATION_TYPE_ENUM}`);
     } catch {
       // 忽略错误
     }

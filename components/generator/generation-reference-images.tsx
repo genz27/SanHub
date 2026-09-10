@@ -31,7 +31,9 @@ export function GenerationReferenceImages({
   return (
     <div className="space-y-2">
       <p className="text-xs font-medium text-foreground/40">
-        参考图 · {urls.length}
+        {generation.params?.kind === 'region-edit' || generation.params?.sourceGenerationId
+          ? `原图 / 参考图 · ${urls.length}`
+          : `参考图 · ${urls.length}`}
       </p>
       <div className="grid grid-cols-2 gap-2">
         {urls.map((url, index) => (

@@ -134,6 +134,12 @@ export async function getGenerationStatus(id: string): Promise<Generation | null
            CASE
              WHEN status IN ('pending', 'processing') THEN JSON_EXTRACT(params, '$.progress')
            END AS param_progress,
+           JSON_UNQUOTE(JSON_EXTRACT(params, '$.modelId')) AS param_model_id,
+           JSON_UNQUOTE(JSON_EXTRACT(params, '$.model')) AS param_model,
+           JSON_UNQUOTE(JSON_EXTRACT(params, '$.modelName')) AS param_model_name,
+           JSON_UNQUOTE(JSON_EXTRACT(params, '$.kind')) AS param_kind,
+           JSON_UNQUOTE(JSON_EXTRACT(params, '$.sourceGenerationId')) AS param_source_generation_id,
+           JSON_EXTRACT(params, '$.imageCount') AS param_image_count,
            JSON_EXTRACT(params, '$.referenceImages') AS param_reference_images
          FROM generations WHERE id = ?`,
         [id]

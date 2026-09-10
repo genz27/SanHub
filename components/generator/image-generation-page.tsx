@@ -860,7 +860,7 @@ export function ImageGenerationPage({
     taskPrompt: string,
     compressedImages: Array<{ mimeType: string; data: string }> | undefined,
     clientRequestId: string,
-    options?: { aspectRatio?: string; imageSize?: string }
+    options?: { aspectRatio?: string; imageSize?: string; sourceGenerationId?: string }
   ) => {
     if (!currentModel) throw new Error('请选择模型');
 
@@ -876,6 +876,7 @@ export function ImageGenerationPage({
         quality: (currentModel.channelType === 'apexerapi' || currentModel.channelType === 'openai-compatible' || currentModel.channelType === 'openai-chat') && currentModel.apiModel.toLowerCase().includes('gpt-image-2') && (!currentModel.features.qualityOptions || currentModel.features.qualityOptions.length === 0 || currentModel.features.qualityOptions.includes(quality)) ? quality : undefined,
         images: compressedImages || [],
         referenceImageUrl: externalReference?.sourceUrl,
+        sourceGenerationId: options?.sourceGenerationId || externalReference?.generationId,
         clientRequestId,
       }),
     });
@@ -1003,6 +1004,7 @@ export function ImageGenerationPage({
         const taskId = await submitSingleTask(result.prompt, compressedImages, createClientRequestId(), {
           aspectRatio: result.aspectRatio,
           imageSize: result.imageSize,
+          sourceGenerationId: sourceId,
         });
         if (sourceId) {
           saveRegionDraftToIds([sourceId, taskId], result.draft);
