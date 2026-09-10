@@ -17,6 +17,8 @@ export type RegionEditDraft = {
   regions: EditRegion[];
   globalNote: string;
   mode?: RegionEditIntent;
+  aspectRatio?: string;
+  imageSize?: string;
 };
 
 const REGION_COLORS = ['#38bdf8', '#f59e0b', '#c084fc', '#4ade80', '#fb7185'];
@@ -79,12 +81,15 @@ export function resolveRegionEditIntent(
 export function createRegionEditDraft(
   regions: EditRegion[],
   globalNote: string,
-  mode: RegionEditIntent
+  mode: RegionEditIntent,
+  output?: Pick<RegionEditDraft, 'aspectRatio' | 'imageSize'>
 ): RegionEditDraft {
   return {
     regions: regions.map((region) => ({ ...region })),
     globalNote,
     mode,
+    aspectRatio: output?.aspectRatio,
+    imageSize: output?.imageSize,
   };
 }
 
@@ -205,6 +210,8 @@ export function isRegionEditDraft(value: unknown): value is RegionEditDraft {
   if (!value || typeof value !== 'object') return false;
   const record = value as Record<string, unknown>;
   if (record.mode !== undefined && !isRegionEditIntent(record.mode)) return false;
+  if (record.aspectRatio !== undefined && typeof record.aspectRatio !== 'string') return false;
+  if (record.imageSize !== undefined && typeof record.imageSize !== 'string') return false;
   return typeof record.globalNote === 'string' && Array.isArray(record.regions) && record.regions.every(isEditRegion);
 }
 
@@ -212,7 +219,8 @@ export function cloneRegionEditDraft(draft: RegionEditDraft): RegionEditDraft {
   return createRegionEditDraft(
     draft.regions,
     draft.globalNote,
-    resolveRegionEditIntent(draft.regions, draft.globalNote, draft.mode)
+    resolveRegionEditIntent(draft.regions, draft.globalNote, draft.mode),
+    { aspectRatio: draft.aspectRatio, imageSize: draft.imageSize }
   );
 }
 
