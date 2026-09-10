@@ -7,6 +7,7 @@ import { getUserById } from '@/lib/db/user-session';
 import { EXTRACT_PROMPT_INSTRUCTION, sanitizeExtractedPrompt } from '@/lib/extract-prompt';
 import { isExtractableImageDataUrl, resolveExtractPromptImage } from '@/lib/extract-prompt-image';
 import { checkRateLimit, RateLimitConfig } from '@/lib/rate-limit';
+import { completeVisionChat } from '@/lib/vision-chat';
 
 export const maxDuration = 60;
 
@@ -77,34 +78,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const response = await fetch(model.apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${model.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: model.modelId,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: EXTRACT_PROMPT_INSTRUCTION },
-              { type: 'image_url', image_url: { url: dataUrl } },
-            ],
-          },
-        ],
-        max_tokens: Math.min(1024, model.maxTokens || 1024),
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error?.message || `反推失败: ${response.status}`);
-    }
-
-    const data = await response.json();
-    const prompt = sanitizeExtractedPrompt(data.choices?.[0]?.message?.content || '');
+    const prompt = sanitizeExtractedPrompt(
+      await completeVisionChat(model, dataUrl, EXTRACT_PROMPT_INSTRUCTION)
+    );
     if (!prompt) {
       throw new Error('模型没有返回可用的提示词');
     }

@@ -837,7 +837,8 @@ export function ImageGenerationPage({
       const { compressImageForVision, fileToBase64 } = await import('@/lib/image-compression');
       const compressedFile = await compressImageForVision(file);
       const base64 = await fileToBase64(compressedFile);
-      const result = await requestExtractedPrompt({ image: `data:image/jpeg;base64,${base64}` });
+      const mimeType = compressedFile.type || file.type || 'image/jpeg';
+      const result = await requestExtractedPrompt({ image: `data:${mimeType};base64,${base64}` });
       setPrompt(result.prompt);
       promptTextareaRef.current?.focus();
       toast({
