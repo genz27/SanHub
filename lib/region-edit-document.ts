@@ -11,9 +11,12 @@ export type EditRegion = NormalizedRect & {
   note: string;
 };
 
+export type RegionEditIntent = 'replace-text' | 'edit-content';
+
 export type RegionEditDraft = {
   regions: EditRegion[];
   globalNote: string;
+  mode?: RegionEditIntent;
 };
 
 const REGION_COLORS = ['#38bdf8', '#f59e0b', '#c084fc', '#4ade80', '#fb7185'];
@@ -42,8 +45,6 @@ export function describeRegionPlace(region: EditRegion): string {
   return `${vertical}${horizontal}`;
 }
 
-export type RegionEditIntent = 'replace-text' | 'edit-content';
-
 const TEXT_REPLACE_MAX_CHARS = 12;
 const VISUAL_EDIT_RE = /(让|穿|帮我|不要|怎么|COS|cosplay|衣服|服装|裙子|发型|脸|背景|姿势|改一下)/i;
 const INSTRUCTION_PUNCT_RE = /[。！？!?，,；;：:\n]/;
@@ -61,6 +62,30 @@ export function inferRegionEditIntent(regions: EditRegion[], globalNote: string)
   if (regions.length === 0) return 'edit-content';
   const instructions = regions.map((region) => regionInstruction(region, globalNote));
   return instructions.every(isTextReplacement) ? 'replace-text' : 'edit-content';
+}
+
+export function isRegionEditIntent(value: unknown): value is RegionEditIntent {
+  return value === 'replace-text' || value === 'edit-content';
+}
+
+export function resolveRegionEditIntent(
+  regions: EditRegion[],
+  globalNote: string,
+  mode?: RegionEditIntent | null
+): RegionEditIntent {
+  return mode ?? inferRegionEditIntent(regions, globalNote);
+}
+
+export function createRegionEditDraft(
+  regions: EditRegion[],
+  globalNote: string,
+  mode: RegionEditIntent
+): RegionEditDraft {
+  return {
+    regions: regions.map((region) => ({ ...region })),
+    globalNote,
+    mode,
+  };
 }
 
 function leftoverGlobalNote(regions: EditRegion[], globalNote: string): string {
@@ -118,9 +143,13 @@ export function displayPromptTitle(prompt?: string | null): string {
   return regionEditDisplayTitle(prompt) ?? (prompt?.trim() || '无提示词');
 }
 
-export function buildRegionPrompt(regions: EditRegion[], globalNote: string): string {
+export function buildRegionPrompt(
+  regions: EditRegion[],
+  globalNote: string,
+  mode?: RegionEditIntent | null
+): string {
   const count = regions.length;
-  const intent = inferRegionEditIntent(regions, globalNote);
+  const intent = resolveRegionEditIntent(regions, globalNote, mode);
   const supplement = leftoverGlobalNote(regions, globalNote);
 
   if (intent === 'replace-text') {
@@ -175,14 +204,16 @@ function isEditRegion(value: unknown): value is EditRegion {
 export function isRegionEditDraft(value: unknown): value is RegionEditDraft {
   if (!value || typeof value !== 'object') return false;
   const record = value as Record<string, unknown>;
+  if (record.mode !== undefined && !isRegionEditIntent(record.mode)) return false;
   return typeof record.globalNote === 'string' && Array.isArray(record.regions) && record.regions.every(isEditRegion);
 }
 
 export function cloneRegionEditDraft(draft: RegionEditDraft): RegionEditDraft {
-  return {
-    globalNote: draft.globalNote,
-    regions: draft.regions.map((region) => ({ ...region })),
-  };
+  return createRegionEditDraft(
+    draft.regions,
+    draft.globalNote,
+    resolveRegionEditIntent(draft.regions, draft.globalNote, draft.mode)
+  );
 }
 
 export function hasRegionDraft(draft?: RegionEditDraft | null): boolean {
@@ -328,7 +359,8 @@ export function paintRegionAnnotation(
   width: number,
   height: number,
   regions: EditRegion[],
-  globalNote: string
+  globalNote: string,
+  mode?: RegionEditIntent | null
 ) {
   ctx.clearRect(0, 0, width, height);
   ctx.drawImage(image, 0, 0, width, height);
@@ -336,7 +368,7 @@ export function paintRegionAnnotation(
 
   const stroke = Math.max(4, Math.round(width * 0.0045));
   const badgeSize = Math.max(28, Math.round(width * 0.028));
-  const intent = inferRegionEditIntent(regions, globalNote);
+  const intent = resolveRegionEditIntent(regions, globalNote, mode);
   if (intent === 'replace-text' && regions.length > 1) {
     drawAnnotationLegend(ctx, width, height, regions, globalNote);
   }
@@ -349,7 +381,7 @@ export function paintRegionAnnotation(
     const color = regionColor(index);
     const instruction = regionInstruction(region, globalNote);
 
-    if (isTextReplacement(instruction)) {
+    if (intent === 'replace-text') {
       drawReplacementInRegion(ctx, region, x, y, w, h, instruction);
     } else {
       drawRegionHighlight(ctx, region, x, y, w, h, color);
@@ -358,7 +390,7 @@ export function paintRegionAnnotation(
     ctx.save();
     ctx.strokeStyle = color;
     ctx.lineWidth = stroke;
-    ctx.setLineDash([stroke * 2.2, stroke * 1.4]);
+    ctx.setLineDash(intent === 'replace-text' ? [stroke * 2.2, stroke * 1.4] : []);
     if (region.shape === 'ellipse') {
       ctx.beginPath();
       ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
@@ -386,7 +418,8 @@ export function paintRegionAnnotation(
 export async function exportRegionEditImages(
   sourceUrl: string,
   regions: EditRegion[],
-  globalNote: string
+  globalNote: string,
+  mode?: RegionEditIntent | null
 ): Promise<{ original: File; annotated: File }> {
   const original = await fetchImageAsFile(sourceUrl, `original-${Date.now()}.png`);
   const objectUrl = URL.createObjectURL(original);
@@ -405,7 +438,7 @@ export async function exportRegionEditImages(
     throw new Error('Failed to create annotation canvas');
   }
 
-  paintRegionAnnotation(ctx, image, canvas.width, canvas.height, regions, globalNote);
+  paintRegionAnnotation(ctx, image, canvas.width, canvas.height, regions, globalNote, mode);
   const annotated = await canvasToFile(
     canvas,
     `region-edit-${Date.now()}.jpg`,
