@@ -97,7 +97,7 @@ export interface GenerationParams {
   imageSize?: string;
   quality?: string;
   size?: string; // Z-Image 分辨率
-  referenceImages?: string[]; // base64 数组
+  referenceImages?: string[]; // stored media URLs; clients receive /api/media/:id?input=n
   loras?: string | Record<string, number>; // Z-Image LoRA 配置
   channel?: 'modelscope' | 'gitee'; // Z-Image 渠道
   imageCount?: number; // 参考图数量

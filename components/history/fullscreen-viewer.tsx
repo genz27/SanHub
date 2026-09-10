@@ -11,6 +11,7 @@ import { toast } from '@/components/ui/toaster';
 import { formatDate } from '@/lib/utils';
 import type { Generation } from '@/types';
 import { displayPromptTitle } from '@/lib/region-edit-document';
+import { GenerationReferenceImages } from '@/components/generator/generation-reference-images';
 
 export type HistoryMediaBadge = {
   label: string;
@@ -198,6 +199,9 @@ export function FullscreenViewer({
           <div className="flex flex-col md:flex-row md:items-start justify-between gap-3">
             <div className="flex-1 min-w-0">
               <CollapsibleText text={gen.prompt || '无提示词'} collapsedLines={2} />
+              <div className="mt-3 max-w-xl">
+                <GenerationReferenceImages generation={gen} />
+              </div>
               <div className="flex flex-wrap items-center gap-2 mt-2">
                 <span className="text-foreground/40 text-xs">{formatDate(gen.createdAt)}</span>
                 <span className="text-foreground/30">·</span>

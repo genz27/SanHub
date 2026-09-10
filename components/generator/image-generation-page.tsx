@@ -153,6 +153,7 @@ export function ImageGenerationPage({
   const isActiveRef = useRef(isActive);
   const submissionLockRef = useRef(false);
   const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const extractInputRef = useRef<HTMLInputElement>(null);
 
   const [availableModels, setAvailableModels] = useState<SafeImageModel[]>([]);
   const [modelsLoaded, setModelsLoaded] = useState(false);
@@ -821,21 +822,22 @@ export function ImageGenerationPage({
     }
   };
 
-  const handleExtractReferencePrompt = async () => {
+  const handleExtractUploadedImage = async (file: File) => {
     if (extractingPrompt) return;
+    if (!file.type.startsWith('image/')) {
+      toast({
+        title: '反推失败',
+        description: '请上传一张图片',
+        variant: 'destructive',
+      });
+      return;
+    }
     setExtractingPrompt(true);
     try {
-      let result;
-      if (images[0]) {
-        const { compressImageForVision, fileToBase64 } = await import('@/lib/image-compression');
-        const compressedFile = await compressImageForVision(images[0].file);
-        const base64 = await fileToBase64(compressedFile);
-        result = await requestExtractedPrompt({ image: `data:image/jpeg;base64,${base64}` });
-      } else if (externalReference?.generationId) {
-        result = await requestExtractedPrompt({ generationId: externalReference.generationId });
-      } else {
-        throw new Error('先上传或选择一张参考图');
-      }
+      const { compressImageForVision, fileToBase64 } = await import('@/lib/image-compression');
+      const compressedFile = await compressImageForVision(file);
+      const base64 = await fileToBase64(compressedFile);
+      const result = await requestExtractedPrompt({ image: `data:image/jpeg;base64,${base64}` });
       setPrompt(result.prompt);
       promptTextareaRef.current?.focus();
       toast({
@@ -948,15 +950,6 @@ export function ImageGenerationPage({
       setSubmitting(false);
     }
   };
-
-  const handleApplyExtractedPrompt = useCallback((nextPrompt: string) => {
-    setPrompt(nextPrompt);
-    promptTextareaRef.current?.focus();
-    toast({
-      title: '已填入提示词',
-      description: '可以改完再生成',
-    });
-  }, []);
 
   const handleApplyRegionEdit = useCallback(
     (result: RegionEditResult) => {
@@ -1235,17 +1228,27 @@ export function ImageGenerationPage({
           </div>
 
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            {(images.length > 0 || externalReference) && (
-              <button
-                type="button"
-                disabled={extractingPrompt || compressing}
-                onClick={() => void handleExtractReferencePrompt()}
-                className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border/70 px-2 text-[11px] font-medium text-foreground/80 hover:bg-card disabled:opacity-60"
-              >
-                {extractingPrompt ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ScanSearch className="h-3.5 w-3.5" />}
-                反推提示词
-              </button>
-            )}
+            <input
+              ref={extractInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = '';
+                if (file) void handleExtractUploadedImage(file);
+              }}
+            />
+            <button
+              type="button"
+              disabled={extractingPrompt}
+              onClick={() => extractInputRef.current?.click()}
+              title="单独上传一张图来反推提示词"
+              className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border/70 px-2 text-[11px] font-medium text-foreground/80 hover:bg-card disabled:opacity-60"
+            >
+              {extractingPrompt ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ScanSearch className="h-3.5 w-3.5" />}
+              反推提示词
+            </button>
             {currentModel && (
               <OptionChipGroup
                 label="比例"
@@ -1355,7 +1358,6 @@ export function ImageGenerationPage({
           onEditGeneration={
             currentModel?.features.imageToImage ? setEditingGeneration : undefined
           }
-          onApplyExtractedPrompt={handleApplyExtractedPrompt}
           hasRegionDraft={(generationId) => hasRegionDraft(regionDrafts[generationId])}
           busyGenerationId={busyGenerationId}
           clearingFailedTasks={clearingFailedTasks}

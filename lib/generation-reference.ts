@@ -31,6 +31,19 @@ export function buildReusableImageReference(
   };
 }
 
+export function generationReferenceImageUrls(
+  generation: Pick<Generation, 'id'> & { params?: Generation['params'] }
+): string[] {
+  const refs = generation.params?.referenceImages;
+  if (!Array.isArray(refs) || refs.length === 0) return [];
+
+  return refs.map((url, index) => (
+    typeof url === 'string' && url.startsWith('/api/media/')
+      ? url
+      : `/api/media/${generation.id}?input=${index}`
+  ));
+}
+
 export function buildReusableImageReferenceFromId(
   generationId: string,
   prompt = ''

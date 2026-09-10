@@ -1,4 +1,5 @@
 import type { Generation } from '@/types';
+import { parseStoredReferenceImages } from '@/lib/generation-reference-media';
 import { getAdapter } from './connection';
 import {
   generationMediaCacheKey,
@@ -55,12 +56,13 @@ export type GenerationMediaRecord = {
   resultUrl: string;
   videoId?: string;
   videoChannelId?: string;
+  referenceImages: string[];
 };
 
 export async function getGenerationMedia(id: string): Promise<GenerationMediaRecord | null> {
   const cacheKey = generationMediaCacheKey(id);
   const cached = cache.get<GenerationMediaRecord>(cacheKey);
-  if (cached) return cached;
+  if (cached && Array.isArray(cached.referenceImages)) return cached;
 
   await ensureDatabase();
   const db = getAdapter();
@@ -75,7 +77,8 @@ export async function getGenerationMedia(id: string): Promise<GenerationMediaRec
        CASE
          WHEN type NOT LIKE '%video%' THEN NULL
          ELSE JSON_UNQUOTE(JSON_EXTRACT(params, '$.videoChannelId'))
-       END AS param_video_channel_id
+       END AS param_video_channel_id,
+       JSON_EXTRACT(params, '$.referenceImages') AS param_reference_images
      FROM generations WHERE id = ?`,
     [id]
   );
@@ -91,6 +94,7 @@ export async function getGenerationMedia(id: string): Promise<GenerationMediaRec
     resultUrl: row.result_url || '',
     videoId: row.param_video_id || undefined,
     videoChannelId: row.param_video_channel_id || undefined,
+    referenceImages: parseStoredReferenceImages(row.param_reference_images),
   };
 
   // Skip data: payloads and empty URLs so memory stays bounded and 204s stay fresh.
@@ -129,7 +133,8 @@ export async function getGenerationStatus(id: string): Promise<Generation | null
            END AS result_url,
            CASE
              WHEN status IN ('pending', 'processing') THEN JSON_EXTRACT(params, '$.progress')
-           END AS param_progress
+           END AS param_progress,
+           JSON_EXTRACT(params, '$.referenceImages') AS param_reference_images
          FROM generations WHERE id = ?`,
         [id]
       );

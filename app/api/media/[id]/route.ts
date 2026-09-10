@@ -46,6 +46,23 @@ export async function GET(
     if (!isOwner && !isAdmin) {
       return uncachedResponse('Forbidden', 403);
     }
+
+    const inputRaw = request.nextUrl.searchParams.get('input');
+    if (inputRaw !== null) {
+      const index = Number(inputRaw);
+      const stored = generation.referenceImages?.[index];
+      if (!Number.isInteger(index) || index < 0 || index > 9 || !stored) {
+        return uncachedResponse('Not Found', 404);
+      }
+      return serveStoredImage(
+        request,
+        stored,
+        `${id}-ref-${index}`,
+        request.nextUrl.searchParams.get('download') === '1'
+          ? `sanhub-${id}-ref-${index + 1}`
+          : undefined
+      );
+    }
     
     let resultUrl = generation.resultUrl;
     const videoId = generation.videoId;
@@ -161,6 +178,53 @@ export async function GET(
   }
 }
 
+async function serveStoredImage(
+  request: NextRequest,
+  storedUrl: string,
+  cacheKey: string,
+  downloadName?: string
+): Promise<NextResponse> {
+  const origin = new URL(request.url).origin;
+
+  if (storedUrl.startsWith('file:')) {
+    const { readMediaFile } = await import('@/lib/media-read');
+    const file = await readMediaFile(storedUrl);
+    if (!file) {
+      return uncachedResponse('File not found', 404);
+    }
+    return createMediaResponse(request, file.buffer, file.mimeType, cacheKey, downloadName);
+  }
+
+  if (storedUrl.startsWith('http://') || storedUrl.startsWith('https://')) {
+    try {
+      const { fetchExternalBuffer, resolveAndValidateUrl } = await import('@/lib/safe-fetch');
+      const safeUrl = await resolveAndValidateUrl(storedUrl, { origin });
+      const { buffer, contentType } = await fetchExternalBuffer(safeUrl.toString(), {
+        origin,
+        maxBytes: 15 * 1024 * 1024,
+        timeoutMs: 30_000,
+      });
+      const mimeType = contentType.split(';')[0]?.trim() || 'image/png';
+      return createMediaResponse(request, buffer, mimeType, cacheKey, downloadName);
+    } catch (error) {
+      console.error('[Media API] Failed to load reference image:', error);
+      return uncachedResponse('Failed to load media', 502);
+    }
+  }
+
+  const match = storedUrl.match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) {
+    return uncachedResponse('Invalid media format', 400);
+  }
+  return createMediaResponse(
+    request,
+    Buffer.from(match[2], 'base64'),
+    match[1],
+    cacheKey,
+    downloadName
+  );
+}
+
 function createRedirectResponse(url: string): NextResponse {
   const response = NextResponse.redirect(url, 302);
   response.headers.set('Cache-Control', MEDIA_REDIRECT_CACHE_CONTROL);
@@ -186,9 +250,11 @@ function createMediaResponse(
   request: NextRequest,
   buffer: Buffer,
   contentType: string,
-  cacheKey: string
+  cacheKey: string,
+  downloadName?: string
 ): NextResponse {
   const etag = buildMediaETag(cacheKey, buffer.length, contentType);
+  const extension = contentType.split('/')[1]?.split('+')[0] || 'bin';
 
   const headers: HeadersInit = {
     'Content-Type': contentType,
@@ -196,6 +262,9 @@ function createMediaResponse(
     ETag: etag,
     'X-Content-Type-Options': 'nosniff',
     'Vary': 'Cookie',
+    ...(downloadName
+      ? { 'Content-Disposition': `attachment; filename="${downloadName}.${extension}"` }
+      : {}),
   };
 
   if (requestMatchesETag(request, etag)) {

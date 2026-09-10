@@ -2,6 +2,7 @@ import { getAdapter } from './connection';
 import { ensureDatabase } from './ready';
 import { cache, CacheKeys } from '../cache';
 import { invalidateGenerationLookups } from './generation-cache';
+import { clientGenerationReferenceUrls, parseStoredReferenceImages } from '@/lib/generation-reference-media';
 
 // Get all generations (admin)
 export async function getAllGenerations(options: {
@@ -57,6 +58,7 @@ export async function getAllGenerations(options: {
            ELSE ''
          END AS result_url,
          JSON_UNQUOTE(JSON_EXTRACT(g.params, '$.model')) AS param_model,
+         JSON_EXTRACT(g.params, '$.referenceImages') AS param_reference_images,
          u.email as user_email, u.name as user_name
        FROM generations g
        LEFT JOIN users u ON g.user_id = u.id
@@ -69,21 +71,30 @@ export async function getAllGenerations(options: {
   const total = Number((countResult[0] as any[])[0]?.count || 0);
   const rows = listResult[0];
 
-  const generations = (rows as any[]).map((row) => ({
+  const generations = (rows as any[]).map((row) => {
+    const referenceImages = clientGenerationReferenceUrls(
+      row.id,
+      parseStoredReferenceImages(row.param_reference_images).length
+    );
+    return {
     id: row.id,
     userId: row.user_id,
     userEmail: row.user_email,
     userName: row.user_name,
     type: row.type,
     prompt: row.prompt,
-    params: { model: row.param_model || undefined },
+    params: {
+      model: row.param_model || undefined,
+      ...(referenceImages.length > 0 ? { referenceImages, imageCount: referenceImages.length } : {}),
+    },
     resultUrl: row.result_url === '' ? `/api/media/${row.id}` : row.result_url || '',
     cost: row.cost,
     status: row.status || 'completed',
     errorMessage: row.error_message,
     createdAt: Number(row.created_at),
     updatedAt: Number(row.updated_at || row.created_at),
-  }));
+    };
+  });
 
   return { generations, total };
 }

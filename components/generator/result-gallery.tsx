@@ -47,7 +47,6 @@ interface ResultGalleryProps {
   onRemoveGeneration?: (generation: Generation) => void;
   onReuseGeneration?: (generation: Generation, target: 'image' | 'video') => void;
   onEditGeneration?: (generation: Generation) => void;
-  onApplyExtractedPrompt?: (prompt: string) => void;
   hasRegionDraft?: (generationId: string) => boolean;
   busyGenerationId?: string | null;
   clearingFailedTasks?: boolean;
@@ -284,7 +283,6 @@ export function ResultGallery({
   onRemoveGeneration,
   onReuseGeneration,
   onEditGeneration,
-  onApplyExtractedPrompt,
   hasRegionDraft,
   busyGenerationId = null,
   clearingFailedTasks = false,
@@ -524,14 +522,6 @@ export function ResultGallery({
           onCloseFailed={() => setSelectedFailedTask(null)}
           onReuseGeneration={onReuseGeneration ? handleReuseGeneration : undefined}
           onEditGeneration={onEditGeneration ? handleEditGeneration : undefined}
-          onApplyExtractedPrompt={
-            onApplyExtractedPrompt
-              ? (prompt) => {
-                  setSelected(null);
-                  onApplyExtractedPrompt(prompt);
-                }
-              : undefined
-          }
           hasRegionDraft={Boolean(selected && hasRegionDraft?.(selected.id))}
           onRemoveGeneration={onRemoveGeneration ? handleRemoveGeneration : undefined}
         />
