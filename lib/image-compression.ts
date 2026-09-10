@@ -17,6 +17,21 @@ export async function compressImageToWebP(file: File): Promise<File> {
   return imageCompression(file, options);
 }
 
+export async function compressImageForVision(file: File): Promise<File> {
+  if (file.size > MAX_FILE_SIZE_BYTES) {
+    throw new Error(`Image size must be <= ${MAX_FILE_SIZE_MB}MB`);
+  }
+
+  const { default: imageCompression } = await import('browser-image-compression');
+  return imageCompression(file, {
+    maxSizeMB: 1,
+    maxWidthOrHeight: 1568,
+    useWebWorker: true,
+    fileType: 'image/jpeg',
+    initialQuality: 0.8,
+  });
+}
+
 export async function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
