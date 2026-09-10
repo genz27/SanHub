@@ -1,6 +1,7 @@
 'use client';
 /* eslint-disable @next/next/no-img-element */
 
+import { useEffect, useState } from 'react';
 import {
   AlertCircle,
   Copy,
@@ -8,6 +9,7 @@ import {
   Image as ImageIcon,
   Loader2,
   Pencil,
+  ScanSearch,
   Trash2,
   Video,
   X,
@@ -16,6 +18,7 @@ import type { Generation } from '@/types';
 import { formatDate } from '@/lib/utils';
 import { toast } from '@/components/ui/toaster';
 import { displayPromptTitle, isRegionEditPrompt } from '@/lib/region-edit-document';
+import { requestExtractedPrompt } from '@/lib/extract-prompt';
 
 type FailedTask = {
   status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
@@ -58,6 +61,7 @@ export function ResultGalleryLightbox({
   onReuseGeneration,
   onEditGeneration,
   hasRegionDraft = false,
+  onApplyExtractedPrompt,
   onRemoveGeneration,
 }: {
   selected: Generation | null;
@@ -69,8 +73,38 @@ export function ResultGalleryLightbox({
   onReuseGeneration?: (generation: Generation, target: 'image' | 'video') => void;
   onEditGeneration?: (generation: Generation) => void;
   hasRegionDraft?: boolean;
+  onApplyExtractedPrompt?: (prompt: string) => void;
   onRemoveGeneration?: (generation: Generation) => void;
 }) {
+  const [extracting, setExtracting] = useState(false);
+  const [extractedPrompt, setExtractedPrompt] = useState('');
+
+  useEffect(() => {
+    setExtracting(false);
+    setExtractedPrompt('');
+  }, [selected?.id]);
+
+  const handleExtractPrompt = async () => {
+    if (!selected || extracting) return;
+    setExtracting(true);
+    try {
+      const result = await requestExtractedPrompt({ generationId: selected.id });
+      setExtractedPrompt(result.prompt);
+      toast({
+        title: '已反推出提示词',
+        description: result.cost ? `消耗 ${result.cost} 积分` : undefined,
+      });
+    } catch (error) {
+      toast({
+        title: '反推失败',
+        description: error instanceof Error ? error.message : '请稍后重试',
+        variant: 'destructive',
+      });
+    } finally {
+      setExtracting(false);
+    }
+  };
+
   if (!selected && !selectedFailedTask) return null;
 
   return (
@@ -132,6 +166,26 @@ export function ResultGalleryLightbox({
             <aside className="flex w-full shrink-0 flex-col border-t border-border/70 md:max-w-[380px] md:border-l md:border-t-0">
               <div className="flex-1 min-h-0 space-y-4 overflow-y-auto p-4 md:p-5">
                 <div className="space-y-3">
+                  {!isVideoGeneration(selected) && (
+                    <button
+                      type="button"
+                      disabled={extracting}
+                      onClick={() => void handleExtractPrompt()}
+                      className="flex w-full items-center gap-2.5 rounded-xl border border-border/70 bg-card/40 px-3 py-2.5 text-left transition-colors hover:bg-card/70 disabled:opacity-60"
+                    >
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-foreground/8 text-foreground/70">
+                        {extracting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScanSearch className="h-4 w-4" />}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-sm font-medium text-foreground">
+                          {extracting ? '正在反推...' : '反推提示词'}
+                        </span>
+                        <span className="block text-[11px] text-muted-foreground">
+                          从画面抽出可再生成的提示词
+                        </span>
+                      </span>
+                    </button>
+                  )}
                   {onEditGeneration && !isVideoGeneration(selected) && (
                     <button
                       type="button"
@@ -210,6 +264,39 @@ export function ResultGalleryLightbox({
                     )}
                   </div>
                 </div>
+
+                {extractedPrompt && (
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-foreground/40">反推结果</p>
+                    <div className="rounded-xl border border-border/70 bg-card/40 p-3">
+                      <p className="text-sm leading-relaxed text-foreground/80 whitespace-pre-wrap break-words">
+                        {extractedPrompt}
+                      </p>
+                      <div className="mt-3 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void navigator.clipboard.writeText(extractedPrompt);
+                            toast({ title: '已复制反推提示词' });
+                          }}
+                          className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-border/70 text-xs text-foreground/80 hover:bg-card"
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                          复制
+                        </button>
+                        {onApplyExtractedPrompt && (
+                          <button
+                            type="button"
+                            onClick={() => onApplyExtractedPrompt(extractedPrompt)}
+                            className="inline-flex h-9 flex-1 items-center justify-center rounded-lg bg-foreground text-xs font-medium text-background hover:opacity-90"
+                          >
+                            填入输入栏
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div className="space-y-1">
                   <p className="text-xs font-medium text-foreground/40">
