@@ -7,6 +7,9 @@ import { getUserById } from '@/lib/db/user-session';
 import { EXTRACT_PROMPT_INSTRUCTION, sanitizeExtractedPrompt } from '@/lib/extract-prompt';
 import { isExtractableImageDataUrl, resolveExtractPromptImage } from '@/lib/extract-prompt-image';
 import { checkRateLimit, RateLimitConfig } from '@/lib/rate-limit';
+import { persistGenerationReferenceImages } from '@/lib/generation-reference-media';
+import { saveGeneration } from '@/lib/db/generation-writes';
+import { updateGeneration } from '@/lib/db/generation-mutations';
 import { completeVisionChat } from '@/lib/vision-chat';
 
 export const maxDuration = 60;
@@ -86,6 +89,41 @@ export async function POST(request: NextRequest) {
     }
 
     await updateUserBalance(session.user.id, -model.costPerMessage, 'strict');
+
+    try {
+      const origin = new URL(request.url).origin;
+      const generation = await saveGeneration({
+        userId: session.user.id,
+        type: 'extract-prompt',
+        prompt,
+        params: {
+          kind: 'extract-prompt',
+          model: model.modelId,
+          modelId: model.id,
+          modelName: model.name || undefined,
+        },
+        resultUrl: '',
+        cost: model.costPerMessage,
+        status: 'completed',
+      });
+      const stored = await persistGenerationReferenceImages(
+        generation.id,
+        [{ data: dataUrl }],
+        origin
+      );
+      if (stored[0]) {
+        await updateGeneration(generation.id, {
+          resultUrl: stored[0],
+          params: {
+            ...generation.params,
+            referenceImages: stored,
+            imageCount: stored.length,
+          },
+        }, session.user.id);
+      }
+    } catch (error) {
+      console.error('[API] extract prompt log failed:', error);
+    }
 
     return NextResponse.json({
       success: true,

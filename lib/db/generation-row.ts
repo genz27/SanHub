@@ -17,6 +17,10 @@ export function generationListColumns(
   END AS result_url,
   JSON_UNQUOTE(JSON_EXTRACT(params, '$.modelId')) AS param_model_id,
   JSON_UNQUOTE(JSON_EXTRACT(params, '$.model')) AS param_model,
+  JSON_UNQUOTE(JSON_EXTRACT(params, '$.modelName')) AS param_model_name,
+  JSON_UNQUOTE(JSON_EXTRACT(params, '$.kind')) AS param_kind,
+  JSON_UNQUOTE(JSON_EXTRACT(params, '$.sourceGenerationId')) AS param_source_generation_id,
+  JSON_EXTRACT(params, '$.imageCount') AS param_image_count,
   JSON_EXTRACT(params, '$.referenceImages') AS param_reference_images
   ${includeVideoMeta ? `,
   CASE
@@ -35,10 +39,12 @@ export function mapGenerationListRow(row: any, userId?: string): Generation {
   const rawUrl = row.result_url;
   const progressRaw = row.param_progress;
   const progress = progressRaw === null || progressRaw === undefined ? undefined : Number(progressRaw);
-  const referenceImages = clientGenerationReferenceUrls(
-    row.id,
-    parseStoredReferenceImages(row.param_reference_images).length
+  const storedReferences = parseStoredReferenceImages(row.param_reference_images);
+  const imageCount = Math.max(
+    storedReferences.length,
+    Number(row.param_image_count) || 0
   );
+  const referenceImages = clientGenerationReferenceUrls(row.id, storedReferences.length);
 
   return {
     id: row.id,
@@ -48,9 +54,15 @@ export function mapGenerationListRow(row: any, userId?: string): Generation {
     params: {
       modelId: row.param_model_id || undefined,
       model: row.param_model || undefined,
+      modelName: row.param_model_name || undefined,
+      kind: row.param_kind === 'region-edit' || row.param_kind === 'extract-prompt'
+        ? row.param_kind
+        : undefined,
+      sourceGenerationId: row.param_source_generation_id || undefined,
       permalink: row.param_permalink || undefined,
       videoId: row.param_video_id || undefined,
-      ...(referenceImages.length > 0 ? { referenceImages, imageCount: referenceImages.length } : {}),
+      ...(imageCount > 0 ? { imageCount } : {}),
+      ...(referenceImages.length > 0 ? { referenceImages } : {}),
       ...(Number.isFinite(progress) ? { progress } : {}),
     },
     resultUrl: rawUrl === '' ? `/api/media/${row.id}` : rawUrl || '',

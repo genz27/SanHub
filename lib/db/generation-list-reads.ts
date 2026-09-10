@@ -32,7 +32,8 @@ function appendGenerationKindFilter(
   } else if (kind === 'image') {
     whereClauses.push('type NOT LIKE ?');
     whereClauses.push('type <> ?');
-    values.push('%video%', 'character-card');
+    whereClauses.push('type <> ?');
+    values.push('%video%', 'character-card', 'extract-prompt');
   }
 }
 

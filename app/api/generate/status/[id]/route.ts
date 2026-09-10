@@ -50,6 +50,7 @@ export async function GET(
         id: generation.id,
         status: generation.status,
         type: generation.type,
+        params: generation.params || {},
         ...(isCompleted
           ? {
               url,

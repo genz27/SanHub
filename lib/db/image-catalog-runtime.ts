@@ -16,7 +16,7 @@ export async function getImageModelWithChannel(modelId: string): Promise<{
 
     const [rows] = await db.execute(
       `SELECT
-         m.id, m.channel_id, m.api_model,
+         m.id, m.channel_id, m.name, m.api_model,
          m.base_url AS model_base_url, m.api_key AS model_api_key,
          m.resolutions, m.requires_reference_image, m.allow_empty_prompt,
          m.enabled, m.cost_per_generation,
@@ -34,7 +34,7 @@ export async function getImageModelWithChannel(modelId: string): Promise<{
     const model: ImageModel = {
       id: row.id,
       channelId: row.channel_id,
-      name: '',
+      name: row.name || '',
       description: '',
       apiModel: row.api_model,
       baseUrl: row.model_base_url || undefined,

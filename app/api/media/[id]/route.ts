@@ -50,13 +50,30 @@ export async function GET(
     const inputRaw = request.nextUrl.searchParams.get('input');
     if (inputRaw !== null) {
       const index = Number(inputRaw);
-      const stored = generation.referenceImages?.[index];
-      if (!Number.isInteger(index) || index < 0 || index > 9 || !stored) {
+      if (!Number.isInteger(index) || index < 0 || index > 9) {
         return uncachedResponse('Not Found', 404);
       }
-      return serveStoredImage(
+      const stored = generation.referenceImages?.[index];
+      if (stored) {
+        return serveStoredImage(
+          request,
+          stored,
+          `${id}-ref-${index}`,
+          request.nextUrl.searchParams.get('download') === '1'
+            ? `sanhub-${id}-ref-${index + 1}`
+            : undefined
+        );
+      }
+
+      const { readConventionReferenceFile } = await import('@/lib/media-read');
+      const local = await readConventionReferenceFile(id, index);
+      if (!local) {
+        return uncachedResponse('Not Found', 404);
+      }
+      return createMediaResponse(
         request,
-        stored,
+        local.buffer,
+        local.mimeType,
         `${id}-ref-${index}`,
         request.nextUrl.searchParams.get('download') === '1'
           ? `sanhub-${id}-ref-${index + 1}`

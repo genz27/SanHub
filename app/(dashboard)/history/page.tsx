@@ -23,6 +23,7 @@ import {
   replaceActiveTasks,
 } from '@/lib/generation-state';
 import { getFriendlyErrorMessage } from '@/lib/polling-errors';
+import { generationTypeLabel } from '@/lib/generation-type-label';
 import { EmptyState } from '@/components/ui/empty-state';
 
 const ConfirmDialog = dynamic(
@@ -79,6 +80,7 @@ const isVideoType = (gen: Generation) => gen.type.includes('video');
 const isTaskVideoType = (type: string) => type?.includes('video');
 
 const CHARACTER_BADGE: Badge = { label: '角色卡', icon: User };
+const EXTRACT_BADGE: Badge = { label: '反推提示词', icon: ImageIcon };
 const FALLBACK_VIDEO_BADGE: Badge = { label: '视频', icon: Video };
 const FALLBACK_IMAGE_BADGE: Badge = { label: '图像', icon: ImageIcon };
 const HISTORY_PAGE_SIZE = 24;
@@ -114,6 +116,7 @@ const IMAGE_TYPE_BADGE_LABELS: Record<string, string> = {
   'gemini-image': 'Gemini 图像',
   'zimage-image': 'Gitee 图像',
   'gitee-image': 'Gitee 图像',
+  'extract-prompt': '反推提示词',
 };
 
 const getVideoBadge = (channelType?: string): Badge => ({
@@ -202,6 +205,12 @@ export default function HistoryPage() {
   const resolveGenerationBadge = useCallback(
     (gen: Generation): Badge => {
       if (gen.type === 'character-card') return CHARACTER_BADGE;
+      if (gen.type === 'extract-prompt' || gen.params?.kind === 'extract-prompt') {
+        return { label: generationTypeLabel(gen), icon: EXTRACT_BADGE.icon };
+      }
+      if (gen.params?.modelName) {
+        return { label: gen.params.modelName, icon: ImageIcon };
+      }
 
       if (isVideoType(gen)) {
         if (gen.params?.modelId && videoBadgeByModelId[gen.params.modelId]) {

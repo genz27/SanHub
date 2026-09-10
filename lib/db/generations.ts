@@ -58,10 +58,17 @@ export async function getAllGenerations(options: {
            ELSE ''
          END AS result_url,
          JSON_UNQUOTE(JSON_EXTRACT(g.params, '$.model')) AS param_model,
+         JSON_UNQUOTE(JSON_EXTRACT(g.params, '$.modelId')) AS param_model_id,
+         JSON_UNQUOTE(JSON_EXTRACT(g.params, '$.modelName')) AS param_model_name,
+         JSON_UNQUOTE(JSON_EXTRACT(g.params, '$.kind')) AS param_kind,
+         JSON_UNQUOTE(JSON_EXTRACT(g.params, '$.sourceGenerationId')) AS param_source_generation_id,
+         JSON_EXTRACT(g.params, '$.imageCount') AS param_image_count,
          JSON_EXTRACT(g.params, '$.referenceImages') AS param_reference_images,
+         im.name AS catalog_model_name,
          u.email as user_email, u.name as user_name
        FROM generations g
        LEFT JOIN users u ON g.user_id = u.id
+       LEFT JOIN image_models im ON im.id = JSON_UNQUOTE(JSON_EXTRACT(g.params, '$.modelId'))
        ${whereStr}
        ORDER BY g.created_at DESC
        LIMIT ${limit} OFFSET ${offset}`,
@@ -72,10 +79,9 @@ export async function getAllGenerations(options: {
   const rows = listResult[0];
 
   const generations = (rows as any[]).map((row) => {
-    const referenceImages = clientGenerationReferenceUrls(
-      row.id,
-      parseStoredReferenceImages(row.param_reference_images).length
-    );
+    const storedReferences = parseStoredReferenceImages(row.param_reference_images);
+    const imageCount = Math.max(storedReferences.length, Number(row.param_image_count) || 0);
+    const referenceImages = clientGenerationReferenceUrls(row.id, storedReferences.length);
     return {
     id: row.id,
     userId: row.user_id,
@@ -85,7 +91,14 @@ export async function getAllGenerations(options: {
     prompt: row.prompt,
     params: {
       model: row.param_model || undefined,
-      ...(referenceImages.length > 0 ? { referenceImages, imageCount: referenceImages.length } : {}),
+      modelId: row.param_model_id || undefined,
+      modelName: row.param_model_name || row.catalog_model_name || undefined,
+      kind: row.param_kind === 'region-edit' || row.param_kind === 'extract-prompt'
+        ? row.param_kind
+        : undefined,
+      sourceGenerationId: row.param_source_generation_id || undefined,
+      ...(imageCount > 0 ? { imageCount } : {}),
+      ...(referenceImages.length > 0 ? { referenceImages } : {}),
     },
     resultUrl: row.result_url === '' ? `/api/media/${row.id}` : row.result_url || '',
     cost: row.cost,

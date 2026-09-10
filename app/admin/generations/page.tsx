@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Eye, History, Loader2, Trash2 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
-import { IMAGE_MODELS } from '@/lib/model-config';
+import { generationTypeLabel } from '@/lib/generation-type-label';
 import { toast } from '@/components/ui/toaster';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { PaginationControls } from '@/components/admin/pagination';
@@ -31,7 +31,15 @@ interface GenerationRecord {
   userEmail: string;
   userName: string;
   type: string;
-  params?: { model?: string; referenceImages?: string[]; imageCount?: number };
+  params?: {
+    model?: string;
+    modelId?: string;
+    modelName?: string;
+    kind?: 'region-edit' | 'extract-prompt';
+    sourceGenerationId?: string;
+    referenceImages?: string[];
+    imageCount?: number;
+  };
   prompt: string;
   resultUrl: string;
   cost: number;
@@ -46,6 +54,7 @@ const TYPE_OPTIONS = [
   { value: 'gemini-image', label: 'Gemini 图像' },
   { value: 'zimage-image', label: 'Z-Image 图像' },
   { value: 'gitee-image', label: 'Gitee 图像' },
+  { value: 'extract-prompt', label: '反推提示词' },
 ];
 
 const STATUS_OPTIONS = [
@@ -57,31 +66,8 @@ const STATUS_OPTIONS = [
   { value: 'cancelled', label: '已取消' },
 ];
 
-const IMAGE_MODEL_LABELS = new Map(
-  IMAGE_MODELS.map((model) => [model.apiModel, model.name])
-);
-
-const TYPE_LABELS: Record<string, string> = {
-  'sora-video': '视频',
-  'sora-image': '图像',
-  'gemini-image': 'Gemini 图像',
-  'zimage-image': 'Z-Image 图像',
-  'gitee-image': 'Gitee 图像',
-};
-
 function getRecordTypeLabel(record: GenerationRecord): string {
-  if (
-    record.type === 'gemini-image' ||
-    record.type === 'zimage-image' ||
-    record.type === 'gitee-image'
-  ) {
-    const modelLabel = record.params?.model
-      ? IMAGE_MODEL_LABELS.get(record.params.model)
-      : undefined;
-    if (modelLabel) return modelLabel;
-  }
-
-  return TYPE_LABELS[record.type] || record.type;
+  return generationTypeLabel(record);
 }
 
 function statusTone(status: string): 'success' | 'warning' | 'info' | 'danger' | 'neutral' {

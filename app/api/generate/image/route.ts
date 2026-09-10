@@ -19,6 +19,7 @@ import { checkRateLimit } from '@/lib/rate-limit';
 import { assertPromptsAllowed, isPromptBlockedError } from '@/lib/prompt-blocklist';
 import { inferImageSizeLabel as inferNormalizedImageSizeLabel, normalizeAspectRatio, resolveImageSize } from '@/lib/image-sizing';
 import { persistGenerationReferenceImages } from '@/lib/generation-reference-media';
+import { isRegionEditPrompt } from '@/lib/region-edit-document';
 import type { ChannelType, Generation, GenerationType } from '@/types';
 
 export const maxDuration = 600;
@@ -199,6 +200,10 @@ export async function POST(request: NextRequest) {
       googleImageConfig.image_size
     );
     const clientRequestId = firstString(payload.clientRequestId, payload.client_request_id) || '';
+    const sourceGenerationIdRaw = firstString(payload.sourceGenerationId, payload.source_generation_id);
+    const sourceGenerationId = sourceGenerationIdRaw && sourceGenerationIdRaw.length <= 80
+      ? sourceGenerationIdRaw
+      : undefined;
     const resolvedInputSize = resolveImageSize(size);
     const effectiveAspectRatio = aspectRatio || resolvedInputSize.aspectRatio;
     const effectiveImageSize = inferNormalizedImageSizeLabel(imageSize) || imageSize || inferNormalizedImageSizeLabel(size);
@@ -415,6 +420,7 @@ export async function POST(request: NextRequest) {
       const generationParams: Generation['params'] = {
         model: model.apiModel,
         modelId,
+        modelName: model.name || undefined,
         aspectRatio: effectiveAspectRatio,
         imageSize: effectiveImageSize,
         size: resolvedTarget.size || effectiveSize,
@@ -422,6 +428,8 @@ export async function POST(request: NextRequest) {
         imageCount: imageList.length,
         progress: 0,
         clientRequestId: clientRequestId || undefined,
+        sourceGenerationId: sourceGenerationId || undefined,
+        kind: sourceGenerationId || isRegionEditPrompt(prompt) ? 'region-edit' : undefined,
       };
 
       try {
@@ -443,7 +451,7 @@ export async function POST(request: NextRequest) {
         throw saveErr;
       }
 
-      if (imageList.length > 0) {
+      if (imageList.length > 0 || sourceGenerationId) {
         const storedReferences = await persistGenerationReferenceImages(
           generation.id,
           imageList,
@@ -452,6 +460,11 @@ export async function POST(request: NextRequest) {
         if (storedReferences.length > 0) {
           generationParams.referenceImages = storedReferences;
           generationParams.imageCount = storedReferences.length;
+        } else if (sourceGenerationId) {
+          generationParams.imageCount = 1;
+        }
+        if (storedReferences.length > 0 || sourceGenerationId) {
+          generation.params = generationParams;
           await updateGeneration(generation.id, { params: generationParams }, user.id);
         }
       }

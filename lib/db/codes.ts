@@ -426,7 +426,7 @@ export async function getStatsOverview(days = 30): Promise<StatsOverview> {
     const typeCount = new Map(
       (typeRows[0] as any[]).map((row) => [String(row.type), Number(row.count || 0)])
     );
-    const generationTypes = ['sora-video', 'sora-image', 'gemini-image', 'zimage-image', 'gitee-image']
+    const generationTypes = ['sora-video', 'sora-image', 'gemini-image', 'zimage-image', 'gitee-image', 'extract-prompt']
       .map((type) => ({ type, count: typeCount.get(type) || 0 }))
       .filter((item) => item.count > 0 || item.type === 'sora-video');
 

@@ -44,13 +44,28 @@ function extensionFromImageData(data: string): string {
 
 function toPersistableImageData(data: string): string | null {
   if (!data) return null;
-  if (data.startsWith('data:image/') || data.startsWith('http://') || data.startsWith('https://')) {
+  if (
+    data.startsWith('data:image/')
+    || data.startsWith('http://')
+    || data.startsWith('https://')
+    || data.startsWith('/api/media/')
+    || data.startsWith('file:')
+  ) {
     return data;
   }
   if (/^[A-Za-z0-9+/=\s]+$/.test(data) && data.replace(/\s+/g, '').length > 32) {
     return `data:image/jpeg;base64,${data.replace(/\s+/g, '')}`;
   }
   return null;
+}
+
+function isDurableReferenceUrl(url: string): boolean {
+  return (
+    url.startsWith('file:')
+    || url.startsWith('http://')
+    || url.startsWith('https://')
+    || url.startsWith('/api/media/')
+  );
 }
 
 export async function persistGenerationReferenceImages(
@@ -61,20 +76,38 @@ export async function persistGenerationReferenceImages(
   const limited = images.slice(0, MAX_STORED_REFERENCE_IMAGES);
   if (limited.length === 0) return [];
 
-  const { saveMediaAsync } = await import('@/lib/media-storage');
+  const { saveMediaAsync, saveMediaToFile } = await import('@/lib/media-storage');
   const stored = await Promise.all(limited.map(async (image, index) => {
     const data = toPersistableImageData(image.data || '');
     if (!data) return null;
+
+    if (data.startsWith('file:') || data.startsWith('/api/media/')) {
+      return data;
+    }
+
+    if (data.startsWith('http://') || data.startsWith('https://')) {
+      return data;
+    }
+
+    try {
+      const local = await saveMediaToFile(`${generationId}-ref-${index}`, data);
+      if (isDurableReferenceUrl(local)) {
+        return local;
+      }
+    } catch (error) {
+      console.warn(`[ReferenceMedia] Local persist failed for ${generationId} ref ${index}:`, error);
+    }
+
     try {
       const saved = await saveMediaAsync(`${generationId}-ref-${index}`, data, {
         publicBaseUrl,
         filename: `${generationId}-ref-${index}.${extensionFromImageData(data)}`,
       });
-      if (saved.startsWith('data:')) {
-        console.warn(`[ReferenceMedia] Skipped inlined data URL for ${generationId} ref ${index}`);
-        return null;
+      if (isDurableReferenceUrl(saved)) {
+        return saved;
       }
-      return saved;
+      console.warn(`[ReferenceMedia] Skipped inlined data URL for ${generationId} ref ${index}`);
+      return null;
     } catch (error) {
       console.warn(`[ReferenceMedia] Failed to persist ${generationId} ref ${index}:`, error);
       return null;

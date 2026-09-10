@@ -35,13 +35,27 @@ export function generationReferenceImageUrls(
   generation: Pick<Generation, 'id'> & { params?: Generation['params'] }
 ): string[] {
   const refs = generation.params?.referenceImages;
-  if (!Array.isArray(refs) || refs.length === 0) return [];
+  if (Array.isArray(refs) && refs.length > 0) {
+    return refs.map((url, index) => (
+      typeof url === 'string' && (url.startsWith('/api/media/') || url.startsWith('http://') || url.startsWith('https://'))
+        ? url
+        : `/api/media/${generation.id}?input=${index}`
+    ));
+  }
 
-  return refs.map((url, index) => (
-    typeof url === 'string' && url.startsWith('/api/media/')
-      ? url
-      : `/api/media/${generation.id}?input=${index}`
-  ));
+  const sourceId = generation.params?.sourceGenerationId;
+  if (sourceId) {
+    return [`/api/media/${sourceId}`];
+  }
+
+  const count = Number(generation.params?.imageCount) || 0;
+  if (count > 0) {
+    return Array.from({ length: Math.min(10, count) }, (_, index) => (
+      `/api/media/${generation.id}?input=${index}`
+    ));
+  }
+
+  return [];
 }
 
 export function buildReusableImageReferenceFromId(
