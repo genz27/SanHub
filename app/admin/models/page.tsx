@@ -183,9 +183,12 @@ export default function ModelsPage() {
               type="text"
               value={form.apiUrl}
               onChange={(e) => setForm({ ...form, apiUrl: e.target.value })}
-              placeholder="https://api.openai.com/v1/chat/completions"
+              placeholder="https://api.example.com/v1"
               className="w-full px-4 py-3 bg-card/60 border border-border/70 rounded-xl text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-border"
             />
+            <p className="text-xs text-muted-foreground">
+              OpenAI 兼容接口填 Base URL（到 /v1）或完整 /v1/chat/completions 都可以，请求时会自动补全。
+            </p>
           </div>
           <div className="space-y-2">
             <label className="text-sm text-foreground/70">API Key *</label>

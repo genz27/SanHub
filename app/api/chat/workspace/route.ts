@@ -5,6 +5,7 @@ import { getChatModelRuntime } from '@/lib/db/chat-catalog-runtime';
 import { updateUserBalance } from '@/lib/db/user-balance';
 import { getUserById } from '@/lib/db/user-session';
 import { checkRateLimit, RateLimitConfig } from '@/lib/rate-limit';
+import { resolveChatCompletionsUrl } from '@/lib/chat-completions-url';
 
 // Validation constants
 const CHAT_MAX_LENGTH = 2000;
@@ -113,35 +114,36 @@ export async function POST(request: NextRequest) {
     const messages: Array<{ role: string; content: unknown }> = [];
     
     if (images && images.length > 0 && model.supportsVision) {
-      // Vision model with images
-      const content: Array<{ type: string; text?: string; image_url?: { url: string } }> = [
-        { type: 'text', text: prompt },
-      ];
-      
-      for (const imageUrl of images) {
-        content.push({
-          type: 'image_url',
-          image_url: { url: imageUrl },
-        });
-      }
-      
-      messages.push({ role: 'user', content });
+      const imageParts = images.map((imageUrl) => ({
+        type: 'image_url' as const,
+        image_url: { url: imageUrl },
+      }));
+      const textPart = { type: 'text' as const, text: prompt };
+      const isMiMoVision = /xiaomimimo\.com|mimo-/i.test(`${model.apiUrl} ${model.modelId}`);
+      messages.push({
+        role: 'user',
+        content: isMiMoVision ? [...imageParts, textPart] : [textPart, ...imageParts],
+      });
     } else {
       // Text-only message
       messages.push({ role: 'user', content: prompt });
     }
 
     // Call the chat API
-    const response = await fetch(model.apiUrl, {
+    const isMiMo = /xiaomimimo\.com|mimo-/i.test(`${model.apiUrl} ${model.modelId}`);
+    const response = await fetch(resolveChatCompletionsUrl(model.apiUrl), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${model.apiKey}`,
+        Authorization: `Bearer ${model.apiKey}`,
+        ...(isMiMo ? { 'api-key': model.apiKey } : {}),
       },
       body: JSON.stringify({
         model: model.modelId,
         messages,
-        max_tokens: Math.min(4096, model.maxTokens),
+        ...(isMiMo
+          ? { max_completion_tokens: Math.min(4096, model.maxTokens || 4096) }
+          : { max_tokens: Math.min(4096, model.maxTokens) }),
       }),
     });
 

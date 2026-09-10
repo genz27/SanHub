@@ -154,11 +154,15 @@ async function runPromptCompletion(modelId: string, instruction: string, inputPr
     throw new Error(`Prompt processing model is unavailable: ${modelId}`);
   }
 
-  const response = await fetch(model.apiUrl, {
+  const { resolveChatCompletionsUrl } = await import('./chat-completions-url');
+  const isMiMo = /xiaomimimo\.com|mimo-/i.test(`${model.apiUrl} ${model.modelId}`);
+  const maxTokens = Math.min(2048, model.maxTokens || 2048);
+  const response = await fetch(resolveChatCompletionsUrl(model.apiUrl), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${model.apiKey}`,
+      ...(isMiMo ? { 'api-key': model.apiKey } : {}),
     },
     body: JSON.stringify({
       model: model.modelId,
@@ -172,7 +176,7 @@ async function runPromptCompletion(modelId: string, instruction: string, inputPr
           content: inputPrompt,
         },
       ],
-      max_tokens: Math.min(2048, model.maxTokens || 2048),
+      ...(isMiMo ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),
       temperature: 0.2,
     }),
   });
