@@ -1,4 +1,5 @@
 import type { Generation } from '@/types';
+import { clientGenerationReferenceUrls, parseStoredReferenceImages } from '@/lib/generation-reference-media';
 
 export function generationListColumns(
   includeError: boolean,
@@ -15,7 +16,8 @@ export function generationListColumns(
     ELSE ''
   END AS result_url,
   JSON_UNQUOTE(JSON_EXTRACT(params, '$.modelId')) AS param_model_id,
-  JSON_UNQUOTE(JSON_EXTRACT(params, '$.model')) AS param_model
+  JSON_UNQUOTE(JSON_EXTRACT(params, '$.model')) AS param_model,
+  JSON_EXTRACT(params, '$.referenceImages') AS param_reference_images
   ${includeVideoMeta ? `,
   CASE
     WHEN type NOT LIKE '%video%' THEN NULL
@@ -33,6 +35,10 @@ export function mapGenerationListRow(row: any, userId?: string): Generation {
   const rawUrl = row.result_url;
   const progressRaw = row.param_progress;
   const progress = progressRaw === null || progressRaw === undefined ? undefined : Number(progressRaw);
+  const referenceImages = clientGenerationReferenceUrls(
+    row.id,
+    parseStoredReferenceImages(row.param_reference_images).length
+  );
 
   return {
     id: row.id,
@@ -44,6 +50,7 @@ export function mapGenerationListRow(row: any, userId?: string): Generation {
       model: row.param_model || undefined,
       permalink: row.param_permalink || undefined,
       videoId: row.param_video_id || undefined,
+      ...(referenceImages.length > 0 ? { referenceImages, imageCount: referenceImages.length } : {}),
       ...(Number.isFinite(progress) ? { progress } : {}),
     },
     resultUrl: rawUrl === '' ? `/api/media/${row.id}` : rawUrl || '',

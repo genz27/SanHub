@@ -8,6 +8,7 @@ import { toast } from '@/components/ui/toaster';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { PaginationControls } from '@/components/admin/pagination';
 import { Modal } from '@/components/ui/modal';
+import { GenerationReferenceImages } from '@/components/generator/generation-reference-images';
 import {
   AdminEmpty,
   AdminGhostButton,
@@ -30,7 +31,7 @@ interface GenerationRecord {
   userEmail: string;
   userName: string;
   type: string;
-  params?: { model?: string };
+  params?: { model?: string; referenceImages?: string[]; imageCount?: number };
   prompt: string;
   resultUrl: string;
   cost: number;
@@ -342,6 +343,7 @@ export default function GenerationsPage() {
                 {selected.prompt || '-'}
               </p>
             </div>
+            <GenerationReferenceImages generation={selected} />
             <div className="flex gap-2">
               {selected.resultUrl && (
                 <AdminGhostButton

@@ -18,6 +18,7 @@ import { getUserById } from '@/lib/db/user-session';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { assertPromptsAllowed, isPromptBlockedError } from '@/lib/prompt-blocklist';
 import { inferImageSizeLabel as inferNormalizedImageSizeLabel, normalizeAspectRatio, resolveImageSize } from '@/lib/image-sizing';
+import { persistGenerationReferenceImages } from '@/lib/generation-reference-media';
 import type { ChannelType, Generation, GenerationType } from '@/types';
 
 export const maxDuration = 600;
@@ -440,6 +441,19 @@ export async function POST(request: NextRequest) {
           console.error('[API] Precharge rollback failed:', refundErr);
         });
         throw saveErr;
+      }
+
+      if (imageList.length > 0) {
+        const storedReferences = await persistGenerationReferenceImages(
+          generation.id,
+          imageList,
+          origin
+        );
+        if (storedReferences.length > 0) {
+          generationParams.referenceImages = storedReferences;
+          generationParams.imageCount = storedReferences.length;
+          await updateGeneration(generation.id, { params: generationParams }, user.id);
+        }
       }
 
       console.log('[API] 图像生成任务已创建:', {

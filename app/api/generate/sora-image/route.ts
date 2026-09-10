@@ -10,6 +10,7 @@ import { updateUserBalance } from '@/lib/db/user-balance';
 import { getUserById } from '@/lib/db/user-session';
 import { checkRateLimit } from '@/lib/rate-limit';
 import type { Generation } from '@/types';
+import { persistGenerationReferenceImages } from '@/lib/generation-reference-media';
 import { assertPromptsAllowed, isPromptBlockedError } from '@/lib/prompt-blocklist';
 
 export const maxDuration = 120;
@@ -226,6 +227,19 @@ export async function POST(request: NextRequest) {
         console.error('[API] Precharge rollback failed:', refundErr);
       });
       throw saveErr;
+    }
+
+    if (normalizedBody.input_image) {
+      const storedReferences = await persistGenerationReferenceImages(
+        generation.id,
+        [{ data: normalizedBody.input_image }],
+        origin
+      );
+      if (storedReferences.length > 0) {
+        generationParams.referenceImages = storedReferences;
+        generationParams.imageCount = storedReferences.length;
+        await updateGeneration(generation.id, { params: generationParams }, user.id);
+      }
     }
 
     processGenerationTask(
