@@ -16,8 +16,9 @@ import {
   Undo2,
   X,
 } from 'lucide-react';
-import type { Generation } from '@/types';
+import type { Generation, SafeImageModel } from '@/types';
 import { toast } from '@/components/ui/toaster';
+import { OptionChipGroup } from '@/components/generator/option-chip-group';
 import { toProxiedMediaUrl } from '@/lib/client-media-url';
 import {
   clampNormalizedRect,
@@ -47,6 +48,7 @@ export type RegionEditResult = {
   files: File[];
   prompt: string;
   aspectRatio?: string;
+  imageSize?: string;
   draft: RegionEditDraft;
 };
 
@@ -89,18 +91,75 @@ function resizeRegion(region: EditRegion, handle: HandleId, point: CanvasPoint):
   return { ...next, id: region.id, shape: region.shape, note: region.note };
 }
 
-function hydrateDraft(draft?: RegionEditDraft | null): RegionEditDraft {
+function pickListed(value: string | undefined, options: string[], fallback: string): string {
+  if (value && (options.length === 0 || options.includes(value))) return value;
+  if (options.includes(fallback)) return fallback;
+  return options[0] ?? fallback;
+}
+
+function initialOutputSize(
+  draft: RegionEditDraft | null | undefined,
+  generation: Generation,
+  model?: SafeImageModel | null
+) {
+  const ratios = model?.aspectRatios ?? [];
+  const sizes = model?.imageSizes ?? [];
+  return {
+    aspectRatio: pickListed(
+      draft?.aspectRatio ??
+        (typeof generation.params?.aspectRatio === 'string' ? generation.params.aspectRatio : undefined),
+      ratios,
+      model?.defaultAspectRatio ?? '1:1'
+    ),
+    imageSize: pickListed(
+      draft?.imageSize ??
+        (typeof generation.params?.imageSize === 'string' ? generation.params.imageSize : undefined),
+      sizes,
+      model?.defaultImageSize ?? '1K'
+    ),
+  };
+}
+
+function resolveOutputPixels(
+  model: SafeImageModel | null | undefined,
+  aspectRatio: string,
+  imageSize?: string
+): string {
+  if (!model) return '';
+  if (model.features.imageSize && imageSize) {
+    const sizeBucket = model.resolutions[imageSize];
+    if (sizeBucket && typeof sizeBucket === 'object') {
+      const resolved = (sizeBucket as Record<string, string>)[aspectRatio];
+      if (typeof resolved === 'string') return resolved;
+    }
+  }
+  const ratioBucket = model.resolutions[aspectRatio];
+  if (typeof ratioBucket === 'string') return ratioBucket;
+  if (ratioBucket && typeof ratioBucket === 'object' && imageSize) {
+    const resolved = (ratioBucket as Record<string, string>)[imageSize];
+    if (typeof resolved === 'string') return resolved;
+  }
+  return '';
+}
+
+function hydrateDraft(
+  draft: RegionEditDraft | null | undefined,
+  generation: Generation,
+  model?: SafeImageModel | null
+): RegionEditDraft {
   const regions = draft?.regions ?? [];
   const globalNote = draft?.globalNote ?? '';
   const mode = resolveRegionEditIntent(regions, globalNote, draft?.mode);
+  const output = initialOutputSize(draft, generation, model);
   if (regions.length === 1 && !regions[0].note.trim() && globalNote.trim()) {
-    return createRegionEditDraft([{ ...regions[0], note: globalNote }], '', mode);
+    return createRegionEditDraft([{ ...regions[0], note: globalNote }], '', mode, output);
   }
-  return createRegionEditDraft(regions, globalNote, mode);
+  return createRegionEditDraft(regions, globalNote, mode, output);
 }
 
 export function ImageRegionEditor({
   generation,
+  model = null,
   draft = null,
   submitting = false,
   onClose,
@@ -109,6 +168,7 @@ export function ImageRegionEditor({
   onApplyAndGenerate,
 }: {
   generation: Generation;
+  model?: SafeImageModel | null;
   draft?: RegionEditDraft | null;
   submitting?: boolean;
   onClose: () => void;
@@ -116,7 +176,7 @@ export function ImageRegionEditor({
   onApply: (result: RegionEditResult) => void;
   onApplyAndGenerate: (result: RegionEditResult) => void | Promise<void>;
 }) {
-  const [boot] = useState(() => hydrateDraft(draft));
+  const [boot] = useState(() => hydrateDraft(draft, generation, model));
   const viewportRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
@@ -126,6 +186,8 @@ export function ImageRegionEditor({
   const [selectedId, setSelectedId] = useState<string | null>(boot.regions[0]?.id ?? null);
   const [globalNote, setGlobalNote] = useState(boot.globalNote);
   const [mode, setMode] = useState<RegionEditIntent>(boot.mode ?? 'edit-content');
+  const [aspectRatio, setAspectRatio] = useState(boot.aspectRatio ?? '1:1');
+  const [imageSize, setImageSize] = useState(boot.imageSize ?? '1K');
   const [showGuide, setShowGuide] = useState(false);
   const [fitted, setFitted] = useState({ width: 0, height: 0 });
   const [busy, setBusy] = useState(false);
@@ -147,9 +209,10 @@ export function ImageRegionEditor({
 
   const selected = regions.find((region) => region.id === selectedId) || null;
   const currentDraft = useMemo(
-    () => createRegionEditDraft(regions, globalNote, mode),
-    [globalNote, mode, regions]
+    () => createRegionEditDraft(regions, globalNote, mode, { aspectRatio, imageSize }),
+    [aspectRatio, globalNote, imageSize, mode, regions]
   );
+  const outputPixels = resolveOutputPixels(model, aspectRatio, imageSize);
   const sourceUrl = toProxiedMediaUrl(`/api/media/${generation.id}`);
   const singleRegion = regions.length === 1 ? regions[0] : null;
   const instructionValue = singleRegion ? singleRegion.note : globalNote;
@@ -163,6 +226,8 @@ export function ImageRegionEditor({
     setRegions(next.regions);
     setGlobalNote(next.globalNote);
     setMode(next.mode ?? 'edit-content');
+    if (next.aspectRatio) setAspectRatio(next.aspectRatio);
+    if (next.imageSize) setImageSize(next.imageSize);
     setSelectedId((current) => {
       if (current && next.regions.some((region) => region.id === current)) return current;
       return next.regions[0]?.id ?? null;
@@ -411,14 +476,11 @@ export function ImageRegionEditor({
     setBusy(true);
     try {
       const { original, annotated } = await exportRegionEditImages(sourceUrl, regions, globalNote, mode);
-      const aspectRatio =
-        typeof generation.params?.aspectRatio === 'string'
-          ? generation.params.aspectRatio
-          : undefined;
       return {
         files: [annotated, original],
         prompt: buildRegionPrompt(regions, globalNote, mode),
         aspectRatio,
+        imageSize: model?.features.imageSize ? imageSize : undefined,
         draft: currentDraft,
       };
     } catch (error) {
@@ -431,7 +493,7 @@ export function ImageRegionEditor({
     } finally {
       setBusy(false);
     }
-  }, [currentDraft, generation.params?.aspectRatio, globalNote, mode, regions, sourceUrl]);
+  }, [aspectRatio, currentDraft, globalNote, imageSize, mode, model?.features.imageSize, regions, sourceUrl]);
 
   const tools = useMemo(
     () =>
@@ -731,6 +793,29 @@ export function ImageRegionEditor({
           )}
 
           <div className="flex flex-wrap items-center justify-end gap-2">
+            {model && model.aspectRatios.length > 0 && (
+              <OptionChipGroup
+                label="比例"
+                value={aspectRatio}
+                onChange={setAspectRatio}
+                options={model.aspectRatios.map((ratio) => ({ value: ratio, label: ratio }))}
+              />
+            )}
+            {model?.features.imageSize && model.imageSizes && (
+              <OptionChipGroup
+                label="尺寸"
+                value={imageSize}
+                onChange={setImageSize}
+                options={model.imageSizes.map((size) => ({ value: size, label: size }))}
+              />
+            )}
+            {outputPixels ? (
+              <span className="mr-auto inline-flex h-7 items-center rounded-md border border-border/60 px-2 font-mono text-[11px] text-muted-foreground">
+                {outputPixels}
+              </span>
+            ) : (
+              <span className="mr-auto" />
+            )}
             <button
               type="button"
               disabled={busy || submitting}

@@ -406,7 +406,7 @@ export function ImageGenerationPage({
 
   const applyRegionEditToComposer = useCallback(
     (
-      result: { files: File[]; prompt: string; aspectRatio?: string },
+      result: { files: File[]; prompt: string; aspectRatio?: string; imageSize?: string },
       options?: { closeEditor?: boolean }
     ) => {
       if (currentModel && !currentModel.features.imageToImage) {
@@ -433,6 +433,9 @@ export function ImageGenerationPage({
       setPrompt(result.prompt);
       if (result.aspectRatio) {
         setAspectRatio(result.aspectRatio);
+      }
+      if (result.imageSize) {
+        setImageSize(result.imageSize);
       }
       if (options?.closeEditor !== false) {
         setEditingGeneration(null);
@@ -819,7 +822,7 @@ export function ImageGenerationPage({
     taskPrompt: string,
     compressedImages: Array<{ mimeType: string; data: string }> | undefined,
     clientRequestId: string,
-    options?: { aspectRatio?: string }
+    options?: { aspectRatio?: string; imageSize?: string }
   ) => {
     if (!currentModel) throw new Error('请选择模型');
 
@@ -831,7 +834,7 @@ export function ImageGenerationPage({
         modelId: currentModel.id,
         prompt: taskPrompt,
         aspectRatio: options?.aspectRatio || aspectRatio,
-        imageSize: currentModel.features.imageSize ? imageSize : undefined,
+        imageSize: currentModel.features.imageSize ? options?.imageSize || imageSize : undefined,
         quality: (currentModel.channelType === 'apexerapi' || currentModel.channelType === 'openai-compatible' || currentModel.channelType === 'openai-chat') && currentModel.apiModel.toLowerCase().includes('gpt-image-2') && (!currentModel.features.qualityOptions || currentModel.features.qualityOptions.length === 0 || currentModel.features.qualityOptions.includes(quality)) ? quality : undefined,
         images: compressedImages || [],
         referenceImageUrl: externalReference?.sourceUrl,
@@ -961,6 +964,7 @@ export function ImageGenerationPage({
         const sourceId = editingGeneration?.id;
         const taskId = await submitSingleTask(result.prompt, compressedImages, createClientRequestId(), {
           aspectRatio: result.aspectRatio,
+          imageSize: result.imageSize,
         });
         if (sourceId) {
           saveRegionDraftToIds([sourceId, taskId], result.draft);
@@ -1316,6 +1320,7 @@ export function ImageGenerationPage({
         <ImageRegionEditor
           key={editingGeneration.id}
           generation={editingGeneration}
+          model={currentModel}
           draft={regionDrafts[editingGeneration.id] ?? null}
           submitting={submitting || compressing}
           onClose={() => setEditingGeneration(null)}
