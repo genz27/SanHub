@@ -2,6 +2,7 @@
 import { getAdapter } from './connection';
 import type { DatabaseAdapter } from '../db-adapter';
 import { generateId } from '../utils';
+import { createGenerationReferenceAssetsTable } from './generation-reference-assets';
 
 // ========================================
 // 数据库初始化
@@ -333,6 +334,7 @@ async function doInitializeDatabase(): Promise<void> {
   if (await hasLegacyMigrationsApplied(db)) {
     await ensureSystemConfigRow(db);
     await ensureGenerationTypeEnum(db);
+    await createGenerationReferenceAssetsTable(db);
     initialized = true;
     console.log('Database initialized successfully');
     return;
@@ -783,6 +785,7 @@ async function doInitializeDatabase(): Promise<void> {
   }
 
   await ensurePerformanceIndexes(db);
+  await createGenerationReferenceAssetsTable(db);
 
   initialized = true;
   console.log('Database initialized successfully');

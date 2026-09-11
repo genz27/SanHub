@@ -120,6 +120,8 @@ export async function adminDeleteGeneration(id: string): Promise<boolean> {
   const [result] = await db.execute('DELETE FROM generations WHERE id = ?', [id]);
   const deleted = (result as any).affectedRows > 0;
   if (deleted) {
+    const { deleteGenerationReferenceAssets } = await import('./generation-reference-assets');
+    await deleteGenerationReferenceAssets([id]).catch(() => {});
     cache.delete(CacheKeys.PENDING_COUNT);
     cache.deleteByPrefix(CacheKeys.USER_GENERATIONS);
     cache.deleteByPrefix(CacheKeys.PENDING_GENERATIONS);

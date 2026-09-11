@@ -1,3 +1,8 @@
+import {
+  databaseReferencePointer,
+  putGenerationReferenceAsset,
+} from '@/lib/db/generation-reference-assets';
+
 const MAX_STORED_REFERENCE_IMAGES = 10;
 const MAX_STORED_REFERENCE_URL_LENGTH = 2000;
 
@@ -34,12 +39,19 @@ export function clientGenerationReferenceUrls(generationId: string, count: numbe
   return Array.from({ length: safeCount }, (_, index) => `/api/media/${generationId}?input=${index}`);
 }
 
-function extensionFromImageData(data: string): string {
-  const mime = data.match(/^data:([^;]+)/)?.[1] || '';
-  if (mime.includes('png')) return 'png';
-  if (mime.includes('webp')) return 'webp';
-  if (mime.includes('gif')) return 'gif';
-  return 'jpg';
+function parseImagePayload(data: string): { mimeType: string; buffer: Buffer } | null {
+  const match = data.match(/^data:([^;]+);base64,(.+)$/);
+  if (match) {
+    const buffer = Buffer.from(match[2], 'base64');
+    if (buffer.length === 0) return null;
+    return { mimeType: match[1] || 'image/jpeg', buffer };
+  }
+  if (/^[A-Za-z0-9+/=\s]+$/.test(data) && data.replace(/\s+/g, '').length > 32) {
+    const buffer = Buffer.from(data.replace(/\s+/g, ''), 'base64');
+    if (buffer.length === 0) return null;
+    return { mimeType: 'image/jpeg', buffer };
+  }
+  return null;
 }
 
 function toPersistableImageData(data: string): string | null {
@@ -50,6 +62,7 @@ function toPersistableImageData(data: string): string | null {
     || data.startsWith('https://')
     || data.startsWith('/api/media/')
     || data.startsWith('file:')
+    || data.startsWith('db:')
   ) {
     return data;
   }
@@ -57,15 +70,6 @@ function toPersistableImageData(data: string): string | null {
     return `data:image/jpeg;base64,${data.replace(/\s+/g, '')}`;
   }
   return null;
-}
-
-function isDurableReferenceUrl(url: string): boolean {
-  return (
-    url.startsWith('file:')
-    || url.startsWith('http://')
-    || url.startsWith('https://')
-    || url.startsWith('/api/media/')
-  );
 }
 
 export async function persistGenerationReferenceImages(
@@ -76,12 +80,11 @@ export async function persistGenerationReferenceImages(
   const limited = images.slice(0, MAX_STORED_REFERENCE_IMAGES);
   if (limited.length === 0) return [];
 
-  const { saveMediaAsync, saveMediaToFile } = await import('@/lib/media-storage');
   const stored = await Promise.all(limited.map(async (image, index) => {
     const data = toPersistableImageData(image.data || '');
     if (!data) return null;
 
-    if (data.startsWith('file:') || data.startsWith('/api/media/')) {
+    if (data.startsWith('db:') || data.startsWith('/api/media/')) {
       return data;
     }
 
@@ -89,29 +92,29 @@ export async function persistGenerationReferenceImages(
       return data;
     }
 
-    try {
-      const local = await saveMediaToFile(`${generationId}-ref-${index}`, data);
-      if (isDurableReferenceUrl(local)) {
-        return local;
+    const parsed = parseImagePayload(data);
+    if (parsed) {
+      try {
+        await putGenerationReferenceAsset(generationId, index, parsed.mimeType, parsed.buffer);
+        return databaseReferencePointer(index);
+      } catch (error) {
+        console.warn(`[ReferenceMedia] Database persist failed for ${generationId} ref ${index}:`, error);
       }
-    } catch (error) {
-      console.warn(`[ReferenceMedia] Local persist failed for ${generationId} ref ${index}:`, error);
     }
 
     try {
+      const { saveMediaAsync } = await import('@/lib/media-storage');
       const saved = await saveMediaAsync(`${generationId}-ref-${index}`, data, {
         publicBaseUrl,
-        filename: `${generationId}-ref-${index}.${extensionFromImageData(data)}`,
       });
-      if (isDurableReferenceUrl(saved)) {
+      if (saved.startsWith('http://') || saved.startsWith('https://')) {
         return saved;
       }
-      console.warn(`[ReferenceMedia] Skipped inlined data URL for ${generationId} ref ${index}`);
-      return null;
     } catch (error) {
-      console.warn(`[ReferenceMedia] Failed to persist ${generationId} ref ${index}:`, error);
-      return null;
+      console.warn(`[ReferenceMedia] Remote persist failed for ${generationId} ref ${index}:`, error);
     }
+
+    return null;
   }));
 
   return stored.filter((url): url is string => Boolean(url));

@@ -13,6 +13,8 @@ export async function deleteGeneration(id: string, userId: string): Promise<bool
   );
 
   if ((result as any).affectedRows > 0) {
+    const { deleteGenerationReferenceAssets } = await import('./generation-reference-assets');
+    await deleteGenerationReferenceAssets([id]).catch(() => {});
     cache.delete(CacheKeys.PENDING_COUNT);
     cache.deleteByPrefix(`${CacheKeys.DAILY_USAGE}${userId}:`);
     cache.deleteByPrefix(`${CacheKeys.USER_GENERATIONS}${userId}:`);
@@ -37,6 +39,8 @@ export async function deleteGenerations(ids: string[], userId: string): Promise<
 
   const deleted = (result as any).affectedRows || 0;
   if (deleted > 0) {
+    const { deleteGenerationReferenceAssets } = await import('./generation-reference-assets');
+    await deleteGenerationReferenceAssets(ids).catch(() => {});
     cache.delete(CacheKeys.PENDING_COUNT);
     cache.deleteByPrefix(`${CacheKeys.DAILY_USAGE}${userId}:`);
     cache.deleteByPrefix(`${CacheKeys.USER_GENERATIONS}${userId}:`);
