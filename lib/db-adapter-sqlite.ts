@@ -32,6 +32,7 @@ export class SQLiteAdapter implements DatabaseAdapter {
       if (p === undefined) return null;
       if (p === true) return 1;
       if (p === false) return 0;
+      if (Buffer.isBuffer(p) || p instanceof Uint8Array) return p;
       if (typeof p === 'object' && p !== null) return JSON.stringify(p);
       return p;
     });
@@ -77,6 +78,8 @@ export class SQLiteAdapter implements DatabaseAdapter {
     sql = sql.replace(/BIGINT/gi, 'INTEGER');
     sql = sql.replace(/VARCHAR\(\d+\)/gi, 'TEXT');
     sql = sql.replace(/LONGTEXT/gi, 'TEXT');
+    sql = sql.replace(/MEDIUMBLOB/gi, 'BLOB');
+    sql = sql.replace(/LONGBLOB/gi, 'BLOB');
     sql = sql.replace(/\bJSON\b/gi, 'TEXT');
     sql = sql.replace(/ENUM\([^)]+\)/gi, 'TEXT');
     sql = sql.replace(/BOOLEAN/gi, 'INTEGER');

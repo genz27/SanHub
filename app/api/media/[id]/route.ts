@@ -53,28 +53,11 @@ export async function GET(
       if (!Number.isInteger(index) || index < 0 || index > 9) {
         return uncachedResponse('Not Found', 404);
       }
-      const stored = generation.referenceImages?.[index];
-      if (stored) {
-        return serveStoredImage(
-          request,
-          stored,
-          `${id}-ref-${index}`,
-          request.nextUrl.searchParams.get('download') === '1'
-            ? `sanhub-${id}-ref-${index + 1}`
-            : undefined
-        );
-      }
-
-      const { readConventionReferenceFile } = await import('@/lib/media-read');
-      const local = await readConventionReferenceFile(id, index);
-      if (!local) {
-        return uncachedResponse('Not Found', 404);
-      }
-      return createMediaResponse(
+      return serveReferenceInput(
         request,
-        local.buffer,
-        local.mimeType,
-        `${id}-ref-${index}`,
+        id,
+        index,
+        generation.referenceImages?.[index],
         request.nextUrl.searchParams.get('download') === '1'
           ? `sanhub-${id}-ref-${index + 1}`
           : undefined
@@ -193,6 +176,49 @@ export async function GET(
     console.error('[Media API] Error:', error);
     return uncachedResponse('Internal Server Error', 500);
   }
+}
+
+async function serveReferenceAsset(
+  request: NextRequest,
+  generationId: string,
+  index: number,
+  cacheKey: string,
+  downloadName?: string
+): Promise<NextResponse | null> {
+  const { getGenerationReferenceAsset } = await import('@/lib/db/generation-reference-assets');
+  const asset = await getGenerationReferenceAsset(generationId, index);
+  if (!asset) return null;
+  return createMediaResponse(request, asset.buffer, asset.mimeType, cacheKey, downloadName);
+}
+
+async function serveReferenceInput(
+  request: NextRequest,
+  generationId: string,
+  index: number,
+  storedUrl: string | undefined,
+  downloadName?: string
+): Promise<NextResponse> {
+  const cacheKey = `${generationId}-ref-${index}`;
+
+  if (storedUrl?.startsWith('db:')) {
+    return (await serveReferenceAsset(request, generationId, index, cacheKey, downloadName))
+      || uncachedResponse('Not Found', 404);
+  }
+
+  if (storedUrl) {
+    const stored = await serveStoredImage(request, storedUrl, cacheKey, downloadName);
+    if (stored.status !== 404) return stored;
+  }
+
+  const fromDb = await serveReferenceAsset(request, generationId, index, cacheKey, downloadName);
+  if (fromDb) return fromDb;
+
+  const { readConventionReferenceFile } = await import('@/lib/media-read');
+  const local = await readConventionReferenceFile(generationId, index);
+  if (!local) {
+    return uncachedResponse('Not Found', 404);
+  }
+  return createMediaResponse(request, local.buffer, local.mimeType, cacheKey, downloadName);
 }
 
 async function serveStoredImage(
